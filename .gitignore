@@ -1,0 +1,42 @@
+# Python/build/test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+*.coverage
+*.log
+
+# Local credentials and runtime state
+.env
+.env.*
+!.env.example
+work/
+**/node_modules/
+
+# Generated media, model weights, and provisioned binaries are not source
+# files. Keep them locally for evidence runs, but do not commit them.
+tools/asr/models/
+tools/asr/downloads/
+tools/asr/python-packages/
+tools/asr/espeak/
+tools/asr/espeak-ng.msi
+tools/ffmpeg/
+tools/tesseract/
+tools/diagnostics/
+tesseract.exe
+*.pt
+*.pth
+*.safetensors
