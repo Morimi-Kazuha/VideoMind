@@ -498,6 +498,13 @@ def test_invalid_model_dto_is_classified_as_schema_failure() -> None:
     assert _map_failure_category(ModelResponseError("invalid DTO")) is EvaluationFailureCategory.SCHEMA_FAILURE
 
 
+def test_canonical_provider_fallback_is_classified_as_provider_failure() -> None:
+    from dovideo.application.evaluation_runner import _map_failure_category
+    from dovideo.infrastructure.r4_runtime import R4ProviderFallbackError
+
+    assert _map_failure_category(R4ProviderFallbackError("fallback")) is EvaluationFailureCategory.PROVIDER_FAILURE
+
+
 def test_failed_execution_keeps_provider_reported_usage(tmp_path) -> None:
     from dovideo.application.errors import BudgetExceededError
 

@@ -3,7 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from dovideo.application.value_objects import VectorHit
-from dovideo.infrastructure.r4_runtime import _StrictRetrievalService
+from dovideo.infrastructure.r4_runtime import R4ProviderFallbackError, _StrictRetrievalService
+from dovideo.infrastructure.vector.qdrant import QdrantVectorError
 
 
 class _Vectors:
@@ -18,8 +19,11 @@ class _Vectors:
 
 
 class _Telemetry:
+    def __init__(self):
+        self.counters = {}
+
     def counter_value(self, _name):
-        return 0
+        return self.counters.get(_name, 0)
 
     def observe(self, _name, _value):
         pass
@@ -36,3 +40,14 @@ async def test_strict_retrieval_forwards_prepared_chunk_scope_to_base() -> None:
     scores = await service._vector_scores(17, (0.1, 0.2), chunks)
     assert len(scores) == 2
     assert set(scores.values()) == {0.9, 0.8}
+
+
+def test_strict_retrieval_distinguishes_provider_and_vector_fallbacks() -> None:
+    telemetry = _Telemetry()
+    service = _StrictRetrievalService(object(), object(), _Vectors(), telemetry=telemetry)
+    telemetry.counters["retrievalIntentFallbacks"] = 1
+    with pytest.raises(R4ProviderFallbackError):
+        service._raise_if_fallback((0, 0, 0))
+    telemetry.counters = {"vectorStoreFallbacks": 1}
+    with pytest.raises(QdrantVectorError):
+        service._raise_if_fallback((0, 0, 0))

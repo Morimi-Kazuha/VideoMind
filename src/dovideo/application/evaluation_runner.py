@@ -1855,6 +1855,8 @@ def _map_failure_category(error: Exception) -> EvaluationFailureCategory:
     if isinstance(error, EvaluationSchemaError):
         return EvaluationFailureCategory.SCHEMA_FAILURE
     name = type(error).__name__.casefold()
+    if "providerfallback" in name:
+        return EvaluationFailureCategory.PROVIDER_FAILURE
     if "modelresponse" in name:
         return EvaluationFailureCategory.SCHEMA_FAILURE
     if "retriev" in name:

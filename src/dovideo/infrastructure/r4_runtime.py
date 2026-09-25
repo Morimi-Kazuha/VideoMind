@@ -115,6 +115,12 @@ from .x1_config import X1ToolCallingSettings
 
 EXPECTED_EMBEDDING_MODEL = "BAAI/bge-m3"
 EXPECTED_EMBEDDING_DIMENSION = 1024
+
+
+class R4ProviderFallbackError(RuntimeError):
+    """A canonical provider stage failed and the base path used a fallback."""
+
+
 _CURRENT_R4_REQUEST: ContextVar[AnalysisRequest | None] = ContextVar(
     "dovideo_r4_current_request",
     default=None,
@@ -616,7 +622,7 @@ class _StrictChunkingService(VideoChunkingService):
             self._r4_telemetry.counter_value("summaryFallbacks") > summary_fallbacks
             or self._r4_telemetry.counter_value("embeddingFallbacks") > embedding_fallbacks
         ):
-            raise RuntimeError("R4 canonical chunking used a provider fallback")
+            raise R4ProviderFallbackError("R4 canonical chunking used a provider fallback")
         if not chunks or any(
             len(chunk.embedding) != EXPECTED_EMBEDDING_DIMENSION
             or any(not math.isfinite(float(item)) for item in chunk.embedding)
@@ -678,7 +684,7 @@ class _StrictRetrievalService(VideoEvidenceRetrievalService):
         before = self._r4_telemetry.counter_value("retrievalIntentFallbacks")
         intent = await super()._retrieval_intent(goal)
         if self._r4_telemetry.counter_value("retrievalIntentFallbacks") > before:
-            raise RuntimeError("R4 canonical retrieval intent used a provider fallback")
+            raise R4ProviderFallbackError("R4 canonical retrieval intent used a provider fallback")
         if not intent.semantic_query.strip():
             raise RuntimeError("R4 retrieval planner returned an empty semantic query")
         return intent
@@ -687,7 +693,7 @@ class _StrictRetrievalService(VideoEvidenceRetrievalService):
         before = self._r4_telemetry.counter_value("embeddingFallbacks")
         value = await super()._embed(text)
         if self._r4_telemetry.counter_value("embeddingFallbacks") > before:
-            raise RuntimeError("R4 canonical retrieval embedding used a fallback")
+            raise R4ProviderFallbackError("R4 canonical retrieval embedding used a fallback")
         if len(value) != EXPECTED_EMBEDDING_DIMENSION:
             raise RuntimeError("R4 retrieval query vector dimension is invalid")
         return value
@@ -719,8 +725,10 @@ class _StrictRetrievalService(VideoEvidenceRetrievalService):
 
     def _raise_if_fallback(self, before: tuple[int, int, int]) -> None:
         after = self._fallback_snapshot()
-        if any(left > right for left, right in zip(after, before)):
-            raise RuntimeError("R4 canonical retrieval used a provider fallback")
+        if after[2] > before[2]:
+            raise QdrantVectorError("R4 canonical retrieval used a vector store fallback")
+        if after[0] > before[0] or after[1] > before[1]:
+            raise R4ProviderFallbackError("R4 canonical retrieval used a provider fallback")
 
 
 @dataclass(slots=True)
@@ -1437,6 +1445,7 @@ __all__ = [
     "EXPECTED_EMBEDDING_DIMENSION",
     "EXPECTED_EMBEDDING_MODEL",
     "R4AgentTelemetry",
+    "R4ProviderFallbackError",
     "R4MediaPipeline",
     "R4ProviderStack",
     "R4RequestContextCheckpoint",
