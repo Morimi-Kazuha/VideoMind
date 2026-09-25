@@ -288,7 +288,23 @@ class SegmentedTranscriptionService:
                     segment.path,
                     trace_id=trace_id,
                 )
-                if isinstance(text, str) and text.strip():
+                if isinstance(text, tuple):
+                    timed_observations: list[TranscriptSpan] = []
+                    for span in text:
+                        if not isinstance(span, TranscriptSpan):
+                            raise TypeError("timed ASR observations must be TranscriptSpan values")
+                        if span.end_ms > AUDIO_SEGMENT_MILLISECONDS:
+                            raise ValueError("timed ASR observation exceeds audio segment")
+                        if span.text.strip():
+                            timed_observations.append(
+                                TranscriptSpan(
+                                    start_ms=segment.start_ms + span.start_ms,
+                                    end_ms=segment.start_ms + span.end_ms,
+                                    text=span.text,
+                                )
+                            )
+                    observations.extend(timed_observations)
+                elif isinstance(text, str) and text.strip():
                     start_ms = segment.index * AUDIO_SEGMENT_MILLISECONDS
                     observations.append(
                         TranscriptSpan(

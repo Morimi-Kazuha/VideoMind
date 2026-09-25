@@ -31,6 +31,7 @@ from dovideo.application import (
     ModelRoutingService,
     ModelRoutingPolicy,
     TaskKey,
+    TranscriptSpan,
     VideoChunkingService,
     VideoContextBuilder,
     VideoEvidenceRetrievalService,
@@ -965,9 +966,8 @@ class _WhisperSegmentTranscriber:
         audio_path: Path,
         *,
         trace_id: str | None = None,
-    ) -> str:
-        spans = await self.adapter.transcribe_path(audio_path, trace_id=trace_id)
-        return " ".join(span.text for span in spans if span.text.strip())
+    ) -> tuple[TranscriptSpan, ...]:
+        return await self.adapter.transcribe_path(audio_path, trace_id=trace_id)
 
 
 class R4MediaPipeline:

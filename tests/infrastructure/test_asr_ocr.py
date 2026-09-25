@@ -308,6 +308,53 @@ async def test_segmented_asr_all_empty_without_errors_is_success(tmp_path: Path)
     assert outcome.observations == ()
 
 
+@pytest.mark.asyncio
+async def test_segmented_asr_preserves_whisper_timing_and_offsets(tmp_path: Path) -> None:
+    class TimedTranscriber:
+        async def transcribe_segment(self, audio_path: Path, *, trace_id=None):
+            if audio_path.name == "audio_000.mp3":
+                return (TranscriptSpan(1000, 3500, "first"), TranscriptSpan(4000, 6200, "second"))
+            return (TranscriptSpan(500, 2300, "third"),)
+
+    async with MediaWorkspace(parent=tmp_path) as workspace:
+        audio_dir = await workspace.directory("audio")
+        segments = _make_audio_segments(workspace, audio_dir, indexes=(0, 1))
+        outcome = await SegmentedTranscriptionService(TimedTranscriber()).transcribe(segments)
+    assert outcome.attempted == 2
+    assert outcome.observations == (
+        TranscriptSpan(1000, 3500, "first"),
+        TranscriptSpan(4000, 6200, "second"),
+        TranscriptSpan(60_500, 62_300, "third"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_segmented_asr_rejects_out_of_segment_timing_atomically(tmp_path: Path) -> None:
+    class InvalidTimedTranscriber:
+        async def transcribe_segment(self, audio_path: Path, *, trace_id=None):
+            return (TranscriptSpan(0, 1000, "valid"), TranscriptSpan(59_000, 61_000, "invalid"))
+
+    async with MediaWorkspace(parent=tmp_path) as workspace:
+        audio_dir = await workspace.directory("audio")
+        segments = _make_audio_segments(workspace, audio_dir, indexes=(0,))
+        with pytest.raises(AllAsrSegmentsFailed) as caught:
+            await SegmentedTranscriptionService(InvalidTimedTranscriber()).transcribe(segments)
+    assert isinstance(caught.value.last_cause, ValueError)
+
+
+@pytest.mark.asyncio
+async def test_r4_whisper_adapter_retains_local_spans() -> None:
+    from dovideo.infrastructure.r4_runtime import _WhisperSegmentTranscriber
+
+    expected = (TranscriptSpan(1200, 2400, "one"), TranscriptSpan(2500, 3600, "two"))
+
+    class FakeWhisper:
+        async def transcribe_path(self, audio_path: Path, *, trace_id=None):
+            return expected
+
+    assert await _WhisperSegmentTranscriber(FakeWhisper()).transcribe_segment(Path("audio.mp3")) == expected
+
+
 def test_branch_outcomes_enforce_failure_and_attempt_invariants() -> None:
     span = TranscriptSpan(0, 60_000, "text")
     observation = OcrObservation(0, "")

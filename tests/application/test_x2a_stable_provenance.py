@@ -103,7 +103,7 @@ def test_source_revision_is_canonical_versioned_and_changes_with_authoritative_i
 def test_frame_provenance_ignores_temp_path_and_preserves_authoritative_changes(monkeypatch) -> None:
     import dovideo.domain.provenance as provenance
 
-    assert PROVENANCE_VERSION == "x2-a-v2"
+    assert PROVENANCE_VERSION == "x2-a-v3"
     identity = "cd22673b3eed2108b558385371668b74"
 
     def context_for(path: str, *, media: str = identity, timestamp: int = 5, text: str = "screen"):

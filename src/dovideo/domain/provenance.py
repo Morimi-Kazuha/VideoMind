@@ -19,8 +19,8 @@ from ._base import DomainModel, normalize_nullable_aliases
 
 
 LEGACY_PROVENANCE_VERSION = "x2-a-v1"
-PROVENANCE_VERSION = "x2-a-v2"
-EXTRACTION_CONTRACT_VERSION = "video-context-60s-v1"
+PROVENANCE_VERSION = "x2-a-v3"
+EXTRACTION_CONTRACT_VERSION = "video-context-whisper-spans-v2"
 NORMALIZATION_VERSION = "text-trim-v1"
 CHUNKING_CONTRACT_VERSION = "video-chunk-5m-v1"
 MAX_EVIDENCE_SOURCE_ITEM_REFS = 8

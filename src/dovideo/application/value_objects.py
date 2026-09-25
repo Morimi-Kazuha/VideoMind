@@ -178,8 +178,8 @@ class AsrBranchOutcome:
             raise ValueError("ASR failed count must match causes")
         if self.attempted < self.failed:
             raise ValueError("ASR attempted count cannot be below failed count")
-        if len(observations) + self.failed > self.attempted:
-            raise ValueError("ASR observations and failures exceed attempted count")
+        if observations and self.failed == self.attempted:
+            raise ValueError("ASR observations require a successful attempt")
         object.__setattr__(self, "observations", observations)
         object.__setattr__(self, "causes", causes)
 

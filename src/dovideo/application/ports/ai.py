@@ -58,7 +58,7 @@ class AudioSegmentTranscriptionPort(Protocol):
         audio_path: Path,
         *,
         trace_id: str | None = None,
-    ) -> str | None:
+    ) -> str | tuple[TranscriptSpan, ...] | None:
         ...
 
 
