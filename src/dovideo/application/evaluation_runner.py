@@ -1200,7 +1200,10 @@ class EvaluationRunner:
             EvaluationStrategy.CURRENT_PRODUCTION,
             EvaluationStrategy.FIXED_BALANCED,
             EvaluationStrategy.ALWAYS_BALANCED,
+            EvaluationStrategy.ALWAYS_FAST,
+            EvaluationStrategy.ALWAYS_DEEP,
             EvaluationStrategy.RULE_ROUTER,
+            EvaluationStrategy.JEV_ROUTER,
         }
     )
 
@@ -1239,14 +1242,16 @@ class EvaluationRunner:
             raise EvaluationPreflightError("evaluation dataset failed contract validation") from error
         if selected_config.strategy not in self._SUPPORTED_STRATEGIES:
             raise EvaluationPreflightError(
-                "X3-B supports one current/fixed baseline; routing matrix strategies are deferred"
+                "selected evaluation strategy is unsupported"
             )
-        if (
-            selected_config.strategy is EvaluationStrategy.RULE_ROUTER
-            and self._strategy is None
-        ):
+        if selected_config.strategy in {
+            EvaluationStrategy.ALWAYS_FAST,
+            EvaluationStrategy.ALWAYS_DEEP,
+            EvaluationStrategy.RULE_ROUTER,
+            EvaluationStrategy.JEV_ROUTER,
+        } and self._strategy is None:
             raise EvaluationPreflightError(
-                "RULE_ROUTER requires an explicit evaluation-only lane dispatch strategy"
+                "selected strategy requires an explicit evaluation-only execution strategy"
             )
         all_ids = {case.case_id for case in validated_dataset.cases}
         unknown = set(selected_config.case_filter).difference(all_ids)

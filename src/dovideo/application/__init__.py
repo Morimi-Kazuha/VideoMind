@@ -15,6 +15,12 @@ from .evaluation import (
     GoldenEvaluationTask,
     OfflineAgentEvaluationRunner,
 )
+from .evaluation_campaign import (
+    CAMPAIGN_STRATEGIES,
+    FIXED_STRATEGIES,
+    EvaluationCampaignResult,
+    EvaluationCampaignRunner,
+)
 from .evaluation_runner import (
     AdapterEvaluationStrategy,
     AgentLoopEvaluationAdapter,
@@ -521,6 +527,10 @@ __all__ = [
     "FailedTaskReplayResult",
     "GoldenEvaluationTask",
     "OfflineAgentEvaluationRunner",
+    "CAMPAIGN_STRATEGIES",
+    "FIXED_STRATEGIES",
+    "EvaluationCampaignResult",
+    "EvaluationCampaignRunner",
     "AdapterEvaluationStrategy",
     "AgentLoopEvaluationAdapter",
     "ConditionalPricingRate",
