@@ -12,6 +12,7 @@ import asyncio
 import json
 import os
 import subprocess
+import traceback
 from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
@@ -199,6 +200,11 @@ class IsolatedR4Adapter:
                 "traceId": trace_id, "strategy": strategy.value,
                 "trialIndex": trial_index, "errorType": type(error).__name__,
                 "providerUsage": records,
+                "stack": [
+                    {"file": Path(frame.filename).name, "line": frame.lineno,
+                     "function": frame.name}
+                    for frame in traceback.extract_tb(error.__traceback__)[-12:]
+                ],
             }, sort_keys=True, indent=2), encoding="utf-8")
             raise
         finally:
@@ -221,6 +227,7 @@ async def main() -> None:
     parser.add_argument("--campaign-id", required=True)
     parser.add_argument("--artifact-root", default=str(ROOT / "work" / "x3-campaigns"))
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument("--diagnostic-one", action="store_true")
     args = parser.parse_args()
     load_local_environment()
     freeze_sha = _clean_sha()
@@ -258,6 +265,20 @@ async def main() -> None:
             for lane in ModelRouteLane
         }
         jev_adapter = IsolatedR4Adapter(infra, settings, media_id, chunks, work_root, None)
+        if args.diagnostic_one:
+            case = dataset.case(args.case or "long-general-001")
+            try:
+                await adapters[ModelRouteLane.FAST].execute(
+                    case.execution_input(), artifact=artifact,
+                    strategy=EvaluationStrategy.ALWAYS_FAST, trial_index=0,
+                    timeout_seconds=900.0,
+                )
+                print(json.dumps({"status": "DIAGNOSTIC_EXECUTED"}))
+            except Exception as error:
+                print(json.dumps({"status": "DIAGNOSTIC_FAILED",
+                                  "errorType": type(error).__name__,
+                                  "artifact": str(work_root)}))
+            return
         strategies = {
             EvaluationStrategy.ALWAYS_FAST: AdapterEvaluationStrategy(EvaluationStrategy.ALWAYS_FAST, adapters[ModelRouteLane.FAST]),
             EvaluationStrategy.ALWAYS_BALANCED: AdapterEvaluationStrategy(EvaluationStrategy.ALWAYS_BALANCED, adapters[ModelRouteLane.BALANCED]),
