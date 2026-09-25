@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -219,6 +220,29 @@ def test_initial_real_artifact_dataset_loads_without_claiming_completeness() -> 
         "CREATION",
     }
     assert all(case.source_revision == dataset.source_revision_set[0] for case in dataset.cases)
+
+
+def test_v2_rebase_preserves_v1_and_keeps_gold_out_of_execution() -> None:
+    base = Path(__file__).parents[2] / "datasets" / "x3"
+    v1_path = base / "golden-dataset-v1.json"
+    v1 = read_dataset(v1_path)
+    v2 = read_dataset(base / "golden-dataset-v2.json")
+    assert hashlib.sha256(v1_path.read_bytes()).hexdigest() == (
+        "e318193a681ed2794808713a4d1a9dd723b429ad030aee66ecd1bdcde488c2bc"
+    )
+    assert v1.dataset_digest == "d28efd2e639ab836ed85a4de40c64ba5a39bb9baa5878031b4a4b350a88aa25f"
+    assert v2.dataset_digest == "7f374396c5eb002ba158717afaffa8a65f5ee64ed79663f1f6b6047960dae8e4"
+    assert v2.dataset_version == "golden-dataset-v2"
+    assert v2.completeness.value == "DATASET_INCOMPLETE"
+    assert v2.case_count == v1.case_count == 16
+    assert v2.source_revision_set == ("45d7e5513af70f05c36ffeb04d981948d2cec85c874ff6f4ac5b5f0e83ca47bd",)
+    assert [case.execution_input() for case in v2.cases] == [case.execution_input() for case in v1.cases]
+    assert sum(len(case.expected_evidence_refs) for case in v2.cases) == 24
+    assert sum(
+        ref.match_level.value == "TEMPORAL_REGION"
+        for case in v2.cases for ref in case.expected_evidence_refs
+    ) == 3
+    assert all("required_facts" not in case.execution_input() for case in v2.cases)
 
 
 def test_run_contract_tracks_publishability_and_rejects_bad_denominators() -> None:

@@ -15,3 +15,8 @@ This is not a benchmark result and must not be sent to a Provider as-is. A
 future X3 runner must use `EvaluationCase.execution_input()` so required
 facts, expected evidence, annotations, and reference answers stay outside
 the production execution projection.
+
+`golden-dataset-v2.json` rebases those 16 cases onto deterministic `x2-a-v3`
+source provenance. V1 is immutable historical data. The v2 artifact remains
+`DATASET_INCOMPLETE` for the same ASR-only, single-media limitation. See
+`DATASET_V2_REBASE.md` for the temporal mapping and ambiguity.
