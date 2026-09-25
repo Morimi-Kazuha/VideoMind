@@ -26,7 +26,8 @@ from dovideo.application.evaluation_contracts import (
     TokenStageUsage, TokenUsageMeasurement, read_dataset,
 )
 from dovideo.application.evaluation_runner import (
-    AdapterEvaluationStrategy, AgentLoopEvaluationAdapter,
+    AdapterEvaluationStrategy, AgentLoopEvaluationAdapter, EvaluationExecutionObservation,
+    EvaluationObservedFailure,
     EvaluationRunner, EvaluationRunnerConfig, EvaluationSourceArtifact,
     MappingEvaluationSourceResolver, PricingCatalog, RuleRouterEvaluationStrategy,
 )
@@ -206,7 +207,21 @@ class IsolatedR4Adapter:
                     for frame in traceback.extract_tb(error.__traceback__)[-12:]
                 ],
             }, sort_keys=True, indent=2), encoding="utf-8")
-            raise
+            failure_route = (
+                RoutingMeasurement(
+                    resolvedLane=self.lane,
+                    resolvedModelId=self.settings.model_for(self.lane),
+                    measurementState=MeasurementState.MEASURED,
+                )
+                if self.lane is not None else RoutingMeasurement()
+            )
+            raise EvaluationObservedFailure(
+                error,
+                EvaluationExecutionObservation(
+                    token_usage=_usage(records), route_decision=failure_route,
+                    resolved_model=(None if self.lane is None else self.settings.model_for(self.lane)),
+                ),
+            ) from error
         finally:
             if provider is not None:
                 await provider.close()

@@ -21,6 +21,7 @@ from dovideo.application.evaluation_runner import (
     AgentLoopEvaluationAdapter,
     EvaluationDuplicateResultError,
     EvaluationExecutionObservation,
+    EvaluationObservedFailure,
     EvaluationProviderError,
     EvaluationRetrievedEvidence,
     EvaluationRunner,
@@ -480,3 +481,34 @@ def test_agent_loop_adapter_uses_prepared_context_and_normal_production_port(tmp
     assert observation.unsupported_claim_rate == 1.0
     assert agent.calls[0][0].user_goal == "fresh query"
     assert agent.calls[0][2].mode.value == "GENERAL"
+
+
+def test_budget_exhaustion_has_its_own_failure_category() -> None:
+    from dovideo.application.errors import BudgetExceededError
+    from dovideo.application.evaluation_contracts import EvaluationFailureCategory
+    from dovideo.application.evaluation_runner import _map_failure_category
+
+    assert _map_failure_category(BudgetExceededError("limit")) is EvaluationFailureCategory.BUDGET_EXCEEDED
+
+
+def test_failed_execution_keeps_provider_reported_usage(tmp_path) -> None:
+    from dovideo.application.errors import BudgetExceededError
+
+    class PartialAdapter:
+        async def execute(self, *_args, **_kwargs):
+            raise EvaluationObservedFailure(
+                BudgetExceededError("limit"),
+                EvaluationExecutionObservation(
+                    token_usage=TokenUsageMeasurement(
+                        inputTokens=100, outputTokens=20, totalTokens=120,
+                        providerReported=True, measurementState=MeasurementState.MEASURED,
+                    ),
+                ),
+            )
+
+    outcome = _run(_dataset(_case()), PartialAdapter(), tmp_path)
+    result = outcome.results[0]
+    assert result.status is EvaluationResultStatus.FAILED
+    assert result.failure_category is EvaluationFailureCategory.BUDGET_EXCEEDED
+    assert result.token_usage.total_tokens == 120
+    assert result.token_usage.measurement_state is MeasurementState.MEASURED

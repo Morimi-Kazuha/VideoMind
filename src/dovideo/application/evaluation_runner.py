@@ -36,6 +36,7 @@ from dovideo.domain import (
 
 from .agent_policy import is_result_valid, missing_section_keys
 from .evidence import EvidenceVerificationService
+from .errors import BudgetExceededError
 from .evaluation_contracts import (
     DEFAULT_RUNNER_CONFIG_VERSION,
     EVALUATION_CONTRACT_VERSION,
@@ -113,6 +114,15 @@ class EvaluationEvidenceGuardError(EvaluationExecutionError):
 
 class EvaluationSchemaError(EvaluationExecutionError):
     """A controlled execution adapter observed invalid final output."""
+
+
+class EvaluationObservedFailure(EvaluationExecutionError):
+    """Preserve provider measurements when execution fails after remote calls."""
+
+    def __init__(self, cause: Exception, observation: "EvaluationExecutionObservation") -> None:
+        super().__init__(type(cause).__name__)
+        self.cause = cause
+        self.observation = observation
 
 
 class _StrictEvaluationModel(BaseModel):
@@ -1529,7 +1539,7 @@ class EvaluationRunner:
         except Exception as error:
             return self._failed(
                 run, case, config, trial_index, execution_order,
-                _map_failure_category(error), start,
+                _map_failure_category(error), start, error=error,
             )
 
     def _base_kwargs(
@@ -1607,8 +1617,18 @@ class EvaluationRunner:
         execution_order: int,
         category: EvaluationFailureCategory,
         start: float,
+        *,
+        error: Exception | None = None,
     ) -> EvaluationCaseResult:
         values = self._base_kwargs(run, case, config, trial_index, execution_order, start)
+        if isinstance(error, EvaluationObservedFailure):
+            observed = error.observation
+            values.update(
+                token_usage=observed.token_usage,
+                cost=observed.cost,
+                route_decision=observed.route_decision,
+                resolved_model=observed.resolved_model,
+            )
         values.update(
             status=EvaluationResultStatus.FAILED,
             failure_category=category,
@@ -1818,6 +1838,10 @@ def _analysis_evidence_projection(
 
 
 def _map_failure_category(error: Exception) -> EvaluationFailureCategory:
+    if isinstance(error, EvaluationObservedFailure):
+        return _map_failure_category(error.cause)
+    if isinstance(error, BudgetExceededError):
+        return EvaluationFailureCategory.BUDGET_EXCEEDED
     if isinstance(error, (asyncio.TimeoutError, TimeoutError)):
         return EvaluationFailureCategory.TIMEOUT
     if isinstance(error, EvaluationProviderError):
@@ -1977,6 +2001,7 @@ __all__ = [
     "EvaluationDuplicateResultError",
     "EvaluationExecutionAdapter",
     "EvaluationExecutionError",
+    "EvaluationObservedFailure",
     "EvaluationExecutionObservation",
     "EvaluationExecutionStrategy",
     "EvaluationPreflight",
