@@ -491,6 +491,13 @@ def test_budget_exhaustion_has_its_own_failure_category() -> None:
     assert _map_failure_category(BudgetExceededError("limit")) is EvaluationFailureCategory.BUDGET_EXCEEDED
 
 
+def test_invalid_model_dto_is_classified_as_schema_failure() -> None:
+    from dovideo.application.evaluation_runner import _map_failure_category
+    from dovideo.infrastructure.providers.errors import ModelResponseError
+
+    assert _map_failure_category(ModelResponseError("invalid DTO")) is EvaluationFailureCategory.SCHEMA_FAILURE
+
+
 def test_failed_execution_keeps_provider_reported_usage(tmp_path) -> None:
     from dovideo.application.errors import BudgetExceededError
 

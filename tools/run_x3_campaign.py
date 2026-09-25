@@ -130,6 +130,7 @@ class IsolatedR4Adapter:
         )
         provider = None
         trace_id = None
+        key = None
         records: list[dict] = []
         try:
             await checkpoint.save_context(self.media_id, artifact.context)
@@ -207,19 +208,29 @@ class IsolatedR4Adapter:
                     for frame in traceback.extract_tb(error.__traceback__)[-12:]
                 ],
             }, sort_keys=True, indent=2), encoding="utf-8")
+            decision = None
+            if self.lane is None and key is not None:
+                try:
+                    decision = await checkpoint.load_model_routing(key)
+                except Exception:
+                    pass
+            failure_lane = self.lane if decision is None else decision.lane
             failure_route = (
                 RoutingMeasurement(
-                    resolvedLane=self.lane,
-                    resolvedModelId=self.settings.model_for(self.lane),
+                    suggestedLane=(None if decision is None else decision.suggested_lane),
+                    resolvedLane=failure_lane,
+                    confidence=(None if decision is None else decision.confidence),
+                    fallback=(None if decision is None else decision.fallback_used),
+                    reasonCode=(None if decision is None else decision.reason_code),
+                    resolvedModelId=self.settings.model_for(failure_lane),
                     measurementState=MeasurementState.MEASURED,
-                )
-                if self.lane is not None else RoutingMeasurement()
+                ) if failure_lane is not None else RoutingMeasurement()
             )
             raise EvaluationObservedFailure(
                 error,
                 EvaluationExecutionObservation(
                     token_usage=_usage(records), route_decision=failure_route,
-                    resolved_model=(None if self.lane is None else self.settings.model_for(self.lane)),
+                    resolved_model=(None if failure_lane is None else self.settings.model_for(failure_lane)),
                 ),
             ) from error
         finally:

@@ -1855,6 +1855,8 @@ def _map_failure_category(error: Exception) -> EvaluationFailureCategory:
     if isinstance(error, EvaluationSchemaError):
         return EvaluationFailureCategory.SCHEMA_FAILURE
     name = type(error).__name__.casefold()
+    if "modelresponse" in name:
+        return EvaluationFailureCategory.SCHEMA_FAILURE
     if "retriev" in name:
         return EvaluationFailureCategory.RETRIEVAL_FAILURE
     if "provider" in name or "openai" in name or "http" in name:
