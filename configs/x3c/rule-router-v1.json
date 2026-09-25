@@ -1,0 +1,44 @@
+{
+  "routerVersion": "rule-router-v1",
+  "allowedSignals": [
+    "query_length_chars",
+    "mode",
+    "media_duration_ms",
+    "segment_count",
+    "chunk_count",
+    "asr_available",
+    "ocr_available"
+  ],
+  "forbiddenSignals": [
+    "difficulty",
+    "query_category",
+    "expected_evidence",
+    "required_facts",
+    "reference_answer",
+    "tool_beneficial",
+    "critic_sensitive",
+    "fixed_lane_result",
+    "oracle",
+    "jev_suggestion",
+    "case_id"
+  ],
+  "fastRule": {
+    "queryLengthMax": 120,
+    "mode": "GENERAL",
+    "mediaDurationMsMax": 300000,
+    "segmentCountMax": 5,
+    "chunkCountMax": 1,
+    "requireAnySourceModality": true,
+    "allowBothModalities": false,
+    "rationale": "The current pre-outcome workload has query lengths 53-95 characters, so 120 leaves 25 characters of headroom. FAST also requires concrete GENERAL mode, known duration at most 300000 ms, at most five one-minute segments, at most one five-minute chunk, and exactly one available ASR/OCR modality. This keeps the lane to a small, single-chunk runtime workload."
+  },
+  "deepRule": {
+    "queryLengthMin": 300,
+    "mediaDurationMsMin": 1800000,
+    "segmentCountMin": 30,
+    "chunkCountMin": 6,
+    "multimodalDurationMsMin": 900000,
+    "rationale": "A query of 300 characters is 2.5 times the FAST query ceiling and 60 percent of the 500-character routing bound. Thirty minutes, thirty one-minute segments, and six five-minute chunks each mark a clearly large source. Both ASR and OCR on a fifteen-minute source marks substantial multimodal work."
+  },
+  "fallbackLane": "BALANCED"
+}

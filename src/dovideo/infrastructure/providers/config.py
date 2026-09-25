@@ -15,8 +15,52 @@ from typing import Mapping
 from urllib.parse import urlsplit
 
 
+MODEL_REASONING_EFFORTS = frozenset({"none", "low", "high", "max"})
+MAX_MODEL_OUTPUT_TOKENS = 393_216
+
+
 class ProviderConfigurationError(ValueError):
     """A provider setting is missing or outside its supported boundary."""
+
+
+@dataclass(frozen=True, slots=True)
+class ModelRequestSettings:
+    """Optional provider-neutral request controls owned by a model profile.
+
+    ``None`` leaves a field out of the HTTP request, preserving the provider's
+    existing default.  The settings contain no model credentials.
+    """
+
+    reasoning_effort: str | None = None
+    max_tokens: int | None = None
+
+    def __post_init__(self) -> None:
+        effort = self.reasoning_effort
+        if effort is not None:
+            if not isinstance(effort, str) or effort not in MODEL_REASONING_EFFORTS:
+                raise ProviderConfigurationError(
+                    "reasoning_effort must be one of none, low, high, or max"
+                )
+        max_tokens = self.max_tokens
+        if max_tokens is not None:
+            if (
+                isinstance(max_tokens, bool)
+                or not isinstance(max_tokens, int)
+                or not 1 <= max_tokens <= MAX_MODEL_OUTPUT_TOKENS
+            ):
+                raise ProviderConfigurationError(
+                    f"max_tokens must be an integer in [1, {MAX_MODEL_OUTPUT_TOKENS}]"
+                )
+
+    def request_fields(self) -> dict[str, str | int]:
+        """Return only explicitly configured Chat Completions fields."""
+
+        fields: dict[str, str | int] = {}
+        if self.reasoning_effort is not None:
+            fields["reasoning_effort"] = self.reasoning_effort
+        if self.max_tokens is not None:
+            fields["max_tokens"] = self.max_tokens
+        return fields
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +266,9 @@ def _positive_int(value: object, field_name: str) -> int:
 
 __all__ = [
     "EmbeddingProviderConfig",
+    "MAX_MODEL_OUTPUT_TOKENS",
+    "MODEL_REASONING_EFFORTS",
+    "ModelRequestSettings",
     "ModelProviderConfig",
     "ProviderConfig",
     "ProviderConfigurationError",

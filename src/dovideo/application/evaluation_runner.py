@@ -18,8 +18,9 @@ import subprocess
 import time
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass, field, replace as dataclass_replace
+from datetime import date, datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence, runtime_checkable
 
@@ -71,6 +72,8 @@ from .evaluation_contracts import (
     validate_dataset,
 )
 from .mode_profiles import mode_profile_for
+from .model_routing import ModelRouteLane
+from .routing_experiments import RuleRouterV1, rule_router_signals_from_execution
 
 
 DEFAULT_RETRIEVAL_K_VALUES = (1, 3, 5)
@@ -256,14 +259,68 @@ class EvaluationRunnerConfig(_StrictEvaluationModel):
         return sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+class PricingRateAvailability(str, Enum):
+    """Whether the entry has one scalar rate, conditional rates, or no price."""
+
+    AVAILABLE = "AVAILABLE"
+    CONDITIONAL = "CONDITIONAL"
+    NOT_AVAILABLE = "NOT_AVAILABLE"
+
+
+class ConditionalPricingRate(_StrictEvaluationModel):
+    """One provider-published input/output rate pair under explicit conditions."""
+
+    period: str
+    input_cache: str = Field(alias="inputCache")
+    input_rate_per_million: float = Field(alias="inputRatePerMillion")
+    output_rate_per_million: float = Field(alias="outputRatePerMillion")
+
+    @field_validator("period", mode="before")
+    @classmethod
+    def _period(cls, value: Any) -> str:
+        if value not in {"PEAK", "OFF_PEAK"}:
+            raise ValueError("pricing period must be PEAK or OFF_PEAK")
+        return value
+
+    @field_validator("input_cache", mode="before")
+    @classmethod
+    def _input_cache(cls, value: Any) -> str:
+        if value not in {"HIT", "MISS", "NOT_APPLICABLE"}:
+            raise ValueError("input_cache must be HIT, MISS, or NOT_APPLICABLE")
+        return value
+
+    @field_validator("input_rate_per_million", "output_rate_per_million", mode="before")
+    @classmethod
+    def _conditional_rate(cls, value: Any, info: Any) -> float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{info.field_name} must be numeric")
+        normalized = float(value)
+        if not math.isfinite(normalized) or normalized < 0:
+            raise ValueError(f"{info.field_name} must be finite and non-negative")
+        return normalized
+
+
 class PricingEntry(_StrictEvaluationModel):
-    """Data-only provider/model pricing; no vendor conditionals are used."""
+    """Provider/model prices, retaining conditions that prevent scalar estimates."""
 
     provider: str
     model: str
-    input_rate_per_million: float = Field(alias="inputRatePerMillion")
-    output_rate_per_million: float = Field(alias="outputRatePerMillion")
+    input_rate_per_million: float | None = Field(alias="inputRatePerMillion")
+    output_rate_per_million: float | None = Field(alias="outputRatePerMillion")
     currency: str = "USD"
+    rate_availability: PricingRateAvailability = Field(
+        default=PricingRateAvailability.AVAILABLE,
+        alias="rateAvailability",
+    )
+    conditional_rates: tuple[ConditionalPricingRate, ...] = Field(
+        default=(),
+        alias="conditionalRates",
+    )
+    source_identity: str | None = Field(default=None, alias="sourceIdentity")
+    source_reference: str | None = Field(default=None, alias="sourceReference")
+    source_date: date | None = Field(default=None, alias="sourceDate")
+    effective_date: date | None = Field(default=None, alias="effectiveDate")
+    pricing_note: str | None = Field(default=None, alias="pricingNote")
 
     @field_validator("provider", "model", "currency", mode="before")
     @classmethod
@@ -274,13 +331,40 @@ class PricingEntry(_StrictEvaluationModel):
 
     @field_validator("input_rate_per_million", "output_rate_per_million", mode="before")
     @classmethod
-    def _rate(cls, value: Any, info: Any) -> float:
+    def _rate(cls, value: Any, info: Any) -> float | None:
+        if value is None:
+            return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"{info.field_name} must be numeric")
         normalized = float(value)
         if not math.isfinite(normalized) or normalized < 0:
             raise ValueError(f"{info.field_name} must be finite and non-negative")
         return normalized
+
+    @field_validator("source_identity", "source_reference", "pricing_note", mode="before")
+    @classmethod
+    def _optional_source_text(cls, value: Any, info: Any) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{info.field_name} must be non-blank text when supplied")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def _availability_matches_rates(self) -> "PricingEntry":
+        scalar_rates = (
+            self.input_rate_per_million is not None
+            and self.output_rate_per_million is not None
+        )
+        if self.rate_availability is PricingRateAvailability.AVAILABLE:
+            if not scalar_rates or self.conditional_rates:
+                raise ValueError("AVAILABLE pricing requires one scalar rate pair")
+        elif self.rate_availability is PricingRateAvailability.CONDITIONAL:
+            if scalar_rates or not self.conditional_rates:
+                raise ValueError("CONDITIONAL pricing requires only conditional rate rows")
+        elif scalar_rates or self.input_rate_per_million is not None or self.output_rate_per_million is not None or self.conditional_rates:
+            raise ValueError("NOT_AVAILABLE pricing cannot contain rates")
+        return self
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -314,6 +398,15 @@ class PricingCatalog(_StrictEvaluationModel):
             if entry.provider == provider and entry.model == model:
                 return entry
         return None
+
+    def canonical_json(self) -> str:
+        return canonical_json(self)
+
+    @property
+    def digest(self) -> str:
+        from hashlib import sha256
+
+        return sha256(self.canonical_json().encode("utf-8")).hexdigest()
 
 
 class EvaluationRetrievedEvidence(_StrictEvaluationModel):
@@ -511,6 +604,73 @@ class CurrentProductionEvaluationStrategy(AdapterEvaluationStrategy):
 class FixedBalancedEvaluationStrategy(AdapterEvaluationStrategy):
     def __init__(self, adapter: EvaluationExecutionAdapter) -> None:
         super().__init__(EvaluationStrategy.FIXED_BALANCED, adapter)
+
+
+class RuleRouterEvaluationStrategy:
+    """Evaluation-only lane dispatch driven by the frozen deterministic router."""
+
+    name = EvaluationStrategy.RULE_ROUTER
+
+    def __init__(
+        self,
+        lane_adapters: Mapping[ModelRouteLane | str, EvaluationExecutionAdapter],
+        *,
+        router: RuleRouterV1 | None = None,
+    ) -> None:
+        normalized: dict[ModelRouteLane, EvaluationExecutionAdapter] = {}
+        for raw_lane, adapter in lane_adapters.items():
+            try:
+                lane = raw_lane if isinstance(raw_lane, ModelRouteLane) else ModelRouteLane(raw_lane)
+            except (TypeError, ValueError) as error:
+                raise ValueError("RULE_ROUTER lane adapter has an unknown lane") from error
+            if lane in normalized:
+                raise ValueError("RULE_ROUTER lane adapters contain a duplicate lane")
+            if not callable(getattr(adapter, "execute", None)):
+                raise TypeError("RULE_ROUTER lane adapters must provide execute()")
+            normalized[lane] = adapter
+        if set(normalized) != set(ModelRouteLane):
+            raise ValueError("RULE_ROUTER requires FAST, BALANCED, and DEEP lane adapters")
+        self._lane_adapters = normalized
+        self._router = router or RuleRouterV1()
+
+    @property
+    def router_digest(self) -> str:
+        return self._router.digest
+
+    async def execute(
+        self,
+        execution_input: Mapping[str, Any],
+        *,
+        artifact: EvaluationSourceArtifact,
+        trial_index: int,
+        timeout_seconds: float,
+    ) -> EvaluationExecutionObservation:
+        signals = rule_router_signals_from_execution(execution_input, artifact)
+        lane = self._router.route(signals)
+        observation = await self._lane_adapters[lane].execute(
+            execution_input,
+            artifact=artifact,
+            strategy=EvaluationStrategy.RULE_ROUTER,
+            trial_index=trial_index,
+            timeout_seconds=timeout_seconds,
+        )
+        if not isinstance(observation, EvaluationExecutionObservation):
+            raise TypeError("RULE_ROUTER lane adapter returned an invalid observation")
+        observed_lane = observation.route_decision.resolved_lane
+        if observed_lane is not None and observed_lane is not lane:
+            raise EvaluationExecutionError("RULE_ROUTER lane adapter resolved a different lane")
+        route_decision = RoutingMeasurement(
+            suggested_lane=lane,
+            resolved_lane=lane,
+            fallback=False,
+            resolved_model_id=(
+                observation.route_decision.resolved_model_id
+                or observation.model
+                or observation.resolved_model
+            ),
+            measurement_state=MeasurementState.MEASURED,
+        )
+        return dataclass_replace(observation, route_decision=route_decision)
 
 
 class AgentLoopEvaluationAdapter:
@@ -987,6 +1147,9 @@ def calculate_cost(
     calculated = None
     if (
         entry is not None
+        and entry.rate_availability is PricingRateAvailability.AVAILABLE
+        and entry.input_rate_per_million is not None
+        and entry.output_rate_per_million is not None
         and token_usage.measurement_state is MeasurementState.MEASURED
         and token_usage.input_tokens is not None
         and token_usage.output_tokens is not None
@@ -1037,6 +1200,7 @@ class EvaluationRunner:
             EvaluationStrategy.CURRENT_PRODUCTION,
             EvaluationStrategy.FIXED_BALANCED,
             EvaluationStrategy.ALWAYS_BALANCED,
+            EvaluationStrategy.RULE_ROUTER,
         }
     )
 
@@ -1076,6 +1240,13 @@ class EvaluationRunner:
         if selected_config.strategy not in self._SUPPORTED_STRATEGIES:
             raise EvaluationPreflightError(
                 "X3-B supports one current/fixed baseline; routing matrix strategies are deferred"
+            )
+        if (
+            selected_config.strategy is EvaluationStrategy.RULE_ROUTER
+            and self._strategy is None
+        ):
+            raise EvaluationPreflightError(
+                "RULE_ROUTER requires an explicit evaluation-only lane dispatch strategy"
             )
         all_ids = {case.case_id for case in validated_dataset.cases}
         unknown = set(selected_config.case_filter).difference(all_ids)
@@ -1775,6 +1946,7 @@ def build_evaluation_summary(
 __all__ = [
     "AdapterEvaluationStrategy",
     "AgentLoopEvaluationAdapter",
+    "ConditionalPricingRate",
     "CoverageCount",
     "CurrentProductionEvaluationStrategy",
     "DEFAULT_RETRIEVAL_K_VALUES",
@@ -1799,7 +1971,9 @@ __all__ = [
     "MappingEvaluationSourceResolver",
     "PricingCatalog",
     "PricingEntry",
+    "PricingRateAvailability",
     "RetrievalMetricResult",
+    "RuleRouterEvaluationStrategy",
     "SummaryMetric",
     "calculate_cost",
     "calculate_evidence_metrics",

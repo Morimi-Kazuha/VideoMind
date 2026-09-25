@@ -9,6 +9,8 @@ and delegates the complete execution to one lane-specific AgentLoop.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -39,12 +41,18 @@ from dovideo.application.ports.tasks import AgentLoopEntryPort
 from dovideo.application.value_objects import TaskKey
 from dovideo.domain import AnalysisMode, ModeProfile, VideoContext
 
-from .providers.config import ProviderConfig, ProviderConfigurationError
+from .providers.config import (
+    MAX_MODEL_OUTPUT_TOKENS,
+    ModelRequestSettings,
+    ProviderConfig,
+    ProviderConfigurationError,
+)
 from .providers.jev import JevRouterSettings
 
 
 MODEL_ROUTING_MAX_MODEL_LENGTH = 256
 MODEL_ROUTING_MAX_PROFILE_COUNT = 3
+MODEL_ROUTING_MAX_OUTPUT_TOKENS = MAX_MODEL_OUTPUT_TOKENS
 
 
 class ModelRoutingConfigurationError(ValueError):
@@ -68,8 +76,47 @@ class ModelRoutingHistoryPersistenceError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class EffectiveModelProfileIdentity:
+    """Non-secret identity of one effective model request profile."""
+
+    profile_id: str
+    lane: ModelRouteLane
+    resolved_model_id: str
+    reasoning_effort: str | None = None
+    max_tokens: int | None = None
+
+    @property
+    def reasoning_mode(self) -> str:
+        if self.reasoning_effort is None:
+            return "provider-default"
+        return "disabled" if self.reasoning_effort == "none" else "enabled"
+
+    def as_dict(self) -> dict[str, str | int | None]:
+        """Return stable profile data without credentials or endpoints."""
+
+        return {
+            "profileId": self.profile_id,
+            "lane": self.lane.value,
+            "resolvedModelId": self.resolved_model_id,
+            "reasoningMode": self.reasoning_mode,
+            "reasoningEffort": self.reasoning_effort,
+            "maxTokens": self.max_tokens,
+        }
+
+    @property
+    def fingerprint(self) -> str:
+        payload = json.dumps(
+            self.as_dict(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
 class ModelRoutingProductionSettings:
-    """Feature-gated J1-B settings and infrastructure-owned model aliases."""
+    """Feature-gated J1 settings and infrastructure-owned lane profiles."""
 
     enabled: bool = False
     confidence_threshold: float = DEFAULT_ROUTING_CONFIDENCE_THRESHOLD
@@ -79,6 +126,12 @@ class ModelRoutingProductionSettings:
     jev: JevRouterSettings | None = None
     fast_enabled: bool | None = None
     deep_enabled: bool | None = None
+    fast_reasoning_effort: str | None = None
+    balanced_reasoning_effort: str | None = None
+    deep_reasoning_effort: str | None = None
+    fast_max_tokens: int | None = None
+    balanced_max_tokens: int | None = None
+    deep_max_tokens: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.enabled, bool):
@@ -99,12 +152,59 @@ class ModelRoutingProductionSettings:
         for name in ("fast_model", "balanced_model", "deep_model"):
             value = _optional_model(getattr(self, name), name)
             object.__setattr__(self, name, value)
+        for lane in ("fast", "balanced", "deep"):
+            request_settings = ModelRequestSettings(
+                reasoning_effort=getattr(self, f"{lane}_reasoning_effort"),
+                max_tokens=getattr(self, f"{lane}_max_tokens"),
+            )
+            object.__setattr__(
+                self,
+                f"{lane}_reasoning_effort",
+                request_settings.reasoning_effort,
+            )
+            object.__setattr__(self, f"{lane}_max_tokens", request_settings.max_tokens)
         for name in ("fast_enabled", "deep_enabled"):
             value = getattr(self, name)
             if value is not None and not isinstance(value, bool):
                 raise ModelRoutingConfigurationError(f"{name} must be boolean or None")
         if self.jev is not None and not isinstance(self.jev, JevRouterSettings):
             raise ModelRoutingConfigurationError("jev must be JevRouterSettings")
+        if self.enabled:
+            self._validate_distinct_execution_profiles()
+
+    def _validate_distinct_execution_profiles(self) -> None:
+        configured: list[tuple[ModelRouteLane, str, ModelRequestSettings]] = []
+        if self.balanced_model is not None:
+            configured.append(
+                (
+                    ModelRouteLane.BALANCED,
+                    self.balanced_model,
+                    self.request_settings_for(ModelRouteLane.BALANCED),
+                )
+            )
+        if self.fast_lane_enabled:
+            configured.append(
+                (
+                    ModelRouteLane.FAST,
+                    self.fast_model or "",
+                    self.request_settings_for(ModelRouteLane.FAST),
+                )
+            )
+        if self.deep_lane_enabled:
+            configured.append(
+                (
+                    ModelRouteLane.DEEP,
+                    self.deep_model or "",
+                    self.request_settings_for(ModelRouteLane.DEEP),
+                )
+            )
+        for index, (lane, model, request) in enumerate(configured):
+            for other_lane, other_model, other_request in configured[index + 1 :]:
+                if model == other_model and request == other_request:
+                    raise ModelRoutingConfigurationError(
+                        f"{lane.value} and {other_lane.value} profiles have identical "
+                        "model request settings"
+                    )
 
     @property
     def fast_lane_enabled(self) -> bool:
@@ -138,6 +238,42 @@ class ModelRoutingProductionSettings:
         if lane is ModelRouteLane.DEEP:
             return self.deep_model
         return self.balanced_model
+
+    def request_settings_for(self, lane: ModelRouteLane | str) -> ModelRequestSettings:
+        try:
+            normalized = lane if isinstance(lane, ModelRouteLane) else ModelRouteLane(lane)
+        except (TypeError, ValueError) as error:
+            raise ModelRoutingConfigurationError("unknown model profile lane") from error
+        prefix = normalized.value.casefold()
+        return ModelRequestSettings(
+            reasoning_effort=getattr(self, f"{prefix}_reasoning_effort"),
+            max_tokens=getattr(self, f"{prefix}_max_tokens"),
+        )
+
+    def effective_profile_identity(
+        self,
+        lane: ModelRouteLane | str,
+        *,
+        resolved_model_id: str | None = None,
+    ) -> EffectiveModelProfileIdentity:
+        try:
+            normalized = lane if isinstance(lane, ModelRouteLane) else ModelRouteLane(lane)
+        except (TypeError, ValueError) as error:
+            raise ModelRoutingConfigurationError("unknown model profile lane") from error
+        model_id = resolved_model_id or self.model_for(normalized)
+        if not model_id:
+            raise RoutingProfileUnavailableError(
+                f"stable model route {normalized.value} is unavailable"
+            )
+        profile = ModelProfileRegistry.default().resolve(normalized)
+        request = self.request_settings_for(normalized)
+        return EffectiveModelProfileIdentity(
+            profile_id=profile.profile_id,
+            lane=normalized,
+            resolved_model_id=model_id,
+            reasoning_effort=request.reasoning_effort,
+            max_tokens=request.max_tokens,
+        )
 
     def provider_config_for(
         self,
@@ -190,6 +326,20 @@ class ModelRoutingProductionSettings:
             fast_model=fast_model,
             balanced_model=base_balanced,
             deep_model=deep_model,
+            fast_reasoning_effort=_first_value(
+                values, "DOVIDEO_FAST_REASONING_EFFORT"
+            ),
+            balanced_reasoning_effort=_first_value(
+                values, "DOVIDEO_BALANCED_REASONING_EFFORT"
+            ),
+            deep_reasoning_effort=_first_value(
+                values, "DOVIDEO_DEEP_REASONING_EFFORT"
+            ),
+            fast_max_tokens=_optional_integer(values, "DOVIDEO_FAST_MAX_TOKENS"),
+            balanced_max_tokens=_optional_integer(
+                values, "DOVIDEO_BALANCED_MAX_TOKENS"
+            ),
+            deep_max_tokens=_optional_integer(values, "DOVIDEO_DEEP_MAX_TOKENS"),
             jev=(
                 JevRouterSettings.from_environment(values, required=True)
                 if enabled
@@ -910,12 +1060,24 @@ def _number(values: Mapping[str, str], name: str, default: float) -> float:
         raise ModelRoutingConfigurationError(f"{name} must be numeric") from error
 
 
+def _optional_integer(values: Mapping[str, str], name: str) -> int | None:
+    raw = _first_value(values, name)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ModelRoutingConfigurationError(f"{name} must be an integer") from error
+
+
 def _invalid_reason() -> ModelRoutingReasonCode:
     return ModelRoutingReasonCode.INVALID_SUGGESTION
 
 
 __all__ = [
+    "EffectiveModelProfileIdentity",
     "MODEL_ROUTING_MAX_MODEL_LENGTH",
+    "MODEL_ROUTING_MAX_OUTPUT_TOKENS",
     "ModelRoutingConfigurationError",
     "ModelRoutingHistoryIntegrityError",
     "ModelRoutingHistoryPersistenceError",

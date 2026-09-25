@@ -1,0 +1,57 @@
+{
+  "pricingVersion": "pricing-x3c-v1",
+  "entries": [
+    {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "inputRatePerMillion": null,
+      "outputRatePerMillion": null,
+      "currency": "USD",
+      "rateAvailability": "CONDITIONAL",
+      "conditionalRates": [
+        {"period": "PEAK", "inputCache": "HIT", "inputRatePerMillion": 0.006, "outputRatePerMillion": 1.2},
+        {"period": "OFF_PEAK", "inputCache": "HIT", "inputRatePerMillion": 0.003, "outputRatePerMillion": 0.6},
+        {"period": "PEAK", "inputCache": "MISS", "inputRatePerMillion": 0.3, "outputRatePerMillion": 1.2},
+        {"period": "OFF_PEAK", "inputCache": "MISS", "inputRatePerMillion": 0.15, "outputRatePerMillion": 0.6}
+      ],
+      "sourceIdentity": "DeepSeek API Models & Pricing; deepseek-flash = DeepSeek-V4.1-Flash",
+      "sourceReference": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "sourceDate": "2026-09-25",
+      "effectiveDate": "2026-09-10",
+      "pricingNote": "Official tariff varies by peak/off-peak period and input cache hit/miss. Peak is Monday-Friday 01:00-04:00 and 06:00-10:00 UTC; off-peak is all other time. The cost calculator lacks those dimensions, so scalar rates are NOT_AVAILABLE and no calculated cost is emitted."
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "inputRatePerMillion": null,
+      "outputRatePerMillion": null,
+      "currency": "USD",
+      "rateAvailability": "CONDITIONAL",
+      "conditionalRates": [
+        {"period": "PEAK", "inputCache": "HIT", "inputRatePerMillion": 0.006, "outputRatePerMillion": 1.2},
+        {"period": "OFF_PEAK", "inputCache": "HIT", "inputRatePerMillion": 0.003, "outputRatePerMillion": 0.6},
+        {"period": "PEAK", "inputCache": "MISS", "inputRatePerMillion": 0.3, "outputRatePerMillion": 1.2},
+        {"period": "OFF_PEAK", "inputCache": "MISS", "inputRatePerMillion": 0.15, "outputRatePerMillion": 0.6}
+      ],
+      "sourceIdentity": "DeepSeek API Models & Pricing plus DeepSeek-V4.1-Flash release billing notice",
+      "sourceReference": "https://api-docs.deepseek.com/quick_start/pricing/; https://api-docs.deepseek.com/news/news260910/",
+      "sourceDate": "2026-09-25",
+      "effectiveDate": "2026-09-14",
+      "pricingNote": "As of the source date, DeepSeek states deepseek-v4-pro requests route to V4.1-Flash and bill at Flash rates. The tariff varies by peak/off-peak period and input cache hit/miss. Peak is Monday-Friday 01:00-04:00 and 06:00-10:00 UTC; off-peak is all other time. The cost calculator lacks those dimensions, so scalar rates are NOT_AVAILABLE and no calculated cost is emitted."
+    },
+    {
+      "provider": "openrouter",
+      "model": "typesafe/jev-1.13",
+      "inputRatePerMillion": 0.042,
+      "outputRatePerMillion": 0.0,
+      "currency": "USD",
+      "rateAvailability": "AVAILABLE",
+      "conditionalRates": [],
+      "sourceIdentity": "OpenRouter pinned TypeSafe Jev 1.13 model pricing",
+      "sourceReference": "https://openrouter.ai/typesafe/jev-1.13/api",
+      "sourceDate": "2026-09-25",
+      "effectiveDate": null,
+      "pricingNote": "OpenRouter lists 0.042 USD per million input tokens and 0 USD per million output tokens; effective date is not stated."
+    }
+  ]
+}

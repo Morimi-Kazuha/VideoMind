@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -81,12 +82,14 @@ from dovideo.infrastructure.providers import (
     OpenAICompatibleChatClient,
     OpenAICompatibleEmbeddingAdapter,
     OpenAICompatibleModelAdapter,
+    ModelRequestSettings,
     ProviderConfig,
     ProviderConfigurationError,
 )
 from dovideo.infrastructure.redis_observability import RedisAgentTelemetry
 from dovideo.infrastructure.vector.qdrant import QdrantVectorError
 from dovideo.infrastructure.model_routing import (
+    EffectiveModelProfileIdentity,
     ModelRoutingProductionSettings,
     ProductionModelRoutingAgentLoop,
     provider_config_for_lane,
@@ -363,9 +366,12 @@ class R4AgentTelemetry:
         *,
         status_code: int | None,
         latency_ms: float,
+        gateway: str,
+        decision_model: str,
         router_model: str | None,
         input_tokens: int | None,
         output_tokens: int | None,
+        usage_cost_usd: float | None,
         fallback: bool,
     ) -> None:
         """Persist only bounded Jev transport metadata; never raw payloads."""
@@ -375,15 +381,31 @@ class R4AgentTelemetry:
         key = self._current_key.get()
         if key is None:
             return
+        safe_gateway = (
+            gateway
+            if gateway in {"OPENROUTER", "TYPESAFE_DIRECT"}
+            else "UNKNOWN"
+        )
+        safe_cost = None
+        if usage_cost_usd is not None:
+            try:
+                candidate_cost = float(usage_cost_usd)
+            except (TypeError, ValueError, OverflowError):
+                candidate_cost = -1.0
+            if math.isfinite(candidate_cost) and 0.0 <= candidate_cost <= 1_000_000.0:
+                safe_cost = candidate_cost
         self.store.record_structural_for_key(
             key,
             {
                 "kind": "jevRoutingTransport",
                 "statusCode": None if status_code is None else int(status_code),
                 "latencyMs": max(0.0, min(120_000.0, float(latency_ms))),
+                "gateway": safe_gateway,
+                "decisionModel": str(decision_model)[:128],
                 "routerModel": None if router_model is None else str(router_model)[:128],
                 "inputTokens": None if input_tokens is None else max(0, int(input_tokens)),
                 "outputTokens": None if output_tokens is None else max(0, int(output_tokens)),
+                "usageCostUsd": safe_cost,
                 "fallback": bool(fallback),
             },
         )
@@ -665,6 +687,9 @@ class R4ProviderStack:
         default_factory=dict
     )
     resolved_model_ids: Mapping[ModelRouteLane, str] = field(default_factory=dict)
+    effective_model_profiles: Mapping[
+        ModelRouteLane, EffectiveModelProfileIdentity
+    ] = field(default_factory=dict)
     additional_chat_clients: tuple[OpenAICompatibleChatClient, ...] = ()
 
     @property
@@ -743,8 +768,15 @@ def create_r4_provider_stack(
         else model_config
     ) or model_config
 
+    balanced_request_settings = (
+        selected_routing_settings.request_settings_for(ModelRouteLane.BALANCED)
+        if selected_routing_settings.enabled
+        else ModelRequestSettings()
+    )
+
     chat_client = OpenAICompatibleChatClient(
         effective_balanced_config,
+        request_settings=balanced_request_settings,
         client=_model_client_for(model_http_clients, ModelRouteLane.BALANCED),
         usage_sink=telemetry,
         response_observer=telemetry,
@@ -759,6 +791,12 @@ def create_r4_provider_stack(
     resolved_model_ids: dict[ModelRouteLane, str] = {
         ModelRouteLane.BALANCED: effective_balanced_config.model,
     }
+    effective_model_profiles: dict[ModelRouteLane, EffectiveModelProfileIdentity] = {
+        ModelRouteLane.BALANCED: selected_routing_settings.effective_profile_identity(
+            ModelRouteLane.BALANCED,
+            resolved_model_id=effective_balanced_config.model,
+        )
+    }
     if selected_routing_settings.enabled:
         for lane in (ModelRouteLane.FAST, ModelRouteLane.DEEP):
             lane_config = provider_config_for_lane(
@@ -770,12 +808,19 @@ def create_r4_provider_stack(
                 continue
             lane_client = OpenAICompatibleChatClient(
                 lane_config,
+                request_settings=selected_routing_settings.request_settings_for(lane),
                 client=_model_client_for(model_http_clients, lane),
                 usage_sink=telemetry,
                 response_observer=telemetry,
             )
             additional_chat_clients.append(lane_client)
             resolved_model_ids[lane] = lane_config.model
+            effective_model_profiles[lane] = (
+                selected_routing_settings.effective_profile_identity(
+                    lane,
+                    resolved_model_id=lane_config.model,
+                )
+            )
             lane_chat = _ObservedChatClient(lane_client, telemetry)
             model_adapters[lane] = OpenAICompatibleModelAdapter(
                 lane_chat,
@@ -904,6 +949,7 @@ def create_r4_provider_stack(
         jev_router=jev_router,
         model_adapters=model_adapters,
         resolved_model_ids=resolved_model_ids,
+        effective_model_profiles=MappingProxyType(effective_model_profiles),
         additional_chat_clients=tuple(additional_chat_clients),
     )
 

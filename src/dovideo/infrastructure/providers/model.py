@@ -29,7 +29,7 @@ from dovideo.domain import (
 )
 from dovideo.application.tool_contracts import ExecutorTurn, ToolResult
 
-from .config import ProviderConfig
+from .config import ModelRequestSettings, ProviderConfig
 from .errors import (
     ModelResponseError,
     ProviderAuthenticationError,
@@ -195,6 +195,7 @@ class OpenAICompatibleChatClient:
         self,
         config: ProviderConfig,
         *,
+        request_settings: ModelRequestSettings | None = None,
         client: AsyncJsonPostClient | object | None = None,
         http_client: AsyncJsonPostClient | object | None = None,
         sleeper: Any | None = None,
@@ -203,7 +204,12 @@ class OpenAICompatibleChatClient:
     ) -> None:
         if not isinstance(config, ProviderConfig):
             raise TypeError("config must be a ProviderConfig")
+        if request_settings is not None and not isinstance(
+            request_settings, ModelRequestSettings
+        ):
+            raise TypeError("request_settings must be ModelRequestSettings")
         self.config = config
+        self.request_settings = request_settings or ModelRequestSettings()
         self._client = client if client is not None else http_client
         if self._client is None:
             self._client = StdlibAsyncJsonPostClient()
@@ -224,6 +230,7 @@ class OpenAICompatibleChatClient:
             "temperature": 0,
             "response_format": {"type": "json_object"},
         }
+        payload.update(self.request_settings.request_fields())
         last_error: ProviderTransientError | None = None
         for attempt in range(self.config.max_attempts):
             try:

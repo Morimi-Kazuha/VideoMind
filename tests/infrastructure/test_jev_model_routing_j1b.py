@@ -486,9 +486,12 @@ def test_r4_stack_wires_three_configured_model_profiles_without_network(monkeypa
     )
     settings = ModelRoutingProductionSettings(
         enabled=True,
-        fast_model="fast-model",
-        balanced_model="balanced-model",
-        deep_model="deep-model",
+        fast_model="deepseek-flash",
+        balanced_model="deepseek-flash",
+        deep_model="deepseek-v4-pro",
+        fast_reasoning_effort="none",
+        deep_reasoning_effort="max",
+        deep_max_tokens=65_536,
         jev=JevRouterSettings(model="jev-model", api_key="unit-secret"),
     )
     stack = create_r4_provider_stack(
@@ -505,12 +508,37 @@ def test_r4_stack_wires_three_configured_model_profiles_without_network(monkeypa
         assert stack.routing_service is not None
         assert set(stack.model_adapters) == set(ModelRouteLane)
         for lane, expected in {
-            ModelRouteLane.FAST: "fast-model",
-            ModelRouteLane.BALANCED: "balanced-model",
-            ModelRouteLane.DEEP: "deep-model",
+            ModelRouteLane.FAST: "deepseek-flash",
+            ModelRouteLane.BALANCED: "deepseek-flash",
+            ModelRouteLane.DEEP: "deepseek-v4-pro",
         }.items():
             chat = stack.model_adapters[lane].planner._chat
             assert chat.inner.config.model == expected
+            assert stack.model_adapters[lane].executor._chat is chat
+            assert stack.model_adapters[lane].critic._chat is chat
+
+        balanced_request = stack.chat_client.request_settings
+        assert balanced_request.request_fields() == {}
+        fast_client = stack.model_adapters[ModelRouteLane.FAST].planner._chat.inner
+        assert fast_client.request_settings.request_fields() == {
+            "reasoning_effort": "none"
+        }
+        deep_client = stack.model_adapters[ModelRouteLane.DEEP].planner._chat.inner
+        assert deep_client.request_settings.request_fields() == {
+            "reasoning_effort": "max",
+            "max_tokens": 65_536,
+        }
+        fast_identity = stack.effective_model_profiles[ModelRouteLane.FAST]
+        balanced_identity = stack.effective_model_profiles[ModelRouteLane.BALANCED]
+        deep_identity = stack.effective_model_profiles[ModelRouteLane.DEEP]
+        assert fast_identity.profile_id == "fast-profile"
+        assert balanced_identity.profile_id == "balanced-profile"
+        assert fast_identity.resolved_model_id == balanced_identity.resolved_model_id
+        assert fast_identity.fingerprint != balanced_identity.fingerprint
+        assert deep_identity.fingerprint not in {
+            fast_identity.fingerprint,
+            balanced_identity.fingerprint,
+        }
     finally:
         import asyncio
 

@@ -1,0 +1,10 @@
+{
+  "gateVersion": "routing-quality-gate-v1",
+  "requiredStatus": "SUCCESSFUL",
+  "requireSchemaValid": true,
+  "requireModeSectionsValid": true,
+  "requireEvidenceGuardPass": true,
+  "coverageMetric": "requiredFactExactCoverage",
+  "minimumRequiredFactExactCoverage": 0.9,
+  "knownLimitation": "requiredFactExactCoverage uses normalized lexical exact matching; it is not a measure of semantic correctness."
+}

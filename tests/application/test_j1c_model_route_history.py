@@ -205,6 +205,46 @@ async def test_routed_execution_records_v2_event_before_planner_and_reuses_it() 
 
 
 @pytest.mark.asyncio
+async def test_same_model_lanes_recover_the_recorded_profile_without_resampling() -> None:
+    records, repository = _records()
+    checkpoint = _Checkpoint()
+    shared_model_ids = {
+        ModelRouteLane.BALANCED: "deepseek-flash",
+        ModelRouteLane.FAST: "deepseek-flash",
+        ModelRouteLane.DEEP: "deepseek-v4-pro",
+    }
+    first_router = _Router("FAST", 0.94)
+    first, _ = _wrapper(
+        records,
+        checkpoint,
+        first_router,
+        resolved=shared_model_ids,
+    )
+
+    await first.run(_context(), media_id=7, profile=MODE_PROFILE)
+
+    record = repository.get("execution-j1c")
+    assert record is not None
+    route = record.events[1].payload
+    assert route["lane"] == "FAST"
+    assert route["profileId"] == "fast-profile"
+    assert route["resolvedModelId"] == "deepseek-flash"
+
+    replacement_router = _Router("BALANCED", 0.99)
+    recovered, recovered_lanes = _wrapper(
+        records,
+        checkpoint,
+        replacement_router,
+        resolved=shared_model_ids,
+    )
+    await recovered.run(_context(), media_id=7, profile=MODE_PROFILE)
+
+    assert replacement_router.calls == 0
+    assert recovered_lanes[ModelRouteLane.FAST].calls == 1
+    assert recovered_lanes[ModelRouteLane.BALANCED].calls == 0
+
+
+@pytest.mark.asyncio
 async def test_route_event_is_durable_before_real_agent_loop_planner_call() -> None:
     records, repository = _records()
     checkpoint = _Checkpoint()

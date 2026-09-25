@@ -15,6 +15,7 @@ import os
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -31,10 +32,13 @@ from .http import AsyncJsonPostClient, StdlibAsyncJsonPostClient, post_json, res
 
 
 JEV_DEFAULT_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
+OPENROUTER_DECISIONS_ENDPOINT = "https://openrouter.ai/api/alpha/decisions"
+OPENROUTER_JEV_MODEL = "typesafe/jev-1.13"
 JEV_QUESTION_KEY = "model_lane"
 JEV_MAX_MODEL_LENGTH = 256
 JEV_MAX_ENDPOINT_LENGTH = 512
 JEV_MAX_RESPONSE_USAGE = 10_000_000
+JEV_MAX_RESPONSE_COST_USD = 1_000_000.0
 JEV_MAX_ATTEMPTS = 2
 JEV_MAX_TIMEOUT_SECONDS = 30.0
 JEV_MAX_RETRY_DELAY_SECONDS = 2.0
@@ -55,6 +59,13 @@ JEV_LANE_INSTRUCTIONS = (
     "Choose exactly one analysis lane. Return only a choice answer. "
     "The lane is a logical DOVideo hint, not a provider or model name."
 )
+
+
+class JevTransport(str, Enum):
+    """Infrastructure-owned Jev API transport selector."""
+
+    TYPESAFE_DIRECT = "typesafe_direct"
+    OPENROUTER = "openrouter"
 
 
 class JevConfigurationError(ValueError):
@@ -81,9 +92,12 @@ class JevRouterObserver(Protocol):
         *,
         status_code: int | None,
         latency_ms: float,
+        gateway: str,
+        decision_model: str,
         router_model: str | None,
         input_tokens: int | None,
         output_tokens: int | None,
+        usage_cost_usd: float | None,
         fallback: bool,
     ) -> None:
         ...
@@ -99,11 +113,38 @@ class JevRouterSettings:
     timeout_seconds: float = 2.0
     max_attempts: int = 1
     retry_delay_seconds: float = 0.0
+    transport: JevTransport | str = JevTransport.TYPESAFE_DIRECT
+    openrouter_api_key: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
-        endpoint = _endpoint(self.endpoint)
+        transport = _transport(self.transport)
+        if transport is JevTransport.OPENROUTER:
+            normalized_endpoint = (
+                self.endpoint.strip().rstrip("/")
+                if isinstance(self.endpoint, str)
+                else ""
+            )
+            if normalized_endpoint not in {
+                JEV_DEFAULT_ENDPOINT,
+                OPENROUTER_DECISIONS_ENDPOINT,
+            }:
+                raise JevConfigurationError("OpenRouter Decisions endpoint is fixed")
+            endpoint = OPENROUTER_DECISIONS_ENDPOINT
+        else:
+            endpoint = _endpoint(self.endpoint)
         model = _optional_bounded_text(self.model, "Jev model", JEV_MAX_MODEL_LENGTH)
+        if transport is JevTransport.OPENROUTER:
+            model = model or OPENROUTER_JEV_MODEL
+            if model != OPENROUTER_JEV_MODEL:
+                raise JevConfigurationError(
+                    "OpenRouter Jev model must use the pinned benchmark identity"
+                )
         api_key = None if self.api_key is None else _secret(self.api_key)
+        openrouter_api_key = (
+            None
+            if self.openrouter_api_key is None
+            else _secret(self.openrouter_api_key)
+        )
         timeout = _finite_positive(self.timeout_seconds, "Jev timeout_seconds")
         if timeout > JEV_MAX_TIMEOUT_SECONDS:
             raise JevConfigurationError("Jev timeout_seconds exceeds the bounded maximum")
@@ -121,17 +162,42 @@ class JevRouterSettings:
         object.__setattr__(self, "endpoint", endpoint)
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "api_key", api_key)
+        object.__setattr__(self, "openrouter_api_key", openrouter_api_key)
         object.__setattr__(self, "timeout_seconds", timeout)
         object.__setattr__(self, "max_attempts", attempts)
         object.__setattr__(self, "retry_delay_seconds", delay)
+        object.__setattr__(self, "transport", transport)
 
     def validate_for_use(self) -> None:
         if not self.model:
             raise JevConfigurationError("Jev model is required when model routing is enabled")
-        if not self.api_key:
-            raise JevConfigurationError(
-                "Jev API key is required when model routing is enabled"
+        if not self.active_api_key:
+            name = (
+                "OpenRouter API key"
+                if self.transport is JevTransport.OPENROUTER
+                else "Jev API key"
             )
+            raise JevConfigurationError(
+                f"{name} is required when model routing is enabled"
+            )
+
+    @property
+    def active_api_key(self) -> str | None:
+        """Return only the credential selected by the configured transport."""
+
+        if self.transport is JevTransport.OPENROUTER:
+            return self.openrouter_api_key
+        return self.api_key
+
+    @property
+    def gateway(self) -> str:
+        """Stable, provider-neutral identity for bounded Jev telemetry."""
+
+        return (
+            "OPENROUTER"
+            if self.transport is JevTransport.OPENROUTER
+            else "TYPESAFE_DIRECT"
+        )
 
     @classmethod
     def from_environment(
@@ -141,15 +207,36 @@ class JevRouterSettings:
         required: bool = False,
     ) -> "JevRouterSettings":
         values = os.environ if environ is None else environ
-        selected = cls(
-            endpoint=_first_value(
+        transport = _transport(
+            _first_value(values, "DOVIDEO_JEV_TRANSPORT")
+            or JevTransport.TYPESAFE_DIRECT.value
+        )
+        if transport is JevTransport.OPENROUTER:
+            endpoint = OPENROUTER_DECISIONS_ENDPOINT
+            model = _first_value(values, "DOVIDEO_JEV_MODEL") or OPENROUTER_JEV_MODEL
+            api_key = None
+            openrouter_api_key = _first_value(
                 values,
-                "DOVIDEO_JEV_ENDPOINT",
-                "DOVIDEO_JEV_BASE_URL",
+                "DOVIDEO_OPENROUTER_API_KEY",
             )
-            or JEV_DEFAULT_ENDPOINT,
-            model=_first_value(values, "DOVIDEO_JEV_MODEL") or "",
-            api_key=_first_value(values, "DOVIDEO_JEV_API_KEY"),
+        else:
+            endpoint = (
+                _first_value(
+                    values,
+                    "DOVIDEO_JEV_ENDPOINT",
+                    "DOVIDEO_JEV_BASE_URL",
+                )
+                or JEV_DEFAULT_ENDPOINT
+            )
+            model = _first_value(values, "DOVIDEO_JEV_MODEL") or ""
+            api_key = _first_value(values, "DOVIDEO_JEV_API_KEY")
+            openrouter_api_key = None
+        selected = cls(
+            endpoint=endpoint,
+            model=model,
+            api_key=api_key,
+            transport=transport,
+            openrouter_api_key=openrouter_api_key,
             timeout_seconds=_number(
                 values,
                 "DOVIDEO_JEV_TIMEOUT_SECONDS",
@@ -279,7 +366,7 @@ class JevModelRouter:
         payload = self.request_payload(context, model=self.settings.model)
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.settings.api_key}",
+            "Authorization": f"Bearer {self.settings.active_api_key}",
         }
         started = time.perf_counter()
         status_code: int | None = None
@@ -369,9 +456,12 @@ class JevModelRouter:
             record(
                 status_code=status_code,
                 latency_ms=max(0.0, float(latency_ms)),
+                gateway=self.settings.gateway,
+                decision_model=self.settings.model,
                 router_model=model or None,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                usage_cost_usd=_usage_cost(usage),
                 fallback=bool(fallback),
             )
         except Exception:
@@ -396,6 +486,18 @@ def _endpoint(value: Any) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise JevConfigurationError("Jev endpoint must be HTTP(S)")
     return normalized
+
+
+def _transport(value: Any) -> JevTransport:
+    if isinstance(value, JevTransport):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().casefold().replace("-", "_")
+        try:
+            return JevTransport(normalized)
+        except ValueError:
+            pass
+    raise JevConfigurationError("Jev transport must be typesafe_direct or openrouter")
 
 
 def _secret(value: Any) -> str:
@@ -478,11 +580,30 @@ def _usage_int(value: Any, *names: str) -> int | None:
     return raw
 
 
+def _usage_cost(value: Any) -> float | None:
+    if not isinstance(value, Mapping):
+        return None
+    raw = value.get("cost")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    normalized = float(raw)
+    if (
+        not math.isfinite(normalized)
+        or normalized < 0
+        or normalized > JEV_MAX_RESPONSE_COST_USD
+    ):
+        return None
+    return normalized
+
+
 __all__ = [
     "JEV_DEFAULT_ENDPOINT",
     "JEV_LANE_CRITERIA",
     "JEV_LANE_INSTRUCTIONS",
     "JEV_QUESTION_KEY",
+    "JEV_MAX_RESPONSE_COST_USD",
+    "OPENROUTER_DECISIONS_ENDPOINT",
+    "OPENROUTER_JEV_MODEL",
     "JevAdapter",
     "JevConfiguration",
     "JevConfigurationError",
@@ -494,5 +615,6 @@ __all__ = [
     "JevRouterObserver",
     "JevRouterSettings",
     "JevRouterUnavailableError",
+    "JevTransport",
     "TypeSafeModelRouter",
 ]
