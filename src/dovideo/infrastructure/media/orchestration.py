@@ -52,6 +52,7 @@ class MediaBranchOrchestrator:
         source: str,
         *,
         parent: str | PathLike[str] | None = None,
+        media_identity: str | None = None,
         trace_id: str | None = None,
     ) -> MediaObservationBundle:
         """Return branch observations; cleanup completes before this returns."""
@@ -60,6 +61,7 @@ class MediaBranchOrchestrator:
             return await self.collect_in_workspace(
                 source,
                 workspace,
+                media_identity=media_identity,
                 trace_id=trace_id,
             )
 
@@ -68,6 +70,7 @@ class MediaBranchOrchestrator:
         source: str,
         workspace: MediaWorkspace,
         *,
+        media_identity: str | None = None,
         trace_id: str | None = None,
     ) -> MediaObservationBundle:
         """Run against a caller-owned active scope (which remains their duty)."""
@@ -77,7 +80,7 @@ class MediaBranchOrchestrator:
         workspace.path
         tasks = (
             asyncio.create_task(self._run_asr_branch(source, workspace, trace_id)),
-            asyncio.create_task(self._run_ocr_branch(source, workspace, trace_id)),
+            asyncio.create_task(self._run_ocr_branch(source, workspace, trace_id, media_identity)),
         )
         try:
             results = await asyncio.wait_for(
@@ -130,6 +133,7 @@ class MediaBranchOrchestrator:
         source: str,
         workspace: MediaWorkspace,
         trace_id: str | None,
+        media_identity: str | None,
     ) -> OcrBranchOutcome:
         try:
             frames = await self._keyframe_extractor.extract(source, workspace)
@@ -146,7 +150,9 @@ class MediaBranchOrchestrator:
                     # A diagnostic sink must not replace the original failure.
                     pass
             raise
-        return await self._ocr.process(source, frames, trace_id=trace_id)
+        return await self._ocr.process(
+            source, frames, media_identity=media_identity, trace_id=trace_id
+        )
 
 
 async def _cancel_and_wait(tasks: tuple[asyncio.Task[Any], ...]) -> None:

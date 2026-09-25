@@ -124,6 +124,7 @@ class OcrObservation:
     timestamp_ms: int
     text: str = ""
     frame_ref: str | None = None
+    frame_location: str | None = None
 
     def __post_init__(self) -> None:
         if self.timestamp_ms < 0:
@@ -134,6 +135,8 @@ class OcrObservation:
             raise TypeError("OCR text must be text")
         if self.frame_ref is not None and not isinstance(self.frame_ref, str):
             raise TypeError("frame_ref must be text or None")
+        if self.frame_location is not None and not isinstance(self.frame_location, str):
+            raise TypeError("frame_location must be text or None")
 
 
 class BranchStatus(str, Enum):

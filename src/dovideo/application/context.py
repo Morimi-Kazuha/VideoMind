@@ -208,7 +208,7 @@ class VideoContextBuilder:
             if has_frame:
                 # Every successful frame reference is retained, including a
                 # reference whose OCR text is empty.
-                window.evidence_frames.append(frame)
+                window.evidence_frames.append(observation.frame_location or frame)
             window.ocr_observations.append((source_ordinal, observation))
 
         segments = tuple(

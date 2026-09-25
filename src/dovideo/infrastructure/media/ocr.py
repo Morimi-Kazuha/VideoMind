@@ -12,6 +12,7 @@ from dovideo.application import OcrBranchOutcome, OcrObservation
 from dovideo.application.ports.ai import FrameOcrPort
 from dovideo.application.ports.media import EvidenceFramePort, ImageHashPort
 from dovideo.application.ports.observability import TelemetryPort
+from dovideo.domain.provenance import stable_frame_ref
 
 from .errors import AllOcrFramesFailed, OcrImageMissing
 from .hashing import DEFAULT_HAMMING_THRESHOLD, hamming_distance
@@ -88,6 +89,7 @@ class OcrBatchService:
         source: str,
         frames: Sequence[Keyframe],
         *,
+        media_identity: str | None = None,
         trace_id: str | None = None,
     ) -> OcrBranchOutcome:
         observations: list[OcrObservation] = []
@@ -125,7 +127,12 @@ class OcrBatchService:
                 self._increment("ocrFrameFailures")
                 continue
 
-            frame_ref = f"{source}#timestampMs={frame.timestamp_ms}"
+            frame_ref = stable_frame_ref(
+                media_identity if media_identity is not None else source,
+                frame.timestamp_ms,
+                frame.index,
+            )
+            frame_location = None
             if self._evidence_frames is not None:
                 try:
                     persisted = await self._evidence_frames.persist_frame(
@@ -134,7 +141,7 @@ class OcrBatchService:
                     )
                     if not isinstance(persisted, str) or not persisted.strip():
                         raise ValueError("evidence frame publisher returned an empty reference")
-                    frame_ref = persisted
+                    frame_location = persisted
                 except asyncio.CancelledError:
                     raise
                 except Exception:
@@ -146,6 +153,7 @@ class OcrBatchService:
                     timestamp_ms=frame.timestamp_ms,
                     text=text.strip() if isinstance(text, str) else "",
                     frame_ref=frame_ref,
+                    frame_location=frame_location,
                 )
             )
 

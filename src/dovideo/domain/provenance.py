@@ -18,7 +18,8 @@ from pydantic import Field, field_validator, model_validator
 from ._base import DomainModel, normalize_nullable_aliases
 
 
-PROVENANCE_VERSION = "x2-a-v1"
+LEGACY_PROVENANCE_VERSION = "x2-a-v1"
+PROVENANCE_VERSION = "x2-a-v2"
 EXTRACTION_CONTRACT_VERSION = "video-context-60s-v1"
 NORMALIZATION_VERSION = "text-trim-v1"
 CHUNKING_CONTRACT_VERSION = "video-chunk-5m-v1"
@@ -71,7 +72,7 @@ class SegmentIdentity(DomainModel):
     start_ms: int = Field(alias="startMs")
     end_ms: int = Field(alias="endMs")
     ordinal: int = 0
-    provenance_version: str = Field(default=PROVENANCE_VERSION, alias="provenanceVersion")
+    provenance_version: str = Field(default=LEGACY_PROVENANCE_VERSION, alias="provenanceVersion")
 
     @field_validator("segment_id", "source_revision", "provenance_version")
     @classmethod
@@ -102,7 +103,7 @@ class SourceItemIdentity(DomainModel):
     end_ms: int | None = Field(default=None, alias="endMs")
     content_digest: str = Field(alias="contentDigest")
     frame_ref_digest: str = Field(default="", alias="frameRefDigest")
-    provenance_version: str = Field(default=PROVENANCE_VERSION, alias="provenanceVersion")
+    provenance_version: str = Field(default=LEGACY_PROVENANCE_VERSION, alias="provenanceVersion")
 
     @model_validator(mode="before")
     @classmethod
@@ -112,8 +113,8 @@ class SourceItemIdentity(DomainModel):
             {
                 "frame_ref_digest": "",
                 "frameRefDigest": "",
-                "provenance_version": PROVENANCE_VERSION,
-                "provenanceVersion": PROVENANCE_VERSION,
+                "provenance_version": LEGACY_PROVENANCE_VERSION,
+                "provenanceVersion": LEGACY_PROVENANCE_VERSION,
                 "end_ms": None,
                 "endMs": None,
             },
@@ -323,6 +324,25 @@ def canonical_frame_ref(value: Any) -> str:
     return canonical_text(value).replace("\\", "/")
 
 
+def stable_frame_ref(media_identity: str, timestamp_ms: int, frame_index: int) -> str:
+    """Name an extracted frame without including its temporary file location."""
+
+    if not isinstance(media_identity, str) or not media_identity.strip():
+        raise ValueError("stable media identity is required for frame provenance")
+    if isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, int) or timestamp_ms < 0:
+        raise ValueError("frame timestamp must be a nonnegative integer")
+    if isinstance(frame_index, bool) or not isinstance(frame_index, int) or frame_index < 0:
+        raise ValueError("frame index must be a nonnegative integer")
+    return "frame_" + sha256_canonical(
+        {
+            "mediaIdentity": media_identity.strip(),
+            "timestampMs": timestamp_ms,
+            "frameIndex": frame_index,
+            "provenanceVersion": PROVENANCE_VERSION,
+        }
+    )
+
+
 def sha256_canonical(value: Mapping[str, Any] | list[Any]) -> str:
     """Hash stable JSON with fixed separators, UTF-8, and sorted keys."""
 
@@ -353,6 +373,7 @@ __all__ = [
     "SourceRevision",
     "SourceType",
     "canonical_frame_ref",
+    "stable_frame_ref",
     "canonical_source_observation_digest",
     "canonical_source_observations",
     "canonical_text",

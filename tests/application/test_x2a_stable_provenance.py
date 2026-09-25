@@ -33,6 +33,7 @@ from dovideo.domain import (
     VideoContext,
 )
 from dovideo.infrastructure import JsonCheckpointCodec, JsonHttpResponse, QdrantVectorIndex
+from dovideo.domain.provenance import PROVENANCE_VERSION, SourceItemIdentity, stable_frame_ref
 
 
 def _observations(
@@ -97,6 +98,47 @@ def test_source_revision_is_canonical_versioned_and_changes_with_authoritative_i
     assert json.dumps({"b": 2, "a": 1}, sort_keys=True, separators=(",", ":")) == json.dumps(
         {"a": 1, "b": 2}, sort_keys=True, separators=(",", ":")
     )
+
+
+def test_frame_provenance_ignores_temp_path_and_preserves_authoritative_changes(monkeypatch) -> None:
+    import dovideo.domain.provenance as provenance
+
+    assert PROVENANCE_VERSION == "x2-a-v2"
+    identity = "cd22673b3eed2108b558385371668b74"
+
+    def context_for(path: str, *, media: str = identity, timestamp: int = 5, text: str = "screen"):
+        # The physical extraction location is deliberately absent from durable observations.
+        observation = OcrObservation(timestamp, text, stable_frame_ref(media, timestamp, 0), path)
+        return VideoContextBuilder().build(
+            "object://video", "goal",
+            MediaObservationBundle(
+                asr=AsrBranchOutcome(observations=(TranscriptSpan(0, 100, "alpha"),), attempted=1),
+                ocr=OcrBranchOutcome(observations=(observation,), attempted=1),
+            ),
+            media_content_identity=media,
+        )
+
+    first = context_for(r"C:\\Temp\\uuid-a\\frame.jpg")
+    second = context_for("/tmp/uuid-b/frame.jpg")
+    assert first.source_revision == second.source_revision
+    assert first.segments[0].segment_id == second.segments[0].segment_id
+    assert first.segments[0].source_item_ids == second.segments[0].source_item_ids
+    assert first.segments[0].evidence_frames != second.segments[0].evidence_frames
+    assert first.source_revision != context_for("/tmp/frame.jpg", media="other-media").source_revision
+    assert first.source_revision != context_for("/tmp/frame.jpg", timestamp=6).source_revision
+    assert first.source_revision != context_for("/tmp/frame.jpg", text="different").source_revision
+    assert stable_frame_ref(identity, 5, 0) != stable_frame_ref(identity, 5, 1)
+    monkeypatch.setattr(provenance, "PROVENANCE_VERSION", "x2-a-v3-test")
+    assert first.source_revision != context_for("/tmp/frame.jpg").source_revision
+
+
+def test_legacy_source_item_without_version_keeps_v1_identity() -> None:
+    item = SourceItemIdentity.model_validate({
+        "sourceItemId": "historical-item", "sourceRevision": "historical-revision",
+        "segmentId": "historical-segment", "sourceType": "OCR", "ordinal": 0,
+        "timestampMs": 0, "contentDigest": "historical-digest",
+    })
+    assert item.provenance_version == "x2-a-v1"
 
 
 def test_context_provenance_ids_are_stable_across_rebuild_and_revision_changes() -> None:

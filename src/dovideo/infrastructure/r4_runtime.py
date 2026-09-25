@@ -1034,6 +1034,9 @@ class R4MediaPipeline:
                 total_timeout_seconds=self.settings.media_timeout_seconds,
             ).collect(
                 str(local_path),
+                media_identity=(
+                    request.media.content_hash or f"media-id:{request.media.media_id}"
+                ),
                 parent=self.infrastructure.settings.media_workspace / "r4-media-workspaces",
             )
             self.telemetry.observe("asrSpanCount", len(observations.asr.observations))

@@ -417,12 +417,35 @@ async def test_ocr_batch_skips_duplicates_records_empty_text_and_falls_back_uplo
     assert outcome.status is BranchStatus.SUCCESS
     assert outcome.skipped_duplicates == 1
     assert outcome.attempted == 2
+    from dovideo.domain.provenance import stable_frame_ref
+
     assert outcome.observations == (
-        OcrObservation(0, "", "https://objects/frame0"),
-        OcrObservation(60_000, "visible", "video.mp4#timestampMs=60000"),
+        OcrObservation(0, "", stable_frame_ref("video.mp4", 0, 0), "https://objects/frame0"),
+        OcrObservation(60_000, "visible", stable_frame_ref("video.mp4", 60_000, 2)),
     )
     assert ocr.calls == ["frame_000000.jpg", "frame_000002.jpg"]
     assert telemetry.counts == {"ocrCalls": 2, "frameUploadFailures": 1}
+
+
+@pytest.mark.asyncio
+async def test_ocr_batch_frame_ref_uses_media_identity_across_workspaces(tmp_path: Path) -> None:
+    refs = []
+    service = OcrBatchService(
+        FakeFrameOcr({"frame_000000.jpg": "screen"}),
+        FakeHasher({"frame_000000.jpg": 0}),
+    )
+    for _ in range(2):
+        async with MediaWorkspace(parent=tmp_path) as workspace:
+            frame_dir = await workspace.directory("frames")
+            frames = await _make_keyframes(workspace, frame_dir, indexes=(0,))
+            outcome = await service.process(
+                str(workspace.path / "input-unique-uuid.mp4"),
+                frames,
+                media_identity="stable-content-hash",
+            )
+            refs.append(outcome.observations[0].frame_ref)
+    assert refs[0] == refs[1]
+    assert str(tmp_path) not in refs[0]
 
 
 @pytest.mark.asyncio
