@@ -692,9 +692,14 @@ class _StrictRetrievalService(VideoEvidenceRetrievalService):
             raise RuntimeError("R4 retrieval query vector dimension is invalid")
         return value
 
-    async def _vector_scores(self, media_id: int | None, query_embedding: tuple[float, ...]):
+    async def _vector_scores(
+        self,
+        media_id: int | None,
+        query_embedding: tuple[float, ...],
+        chunks: Any = (),
+    ):
         before = self._r4_telemetry.counter_value("vectorStoreFallbacks")
-        scores = await super()._vector_scores(media_id, query_embedding)
+        scores = await super()._vector_scores(media_id, query_embedding, chunks)
         if self._r4_telemetry.counter_value("vectorStoreFallbacks") > before:
             raise QdrantVectorError("R4 canonical Qdrant search used a fallback")
         if media_id is not None and len(scores) < 2:
