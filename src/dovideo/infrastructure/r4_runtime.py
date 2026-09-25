@@ -135,6 +135,9 @@ class R4AgentTelemetry:
             "dovideo_r4_scoped_counters",
             default=None,
         )
+        self._chat_usage_capture: ContextVar[list[dict[str, Any]] | None] = ContextVar(
+            "dovideo_r4_chat_usage_capture", default=None
+        )
 
     def set_model_identifier(self, model: str | None) -> None:
         value = str(model or "").strip()
@@ -150,6 +153,44 @@ class R4AgentTelemetry:
 
     def reset(self, token: Any) -> None:
         self._current_key.reset(token)
+
+    @contextmanager
+    def capture_chat_usage(self) -> Iterator[list[dict[str, Any]]]:
+        """Capture exact provider usage for one caller-scoped execution."""
+
+        records: list[dict[str, Any]] = []
+        token = self._chat_usage_capture.set(records)
+        try:
+            yield records
+        finally:
+            self._chat_usage_capture.reset(token)
+
+    def record_chat_usage(
+        self,
+        *,
+        stage: str,
+        model: str,
+        input_tokens: int | float | None,
+        output_tokens: int | float | None,
+        total_tokens: int | float | None,
+        provider_reported_cost: int | float | None,
+    ) -> None:
+        """Retain provider counts without estimating missing fields."""
+
+        record = {
+            "stage": _role_name(stage),
+            "model": str(model)[:128],
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "totalTokens": total_tokens,
+            "providerReportedCost": provider_reported_cost,
+        }
+        capture = self._chat_usage_capture.get()
+        if capture is not None:
+            capture.append(record)
+        key = self._current_key.get()
+        if key is not None and self._scoped_counters.get() is None:
+            self.store.record_structural_for_key(key, {"kind": "chatUsage", **record})
 
     @contextmanager
     def isolated_metrics(self) -> Iterator[dict[str, int]]:
@@ -377,6 +418,19 @@ class R4AgentTelemetry:
     ) -> None:
         """Persist only bounded Jev transport metadata; never raw payloads."""
 
+        capture = self._chat_usage_capture.get()
+        if capture is not None:
+            capture.append({
+                "stage": "ROUTER",
+                "model": str(decision_model)[:128],
+                "inputTokens": input_tokens,
+                "outputTokens": output_tokens,
+                "totalTokens": (
+                    input_tokens + output_tokens
+                    if input_tokens is not None and output_tokens is not None else None
+                ),
+                "providerReportedCost": usage_cost_usd,
+            })
         if self._scoped_counters.get() is not None:
             return
         key = self._current_key.get()

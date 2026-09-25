@@ -737,16 +737,34 @@ class AgentLoopEvaluationAdapter:
         schema_valid = is_result_valid(result, profile)
         section_valid = not missing_section_keys(result, profile)
         support_rate: float | None = None
+        evidence_guard_pass: bool | None = None
+        unsupported_claim_rate: float | None = None
         if result is not None and result.evidence and context is not None:
             support_rate = sum(
                 self._verifier.supported(context, evidence) for evidence in result.evidence
             ) / len(result.evidence)
+        if result is not None:
+            evidence_valid = all(
+                self._verifier.supported(context, evidence) for evidence in result.evidence
+            )
+            unsupported_claims = sum(
+                not any(
+                    self._verifier.supports_claim(context, claim, evidence)
+                    for evidence in result.evidence
+                )
+                for claim in result.conclusions
+            )
+            evidence_guard_pass = evidence_valid and unsupported_claims == 0
+            if result.conclusions:
+                unsupported_claim_rate = unsupported_claims / len(result.conclusions)
         return EvaluationExecutionObservation(
             result=result,
             agent_state=state if isinstance(state, AgentState) else None,
             schema_valid=schema_valid,
             mode_sections_valid=section_valid,
             evidence_support_rate=support_rate,
+            evidence_guard_pass=evidence_guard_pass,
+            unsupported_claim_rate=unsupported_claim_rate,
             critic_metrics=critic,
             execution_id=getattr(state, "execution_id", None),
             resolved_model=self._model,

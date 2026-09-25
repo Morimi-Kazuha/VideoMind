@@ -255,7 +255,7 @@ class OpenAICompatibleChatClient:
                     raise ProviderRequestError(
                         f"{stage} provider rejected request ({status})"
                     )
-                self._record_provider_usage(body)
+                self._record_provider_usage(body, stage=stage)
                 return _extract_content(body, stage)
             except asyncio.CancelledError:
                 raise
@@ -328,7 +328,7 @@ class OpenAICompatibleChatClient:
             if isawaitable(value):
                 await value
 
-    def _record_provider_usage(self, body: Any) -> None:
+    def _record_provider_usage(self, body: Any, *, stage: str = "MODEL") -> None:
         """Forward provider-reported usage without estimating from prompts."""
 
         sink = self._usage_sink
@@ -351,6 +351,16 @@ class OpenAICompatibleChatClient:
         )
         if tokens is None and cost is None:
             return
+        record_chat_usage = getattr(sink, "record_chat_usage", None)
+        if callable(record_chat_usage):
+            record_chat_usage(
+                stage=stage,
+                model=self.config.model,
+                input_tokens=_usage_number(usage, "prompt_tokens", "promptTokens"),
+                output_tokens=_usage_number(usage, "completion_tokens", "completionTokens"),
+                total_tokens=tokens,
+                provider_reported_cost=cost,
+            )
         add = getattr(sink, "add", None)
         if callable(add):
             add(

@@ -476,5 +476,7 @@ def test_agent_loop_adapter_uses_prepared_context_and_normal_production_port(tmp
         )
     )
     assert observation.result is not None
+    assert observation.evidence_guard_pass is False
+    assert observation.unsupported_claim_rate == 1.0
     assert agent.calls[0][0].user_goal == "fresh query"
     assert agent.calls[0][2].mode.value == "GENERAL"
