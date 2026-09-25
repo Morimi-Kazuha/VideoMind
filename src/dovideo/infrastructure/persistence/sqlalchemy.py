@@ -30,8 +30,10 @@ from sqlalchemy import (
     create_engine,
     delete,
     func,
+    inspect,
     select,
 )
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
@@ -98,7 +100,9 @@ class CheckpointRow(Base):
     media_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     checkpoint_key: Mapped[str] = mapped_column(String(160), primary_key=True)
     stage: Mapped[str] = mapped_column(String(64), nullable=False, default="")
-    payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[str | None] = mapped_column(
+        Text().with_variant(LONGTEXT(), "mysql"), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, default=lambda: _db_now(), onupdate=lambda: _db_now()
     )
@@ -258,9 +262,22 @@ def create_sqlalchemy_engine(
 
 
 def create_schema(engine: Engine) -> None:
-    """Create the existing R2 tables and additive P4 replay history table."""
+    """Create tables and widen legacy MySQL checkpoints for source-rich chunks."""
 
     Base.metadata.create_all(engine)
+    if engine.dialect.name != "mysql":
+        return
+    with engine.begin() as connection:
+        columns = inspect(connection).get_columns("agent_checkpoints")
+        payload = next(column for column in columns if column["name"] == "payload")
+        # MySQL reflection appends collation to str(type), so use its dialect class.
+        column_type = type(payload["type"]).__name__.upper()
+        if column_type == "TEXT":
+            connection.exec_driver_sql(
+                "ALTER TABLE agent_checkpoints MODIFY COLUMN payload LONGTEXT NULL"
+            )
+        elif column_type not in {"MEDIUMTEXT", "LONGTEXT"}:
+            raise R2DatabaseError("MySQL checkpoint payload column has an unsupported type")
 
 
 def _db_now() -> datetime:
