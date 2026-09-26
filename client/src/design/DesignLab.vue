@@ -38,15 +38,14 @@
             <em>Academy</em>
           </h1>
           <p class="lab-intro__desc">
-            A quiet, precise visual language for video research. Built for
-            evidence, media, and the moments between frames.
+            面向视频研究的安静而精确的视觉语言。让媒体、证据与每一帧之间的关系更清晰。
           </p>
           <div class="lab-intro__links">
             <a
               href="#workstation"
               class="academy-button academy-button--primary"
             >
-              EXPLORE WORKSTATION
+              查看工作台
               <span aria-hidden="true">↓</span>
             </a>
             <a href="#foundation" class="lab-text-link">VIEW FOUNDATIONS ↗</a>
@@ -91,7 +90,7 @@
         <div class="lab-section__heading">
           <div>
             <p class="lab-eyebrow">01 / APPLICATION COMPOSITION</p>
-            <h2 id="workstation-title">The workstation</h2>
+            <h2 id="workstation-title">视频研究工作台</h2>
           </div>
           <span class="lab-section__aside">
             DESIGN PROTOTYPE · NO LIVE MEDIA
@@ -164,7 +163,7 @@
               <div class="media-heading">
                 <div>
                   <p class="lab-eyebrow">MEDIA VIEWER // 01</p>
-                  <h3>Campus observatory / evening study</h3>
+                  <h3>校园天文台 / 夜间学习记录</h3>
                 </div>
                 <span class="academy-badge academy-badge--cyan">
                   SOURCE VIDEO
@@ -211,16 +210,13 @@
               <div class="workstation__agent-head">
                 <div>
                   <p class="lab-eyebrow">AI ASSISTANT // ACTIVE</p>
-                  <h3>Research notes</h3>
+                  <h3>研究记录</h3>
                 </div>
                 <AcademyMark class="agent-sigil" />
               </div>
               <div class="workstation__agent-body">
                 <AgentMessage sender="user" time="21:48">
-                  <p>
-                    Which moments mention the observatory, and what appears on
-                    screen?
-                  </p>
+                  <p>视频中什么时候提到天文台？画面里出现了什么？</p>
                 </AgentMessage>
                 <div class="agent-step">
                   <span class="pixel-cluster" aria-hidden="true"></span>
@@ -229,12 +225,11 @@
                 </div>
                 <AgentMessage sender="agent" time="21:49">
                   <p>
-                    The observatory is mentioned at
+                    天文台在
                     <strong>13:42</strong>
-                    . The camera shows the north walkway and the illuminated
-                    tower. A second reference appears near
+                    被提及。画面显示北侧步道和亮起的塔楼。另一处线索出现在
                     <strong>18:06</strong>
-                    .
+                    附近。
                   </p>
                 </AgentMessage>
                 <EvidenceCard
@@ -242,7 +237,7 @@
                   source="ASR + OCR"
                   time="00:13:42"
                   frame="02381"
-                  excerpt="…the observatory corridor opens just beyond the north walkway."
+                  excerpt="……天文台走廊就在北侧步道尽头。"
                   @open="activeSegment = 13"
                 />
               </div>
@@ -305,7 +300,7 @@
             <AcademyPanel label="TYPE / THREE ROLES" index="02">
               <div class="type-sample type-sample--body">
                 <span>INTERFACE / BODY</span>
-                <strong>Evidence begins with a readable sentence.</strong>
+                <strong>清晰的文字，是可信证据的起点。</strong>
                 <small>Space Grotesk · Noto Sans SC · system sans</small>
               </div>
               <div class="type-sample type-sample--mono">
@@ -370,20 +365,20 @@
                   variant="primary"
                   @click="notice = 'Prototype action acknowledged'"
                 >
-                  RUN ANALYSIS
+                  开始分析
                   <span aria-hidden="true">↗</span>
                 </AcademyButton>
                 <AcademyButton
                   @click="notice = 'Draft saved in this design preview'"
                 >
-                  SAVE DRAFT
+                  保存草稿
                 </AcademyButton>
-                <AcademyButton variant="ghost">TERTIARY</AcademyButton>
+                <AcademyButton variant="ghost">更多操作</AcademyButton>
                 <AcademyButton
                   variant="danger"
                   @click="notice = 'Danger action preview only'"
                 >
-                  REMOVE
+                  删除
                 </AcademyButton>
                 <AcademyButton
                   aria-label="Open component note"
@@ -392,7 +387,7 @@
                 >
                   ✧
                 </AcademyButton>
-                <AcademyButton disabled>DISABLED</AcademyButton>
+                <AcademyButton disabled>暂不可用</AcademyButton>
               </div>
             </div>
             <div class="control-group">
@@ -490,10 +485,10 @@
           </AcademyPanel>
           <AcademyPanel label="SYSTEM FEEDBACK" index="05">
             <div class="status-grid">
-              <AcademyStatus label="AI" value="READY" state="success" />
-              <AcademyStatus label="ASR" value="ACTIVE" state="active" />
-              <AcademyStatus label="OCR" value="IDLE" />
-              <AcademyStatus label="INDEX" value="WARNING" state="warning" />
+              <AcademyStatus label="AI" value="就绪" state="success" />
+              <AcademyStatus label="ASR" value="处理中" state="active" />
+              <AcademyStatus label="OCR" value="待命" />
+              <AcademyStatus label="索引" value="需关注" state="warning" />
             </div>
             <AcademyProgress
               label="ANALYSING MEDIA"

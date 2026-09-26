@@ -25,7 +25,9 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-12: 48px;
-  --font-body: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  --font-body:
+    'Noto Sans SC', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC',
+    system-ui, sans-serif;
   --font-system: Consolas, 'Cascadia Code', 'SFMono-Regular', monospace;
   min-height: 100vh;
   overflow: clip;
