@@ -6,6 +6,7 @@ import json
 import pytest
 
 from dovideo.application.evaluation_contracts import (
+    CostMeasurement,
     DataClassification,
     EvaluationCase,
     EvaluationDataset,
@@ -517,6 +518,11 @@ def test_failed_execution_keeps_provider_reported_usage(tmp_path) -> None:
                         inputTokens=100, outputTokens=20, totalTokens=120,
                         providerReported=True, measurementState=MeasurementState.MEASURED,
                     ),
+                    cost=CostMeasurement(
+                        providerReportedCost=0.003,
+                        currency="USD",
+                        measurementState=MeasurementState.MEASURED,
+                    ),
                 ),
             )
 
@@ -526,3 +532,4 @@ def test_failed_execution_keeps_provider_reported_usage(tmp_path) -> None:
     assert result.failure_category is EvaluationFailureCategory.BUDGET_EXCEEDED
     assert result.token_usage.total_tokens == 120
     assert result.token_usage.measurement_state is MeasurementState.MEASURED
+    assert result.cost.provider_reported_cost == 0.003

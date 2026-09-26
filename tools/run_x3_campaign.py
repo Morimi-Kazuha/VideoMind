@@ -115,6 +115,23 @@ def _usage(records: list[dict]) -> TokenUsageMeasurement:
     )
 
 
+def _reported_cost(records: list[dict]) -> CostMeasurement:
+    """Preserve complete provider billing on successful and failed executions."""
+
+    values = [row.get("providerReportedCost") for row in records]
+    if not values or any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        for value in values
+    ):
+        return CostMeasurement()
+    return CostMeasurement(
+        providerReportedCost=sum(float(value) for value in values),
+        currency="USD",
+        measurementState=MeasurementState.MEASURED,
+    )
+
+
 class IsolatedR4Adapter:
     """Construct one fresh production AgentLoop per case/trial execution."""
 
@@ -179,21 +196,12 @@ class IsolatedR4Adapter:
                     resolvedModelId=provider.resolved_model_ids[resolved_lane],
                     measurementState=MeasurementState.MEASURED,
                 )
-                cost_values = [row["providerReportedCost"] for row in records]
-                measured_cost = (
-                    sum(float(value) for value in cost_values)
-                    if cost_values and all(value is not None for value in cost_values)
-                    else None
-                )
-                cost = (
-                    CostMeasurement(providerReportedCost=measured_cost, currency="USD",
-                                    measurementState=MeasurementState.MEASURED)
-                    if measured_cost is not None else CostMeasurement()
-                )
+                cost = _reported_cost(records)
                 metadata = {
                     "traceId": trace_id, "strategy": strategy.value,
                     "trialIndex": trial_index, "route": route.model_dump(mode="json", by_alias=True),
-                    "providerUsage": records, "providerCostComplete": measured_cost is not None,
+                    "providerUsage": records,
+                    "providerCostComplete": cost.measurement_state is MeasurementState.MEASURED,
                 }
                 (execution_dir / "measurement.json").write_text(
                     json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8"
@@ -238,6 +246,7 @@ class IsolatedR4Adapter:
                 error,
                 EvaluationExecutionObservation(
                     token_usage=_usage(records), route_decision=failure_route,
+                    cost=_reported_cost(records),
                     resolved_model=(None if failure_lane is None else self.settings.model_for(failure_lane)),
                 ),
             ) from error

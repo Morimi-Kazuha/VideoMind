@@ -4,7 +4,7 @@ import sys
 from dovideo.application.evaluation_contracts import MeasurementState
 
 sys.path.insert(0, str(Path(__file__).parents[2] / "tools"))
-from run_x3_campaign import _usage
+from run_x3_campaign import _reported_cost, _usage
 
 
 def test_campaign_usage_reports_exact_stages_and_partial_fields() -> None:
@@ -30,3 +30,14 @@ def test_campaign_usage_never_truncates_fractional_provider_tokens() -> None:
     assert usage.input_tokens is None
     assert usage.total_tokens is None
     assert usage.planner.output_tokens == 2
+
+
+def test_campaign_cost_preserves_complete_failure_usage_without_estimating_partial_billing() -> None:
+    rows = [
+        {"providerReportedCost": 0.001},
+        {"providerReportedCost": 0.002},
+    ]
+    complete = _reported_cost(rows)
+    assert complete.measurement_state is MeasurementState.MEASURED
+    assert complete.provider_reported_cost == 0.003
+    assert _reported_cost(rows + [{"providerReportedCost": None}]).measurement_state is MeasurementState.NOT_MEASURED
