@@ -45,8 +45,11 @@ The fresh C2 artifact is
 `work/x3-campaigns/c2-v2-or-nextbit-d0c8480-01/`. It contains one
 `long-general-001` result for each of the five strategies. All five runs
 completed structurally, and the diagnostic oracle recorded
-`NO_PASSING_LANE`. C2 is a connectivity and orchestration check, not a
-quality estimate.
+`NO_PASSING_LANE`. FAST, DEEP, RULE_ROUTER, and JEV_ROUTER recorded budget
+failures; BALANCED recorded a schema failure. Provider-reported cost was
+available on all five C2 cases and totaled USD 0.074354358. That amount is
+separate from the full campaign and the non-golden transport smokes. C2 is a
+connectivity and orchestration check, not a quality estimate.
 
 The full campaign is
 `work/x3-campaigns/x3c-v2-or-nextbit-d0c8480-full-01/`. Five independent
