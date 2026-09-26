@@ -24,7 +24,17 @@ htmlcov/
 .env.*
 !.env.example
 work/
+runtime/
+tmp/
+*.sqlite3
+*.db
 **/node_modules/
+client/dist/
+client/.vite/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
 
 # Generated media, model weights, and provisioned binaries are not source
 # files. Keep them locally for evidence runs, but do not commit them.

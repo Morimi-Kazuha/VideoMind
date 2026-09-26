@@ -1,240 +1,183 @@
-# DOVideo Python
+# DOVideo
 
-DOVideo Python is the Python-native reconstruction of the public
-DOVideo-AI project. It turns video into timestamped ASR/OCR observations,
-immutable temporal VideoContext windows, five-minute chunks, hybrid evidence
-retrieval, and a bounded Planner–Executor–Critic AgentLoop. The final result
-is accepted only when the Evidence Guard binds claims to source text and a
-covered time range.
+DOVideo is a Python-native long-video understanding system. It extracts timed
+speech and frame text, retrieves relevant video evidence, and runs a bounded
+Video Agent that returns structured answers with source ranges. This repository
+adapts the public [DOVideo-AI](https://github.com/Xiaoc7r/DOVideo-AI)
+project into a FastAPI, Celery, and Vue application.
 
-## Scope status
+## Why DOVideo
 
-R0 — Scope Realignment & Architecture Consolidation is accepted and frozen.
-R1 — FastAPI + Vue + SSE Product Parity is implemented with a bounded local
-development composition. The final product direction is:
+A long video rarely fits a useful single-context prompt. Relevant facts may
+appear minutes apart in speech or on-screen text. DOVideo preserves those
+sources and their timestamps through retrieval and answer generation so that
+an Agent response can be checked against the video rather than accepted on
+model confidence alone.
 
-R2 — SQLAlchemy/MySQL/Redis/MinIO/Qdrant is implemented and live-verified.
-Docker Desktop, its WSL data root, service persistence, and generated local
-development credentials remain on D:. See LUNA_REPORT.md and HANDOFF.md for
-the evidence and current boundary.
+## Architecture
 
-~~~text
-Vue 3 + Vite → FastAPI → Celery + RabbitMQ → existing application/task
-semantics → MySQL + Redis + MinIO + Qdrant → FastAPI SSE → Vue
-~~~
+```mermaid
+flowchart LR
+    Video --> Extract[FFmpeg + ASR / OCR]
+    Extract --> Context[Temporal VideoContext]
+    Context --> Chunks[Long-context chunks]
+    Chunks --> Retrieval[Hybrid retrieval]
+    Retrieval --> Agent[Bounded AgentLoop]
+    Agent --> Planner --> Executor --> Critic --> Guard[Evidence Guard]
+    Guard --> Result[Structured result + timestamps]
+```
 
-R1–R4 implement original product parity. X1–X3 are the only approved Python
-enhancements. React, Next.js, another frontend, Event Sourcing, unrestricted
-ReAct, a second queue/database/vector store/object store, and generic
-observability platforms are outside scope. See docs/SCOPE_LOCK.md and
-docs/PARITY_MATRIX.md.
+Vue 3 and Vite provide the client; FastAPI exposes REST and SSE. Celery and
+RabbitMQ move long-running work off the request path. MySQL stores durable
+application state, Redis supports operational state and limits, MinIO stores
+media, and Qdrant indexes vectors. The CLI and local adapters provide smaller
+developer paths through the same application logic. See
+[architecture](docs/ARCHITECTURE.md) for the request lifecycle and authority
+boundaries.
 
-The Vue client and FastAPI app are the canonical R1 product path. The CLI
-remains a developer/debug path. The standard-library Web Demo is retained as
-DEPRECATED/TEMPORARY_DEMO only; no React path is supported.
+## Core engineering
 
-R2 production profile
+- **Multimodal context.** FFmpeg supplies audio segments and keyframes;
+  Whisper ASR and Tesseract OCR become timestamped source observations.
+  `VideoContextBuilder` combines them into temporal windows.
+- **Long-video retrieval.** Five-minute chunks carry summaries and source
+  ranges. Hybrid semantic and lexical retrieval proposes evidence while
+  preserving the original timed spans.
+- **Bounded AgentLoop.** Planner creates verifiable tasks, Executor produces a
+  structured draft, and Critic checks the draft within explicit round and
+  token budgets. Evidence Guard checks final claims against source text and
+  covered time ranges.
+- **Controlled tools.** A model can request only the registered, same-video,
+  read-only evidence tools. `AgentLoop` and `ToolPolicy` authorize and execute
+  each request; a model response never grants itself tool authority.
+- **Operational controls.** Task idempotency, bounded retries, checkpoints,
+  failed-task handling, and AI interaction rate limits constrain long and
+  costly work.
 
-Set `DOVIDEO_PROFILE=production` and provide the local R2 environment values
-from `.env.r2.local` (the file is ignored and contains no user API keys).
-Start the four local infrastructure services with `docker-compose.r2.yml`,
-then run the FastAPI app using the same environment. The production profile
-uses SQLAlchemy/MySQL for durable records, Redis for hot state and locks,
-MinIO for media/chunks, and Qdrant for vectors. It fails fast when required
-production settings are absent; it does not silently fall back to local
-storage.
+## Provenance and replay
+
+A durable execution record is the historical source of truth. A checkpoint
+supports crash recovery; Redis is an operational projection. Historical
+replay reads the durable record without calling a model, retrieval service,
+tool, or Jev again.
+
+During evaluation, temporary OCR file paths were found in a source-identity
+calculation. Moving the same media between workspaces could change provenance
+IDs. Stable frame identities fixed that defect; a later Whisper span change
+improved timed evidence granularity. Dataset v1 remains historical, and
+`golden-dataset-v2` binds its annotations to the corrected source revision.
+See [OCR provenance](docs/PROVENANCE_V2.md) and
+[ASR granularity](docs/ASR_GRANULARITY_V3.md).
+
+## Adaptive routing and evaluation
+
+The formal X3 experiment used three heterogeneous execution lanes:
+
+| Lane | Frozen model behavior |
+| --- | --- |
+| FAST | DeepSeek V4.1 Flash, reasoning `none` |
+| BALANCED | DeepSeek V4.1 Flash, reasoning omitted/provider default |
+| DEEP | DeepSeek V4 Pro, reasoning `max`, 65,536 max tokens |
+
+Model execution used OpenRouter with a fixed `nextbit/fp8` provider pin and
+fallback disabled. Jev (`typesafe/jev-1.13`) advised routing through a
+separate OpenRouter path; DOVideo's deterministic policy retained final
+authority. The frozen configuration is identified by commit `d0c8480` and
+the `golden-dataset-v2` logical digest
+`7f374396c5eb002ba158717afaffa8a65f5ee64ed79663f1f6b6047960dae8e4`.
+
+The full X3-C campaign persisted **80/80** planned case-strategy results.
+**Zero** passed its preregistered quality gate. Both adaptive router arms
+ultimately chose BALANCED for all 16 cases, so this benchmark did **not**
+establish an advantage for adaptive routing. It is a bounded negative result.
+Provider-reported cost totaled **USD 1.170390452 for 73/80 cases with complete
+case telemetry**; that is a partial subtotal, not the full campaign charge.
+The [final X3 report](docs/X3_OPENROUTER_X3_E_REPORT.md) gives the outcomes,
+failure categories, measurement limits, and separate derived ablations.
+
+### What the evaluation taught us
+
+Working routing code is distinct from evidence of better outcomes. Freezing
+the gate and router before model results prevented threshold changes made to
+improve a score. Provider and regional availability affected the experiment
+design, and provenance correctness had to be established before evidence
+metrics were trustworthy. Negative results and earlier interrupted campaigns
+were preserved rather than merged into the final comparison.
 
 ## Quick start
 
-Use Python 3.12 or newer and install the package from the repository root:
+Use Python 3.12 or newer. From the repository root:
 
-~~~bash
+```bash
+python -m venv .venv
+# Activate .venv for your shell; on Windows PowerShell: .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[test]"
-~~~
-
-The developer/debug command is:
-
-~~~bash
-python -m dovideo analyze VIDEO_PATH --goal "What is the main argument?"
-~~~
-
-It prints progress to stderr and a provider-neutral Markdown result to stdout.
-Use --output result.md to save the result. Local TF-IDF vectors are the
-offline default; --embedding-mode remote opts into the existing
-OpenAI-compatible semantic adapter.
-
-The command requires a configured OpenAI-compatible structured-model endpoint
-for Planner, Executor, and Critic. Load credentials into the process
-environment only; the CLI never prints or writes them. The local Whisper
-runtime is intentionally kept outside the base package because it carries
-Torch.
-
-For the provisioned Windows runtime:
-
-~~~powershell
-$env:PYTHONPATH = "src;tools/asr/python-packages"
-& D:\python\python.exe -m dovideo analyze .\work\media\representative-long.mp4 --goal "What does the later poem say about the sea, pool, and tide?" --embedding-mode local
-~~~
-
-## Legacy Web Demo
-
-The old Web Demo is retained temporarily as a local presentation aid. Start
-it with:
-
-~~~powershell
-$env:PYTHONPATH = "src;tools/asr/python-packages"
-& D:\python\python.exe -m dovideo web
-~~~
-
-Open http://127.0.0.1:8765. It demonstrates safe local upload, progress
-polling, guarded result rendering, native playback, and timestamp seeking.
-It uses the same VideoAnalysisApplication as the CLI, has no browser-side
-provider calls, and exposes no API credentials.
-
-This server is explicitly TEMPORARY_DEMO: process-local jobs and uploads,
-standard-library HTTP, no authentication, no durable task history, and no
-distributed worker. It must not be presented as a production SaaS path. It
-can be removed after the Vue/FastAPI path is validated in R1.
-
-## R1 FastAPI + Vue path
-
-Start the bounded local API from the environment where the Quick start
-dependencies were installed:
-
-~~~powershell
+python -m pytest -q
 python -m dovideo api
-~~~
+```
 
-The R1 API preserves the original `/user`, `/media`, and `/analysis` route
-names, the `{code,message,data}` envelope, Bearer authentication, the 5 MiB
-resumable-upload protocol, and FastAPI `text/event-stream` frames. Its local
-filesystem/in-memory stores are explicitly DEV/TEST ONLY; SQLAlchemy/MySQL,
-Redis, MinIO, and Qdrant production composition remain R2 work.
+The API defaults to `127.0.0.1:8000`; `--host` and `--port` are available.
+The Vue client starts separately:
 
-The canonical Vue client is in `client/`:
-
-~~~powershell
+```bash
 cd client
 npm ci
 npm run dev
-~~~
+```
 
-## Reliable Video Task Chain
+For a real video analysis, install FFmpeg/ffprobe, Tesseract, and a supported
+Whisper runtime, then configure a structured chat provider in the process
+environment. The sanitized [.env.example](.env.example) lists local service
+and provider variable names. The CLI developer path is:
 
-The original product separates large uploads and expensive analysis from the
-request thread. The final Python path will use FastAPI submission, original
-idempotency/task semantics, Celery + RabbitMQ execution, and MySQL/Redis
-state. The current application already provides transport-neutral dispatch,
-task lifecycle, retry classification, checkpoint recovery, and durable
-dead-letter handoff semantics for those future adapters.
+```bash
+python -m dovideo analyze /path/to/video.mp4 --goal "Summarize the evidence"
+```
 
-## Temporal Multimodal VideoContext
+The optional service composition uses MySQL, Redis, MinIO, Qdrant, and
+RabbitMQ. Copy `.env.example` to an ignored `.env.r2.local`, replace every
+placeholder, and choose a writable `DOVIDEO_R2_DATA_ROOT` before running:
 
-FFmpeg creates the existing audio and frame observations. ASR and OCR run
-through separate Python adapters, then VideoContextBuilder merges text,
-frames, and timestamps into stable temporal windows. A failed branch can
-degrade without discarding a healthy branch, while both-branch failure is
-preserved as an error.
+```bash
+docker compose --env-file .env.r2.local -f docker-compose.r2.yml up -d
+```
 
-## Evidence-Constrained AgentLoop
+Compose's `--env-file` configures the containers; load the needed variables
+into the backend process separately. Set `DOVIDEO_PROFILE=production` only
+when using the R2 production composition. The historical X3 campaign is not
+a quick-start task and requires prepared media and external services.
 
-The single explicit AgentLoop resolves a bounded plan, repairs invalid plans,
-runs Executor rounds, invokes Critic, and performs targeted retrieval when
-Critic feedback identifies an evidence gap. EvidenceVerificationService is
-the authoritative gate: prompt instructions and retrieval scores alone never
-make a claim valid.
+## Testing and project status
 
-## Long-Video Retrieval & Recovery
+The final local verification passed **839 Python tests**, the client tests,
+client build, Python compilation, and public import checks. The Python suite
+uses fakes for external model and infrastructure calls; live-provider checks
+are separate. Run the client checks with `npm test` and `npm run build` from
+`client/`.
 
-VideoChunkingService uses five-minute temporal buckets. Hybrid retrieval
-combines semantic, keyword, and visual signals, and LongVideoContextService
-applies the bounded context budget. Checkpoint and worker recovery preserve
-the accepted plan/Critic/result semantics. Qdrant, MySQL, Redis, and MinIO
-are the future production composition; their current adapters are not
-silently promoted by the local CLI.
+The engineering implementation and formal X3 evaluation are complete. The
+repository documents a local/developer system and bounded live validation;
+it is not presented as a deployed production SaaS. The dataset covers one
+media source and 16 cases, costs are partly observed, and external provider
+behavior can change.
 
-## Python-native Enhancements
+## Repository layout
 
-The original parity baseline already includes timestamp/source/claim evidence
-grounding. The original Java project also exposes Agent Evaluation and
-AgentTelemetry/Trace surfaces; those baselines belong to R1–R4 and are not
-Python-only inventions.
+```text
+src/dovideo/       domain, application, infrastructure, API, and CLI
+client/            Vue 3/Vite frontend
+tests/             offline Python tests
+datasets/x3/       versioned evaluation annotations
+configs/x3c/       frozen routing and gate configurations
+docs/              architecture, provenance, and evaluation evidence
+tools/             explicit developer and evaluation utilities
+```
 
-Only these four delta families are approved:
+The main stack is Python 3.12+, FastAPI, Pydantic, SQLAlchemy, Celery,
+RabbitMQ, MySQL, Redis, MinIO, Qdrant, Vue 3, FFmpeg, Whisper, and Tesseract.
 
-- Deep Evidence Provenance: result → evidence → ASR/OCR → VideoContext →
-  timestamp/window → original video.
-- Restricted Tool Calling: search_video, get_segment, get_transcript, and
-  find_visual_evidence through a validated allow-list.
-- Structured Execution Trace / Replay: one structured extension of the
-  original AgentTelemetry trace_id for a single Agent execution chain.
-- Advanced Evaluation / Ablation: extend the original evaluation metrics with
-  Recall@K, Evidence Hit Rate, Groundedness, Critic Pass Rate,
-  round/token/cost/latency, and bounded ablations.
+## License
 
-The current repository has partial provenance fields, telemetry hooks, and
-Evidence Guard facts, but no complete original evaluation/trace product
-surfaces and no full X1–X3 implementation. Existing baseline telemetry,
-tests, and checkpoint recovery semantics are not relabeled as the enhanced
-Trace or Evaluation families.
-
-## Provider and fallback roles
-
-| Component | Current role |
-| --- | --- |
-| OpenAI-compatible BGE-M3 adapter | production semantic embedding path |
-| Qdrant adapter | future production vector path; offline-tested |
-| SQLite and in-memory stores | test/local fallbacks |
-| Local TF-IDF | offline/test/fallback embedding |
-| DB-API MySQL and Redis adapters | production-boundary adapters; R2 wiring remains |
-| CLI | developer/debug utility |
-| standard-library Web Demo | legacy temporary demo |
-
-Remote embedding sends POST to the configured base URL plus /embeddings with
-the configured model and input, and decodes data[0].embedding. The prior
-representative live run used BGE-M3 through an OpenAI-compatible endpoint;
-credentials were process-only and are not part of the repository.
-
-## Verified reconstruction baseline
-
-The previously accepted real-media E2E work, completed before R0-FIX, used the
-prepared 346.191474-second representative media with real FFmpeg and local
-tiny.en Whisper. It produced 65 ASR spans, six VideoContext windows, two five-minute chunks, multiple
-retrieval candidates, and selected the later 300000–360000 ms After Love
-region without hardcoded transcript or retrieval. The existing AgentLoop ran
-real Planner, Executor, and Critic roles and Evidence Guard passed.
-
-The latest known Python regression is 383 passed / 0 failed / 0 skipped.
-R0 does not rerun expensive Whisper or LLM inference.
-
-## Runtime requirements
-
-- FFmpeg and ffprobe for media probing, audio segmentation, and keyframes.
-- Local OpenAI Whisper with its Torch runtime for the local ASR path.
-- Tesseract for OCR.
-- An OpenAI-compatible structured-model endpoint for a real AgentLoop run.
-- A remote embedding credential only when remote BGE-M3 mode is selected.
-
-eSpeak/eSpeak NG is not required and is not part of the formal ASR path.
-The repository does not reinstall or repair it.
-
-## Checks
-
-~~~bash
-python -m pytest
-python -m compileall -q src tests
-~~~
-
-The automated suite is offline and uses injected process/HTTP/provider fakes.
-Live media/provider checks are explicit operator-run validation, not pytest
-requirements.
-
-## Documentation
-
-- docs/SCOPE_LOCK.md — locked purpose, scope, mapping, and canonical roles.
-- docs/PARITY_MATRIX.md — original capability audit and current statuses.
-- docs/ARCHITECTURE.md — current core and final production direction.
-- docs/REFACTOR_PLAN.md — the only R0–R4/X1–X3 roadmap.
-- docs/INTERVIEW_SCOPE.md — bounded study boundary.
-- docs/MIGRATION_MATRIX.md — detailed historical Java-to-Python contracts.
-- LUNA_REPORT.md — current R2 execution report and Web Sol handoff.
+MIT. The adapted frontend retains the
+[upstream copyright and license notice](client/NOTICE.md) and the root
+[LICENSE](LICENSE).

@@ -1,141 +1,78 @@
-# DOVideo Python architecture
+# DOVideo architecture and authority boundaries
 
-R0 fixes the architecture story without changing the accepted Python core.
-The target is an original-parity product backend, not a second demo platform.
+This document follows one analysis from upload to replay. The same
+application/domain behavior is composed behind FastAPI, a Celery worker, and
+the smaller CLI path. Adapters provide I/O; they do not define separate Agent
+or evidence policy.
 
-R2 SQLAlchemy/MySQL/Redis/MinIO/Qdrant composition is implemented and live
-verified with Docker Desktop and its Docker/WSL data on D:. R0/R1 remain
-accepted and frozen. The bounded evidence is recorded in `LUNA_REPORT.md` and
-`HANDOFF.md`.
+## Request and preparation lifecycle
 
-## Canonical production direction
+1. The Vue client uploads media in bounded chunks and submits an analysis
+   goal. FastAPI returns a task identity rather than holding the request open
+   for extraction and model work. REST and SSE expose status and results.
+2. Task lifecycle and idempotency checks limit duplicate work. Celery and
+   RabbitMQ deliver long-running jobs. MySQL holds durable media, task,
+   checkpoint, and execution records; Redis is used for hot state, locks,
+   projections, and rate limits. MinIO holds media objects.
+3. FFmpeg segments audio and extracts keyframes. Whisper ASR and Tesseract
+   OCR produce observations with source times. `VideoContextBuilder` merges
+   them into ordered temporal windows, preserving modality and origin.
+4. Long-video preparation groups windows into five-minute chunks while
+   retaining source spans. Embeddings and keywords support hybrid retrieval;
+   Qdrant indexes vectors. Retrieval returns candidate evidence, not an
+   authoritative answer.
+5. `AgentLoop` resolves the model lane once, builds a bounded plan, executes
+   structured rounds, invokes Critic, and can retrieve targeted evidence
+   when feedback identifies a gap. `EvidenceVerificationService` checks final
+   claim text, source identity, and timestamp coverage before a structured
+   result is accepted.
 
-The final product path is:
+The CLI can use local TF-IDF and process-local stores for development and
+offline tests. That choice is explicit; it does not silently replace the
+production SQL/Redis/MinIO/Qdrant composition. The standard-library web
+demo is a legacy local presentation adapter; Vue/FastAPI is the product path.
 
-~~~text
-Vue 3 + Vite
-        │ REST + SSE
-        ▼
-FastAPI + Pydantic
-        │
-        ├── API/read path
-        └── Celery + RabbitMQ
-                │
-                ▼
-        Existing TaskWorker/lifecycle semantics
-                │
-                ▼
-        FFmpeg → ASR/OCR → VideoContext
-                │
-                ▼
-        five-minute chunks → hybrid retrieval → Qdrant
-                │
-                ▼
-        explicit Agent Runtime
-        Planner → Executor → Critic → Evidence Guard
-                │
-                ├── MySQL durable truth
-                ├── Redis hot state/lock/idempotency
-                ├── MinIO media/evidence objects
-                └── original AgentTelemetry/AgentEvaluation baselines
-                    └── X2/X3 structured extensions
-~~~
+## Why the boundaries matter
 
-R1–R4 implement the Category A path in bounded steps, including the original
-timestamp-evidence behavior and Agent Evaluation/AgentTelemetry trace
-surfaces. X1–X3 implement only the four approved Python deltas.
+| Boundary | Owner and reason |
+| --- | --- |
+| Model output → plan | Plan validation enforces task shape and budgets; natural-language instructions alone do not authorize execution. |
+| Retrieval → answer | Retrieval ranks likely source material. Evidence Guard independently validates the answer's cited source text and covered time range. |
+| Model output → tools | `AgentLoop` and `ToolPolicy` authorize registered, same-video, read-only evidence tools. Requests have stable IDs, bounds, and recovery records; the model has no arbitrary computer-control authority. |
+| Jev advice → execution lane | Jev can suggest FAST, BALANCED, or DEEP. DOVideo's deterministic threshold and fallback policy records the final lane and model once per Agent execution. |
+| Durable record → replay | The durable execution record is historical truth. A checkpoint is recovery state and Redis is an operational projection. Replay reads the record without provider, retrieval, tool, or Jev calls. |
+| Provider → application | OpenAI-compatible chat and embedding adapters translate requests and telemetry. The application consumes typed decisions and usage without granting providers policy authority. |
 
-## Current accepted Python core
+## Provenance from video to claim
 
-The application and domain layers remain provider-neutral. The accepted flow
-is:
+The prepared source revision hashes normalized observations and a versioned
+extraction contract, not a temporary input path. Segment and source-item IDs
+derive from that revision. Final evidence keeps the source item, temporal
+range, and original media identity needed to inspect the cited video range.
 
-~~~text
-media observations
-  → VideoContextBuilder
-  → VideoChunkingService
-  → VideoEvidenceRetrievalService
-  → LongVideoContextService
-  → AgentLoopService
-  → EvidenceVerificationService
-~~~
+Evaluation exposed a concrete bug: an OCR frame reference included an
+ephemeral extraction path. The same video prepared in two workspaces could
+then produce different provenance IDs. `x2-a-v2` replaced that path with a
+stable frame identity; `x2-a-v3` retained finer Whisper segment spans rather
+than only coarse audio-file intervals. Historical records and
+`golden-dataset-v1` were left untouched. `golden-dataset-v2` uses the newer
+source revision and documents its evidence rebinding.
 
-The core already contains timestamped ASR/OCR context construction,
-five-minute chunking, lexical/cosine hybrid retrieval, context budgeting,
-Planner–Executor–Critic orchestration, evidence-bound validation, checkpoint
-recovery, task lifecycle, retry classification, and durable dead-letter
-handoff semantics. These are preserved as the single application behavior.
+See [OCR provenance](PROVENANCE_V2.md), [ASR granularity](ASR_GRANULARITY_V3.md),
+and the [dataset rebase record](../datasets/x3/DATASET_V2_REBASE.md).
 
-The original Java baseline also defines timestamp evidence grounding,
-AgentEvaluationService metrics, and AgentTelemetry/agent-trace behavior. The
-Python reconstruction must add those original product surfaces in the
-Category A roadmap; X2 and X3 extend them rather than creating parallel
-subsystems.
+## Routing and measured limits
 
-The real local representative validation previously proved the existing
-FFmpeg → local tiny.en Whisper → VideoContext → multi-window chunking →
-retrieval → real Planner/Executor/Critic → Evidence Guard path. R0 does not
-rerun expensive media or model inference.
+The X3 benchmark froze a heterogeneous three-lane policy: FAST and BALANCED
+used DeepSeek Flash with different reasoning settings; DEEP used DeepSeek
+Pro. Model execution used OpenRouter with one pinned serving provider and no
+fallback. Jev was a separate advisory call, and the DOVideo route record
+remained the final authority.
 
-## Current developer composition
-
-The existing composition root is a local developer/debug path:
-
-~~~text
-python -m dovideo analyze
-        │
-        ▼
-VideoAnalysisApplication
-        │
-        ├── local FFmpeg/Whisper/Tesseract
-        ├── Local TF-IDF or OpenAI-compatible BGE-M3
-        ├── process-local vector index
-        └── existing application AgentLoop
-~~~
-
-The OpenAI-compatible BGE-M3 adapter is the canonical semantic embedding
-seam. The local TF-IDF adapter and process-local vector index are explicitly
-fallback/test/local roles. R2 composes SQLAlchemy 2.x/MySQL, Redis, MinIO,
-and Qdrant behind the existing ports; DB-API adapters remain internal
-compatibility seams, not a second production composition.
-
-## Presentation boundaries
-
-The CLI remains a developer/debug utility. The standard-library Web Demo
-under src/dovideo/web.py is a legacy temporary presentation used to prove
-upload, progress, result rendering, and timestamp seeking. It delegates to
-the same application composition root, owns no second AgentLoop or retrieval
-algorithm, and is not the final product frontend.
-
-The final product frontend is Vue 3 + Vite. No React or Next.js path is
-supported, and no React files or dependencies were found during the R0 audit.
-The legacy Web Demo can be removed after the Vue/FastAPI path is validated in
-R1.
-
-## Persistence and transport roles
-
-| Responsibility | Current local/test role | Final production role |
-| --- | --- | --- |
-| durable checkpoint/media records | SQLite, in-memory, DB-API seams | SQLAlchemy 2.x + MySQL |
-| hot checkpoint/task state | in-memory and Redis-compatible adapter | Redis |
-| media/evidence objects | local/in-memory stores | MinIO |
-| vector index | process-local index | Qdrant |
-| task transport | provider-neutral dispatch/worker ports | Celery + RabbitMQ |
-| progress delivery | task events/status projection and Web polling | FastAPI SSE |
-
-There is one production implementation per responsibility. Local adapters are
-not a competing production path.
-
-## Approved enhancement boundaries
-
-The original timestamp-evidence, evaluation, and telemetry/trace behavior is
-parity scope. The only future Python extensions are:
-
-- Restricted Tool Calling for four allow-listed video tools;
-- Deep Evidence Provenance from result to source and original video;
-- Structured Execution Trace / Replay extending one AgentTelemetry trace;
-- Advanced Evaluation / Ablation extending one AgentEvaluation metric path.
-
-No Event Sourcing, unrestricted ReAct, arbitrary Agent framework, second
-message queue, second frontend, duplicate trace system, duplicate evaluation
-system, or generic observability platform belongs here.
+The completed 80-result campaign did not establish a routing benefit. All
+16 fixed-lane oracle entries reported no lane passing the preregistered
+quality gate; both router arms executed BALANCED for all 16 cases. This is a
+bounded negative finding under the specific dataset, provider, one-trial
+design, and lexical gate. The [final evaluation report](X3_OPENROUTER_X3_E_REPORT.md)
+separates measured cases, derived paired comparisons, incomplete costs, and
+threats to validity.

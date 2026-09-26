@@ -5,6 +5,9 @@ completed; X3-E interpretation below. The preregistered quality gate passed
 zero cases. This is a measured negative result, not an adaptive-routing win.
 Earlier direct-DeepSeek campaigns remain separate historical diagnostics and
 are not pooled with these OpenRouter/NextBit results.
+The `work/` artifacts named below are retained locally and intentionally
+excluded from the public repository; this document preserves their measured
+summary and file hashes for review.
 
 ## Frozen experiment identity
 
