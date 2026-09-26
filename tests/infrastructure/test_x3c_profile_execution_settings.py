@@ -149,6 +149,74 @@ async def test_chat_request_omits_unconfigured_profile_fields_and_forwards_confi
         assert payload["response_format"] == {"type": "json_object"}
 
 
+@pytest.mark.asyncio
+async def test_openrouter_transport_reuses_jev_key_and_pins_execution_provider() -> None:
+    config = ProviderConfig.from_environment({
+        "DOVIDEO_MODEL_TRANSPORT": "openrouter",
+        "DOVIDEO_MODEL_PROVIDER_TAG": "nextbit/fp8",
+        "DOVIDEO_OPENROUTER_API_KEY": "shared-secret",
+        "DOVIDEO_BALANCED_MODEL": "deepseek/deepseek-v4.1-flash",
+        "DOVIDEO_MODEL_BASE_URL": "https://api.deepseek.com",
+        "DOVIDEO_MODEL_API_KEY": "old-direct-secret",
+    }, required=True)
+    assert config is not None
+    assert config.api_key == "shared-secret"
+    assert config.chat_url == "https://openrouter.ai/api/v1/chat/completions"
+    assert config.provider_only == ("nextbit/fp8",)
+    assert config.provider_data_collection == "deny"
+    assert config.provider_zdr is True
+    settings = ModelRoutingProductionSettings(
+        enabled=True,
+        fast_model=config.model,
+        balanced_model=config.model,
+        deep_model="deepseek/deepseek-v4-pro-0813",
+        fast_reasoning_effort="none",
+        deep_reasoning_effort="max",
+        deep_max_tokens=65_536,
+    )
+    for lane in (ModelRouteLane.FAST, ModelRouteLane.BALANCED, ModelRouteLane.DEEP):
+        http = _CapturingHttpClient()
+        lane_config = settings.provider_config_for(config, lane)
+        assert lane_config is not None
+        client = OpenAICompatibleChatClient(
+            lane_config,
+            request_settings=settings.request_settings_for(lane),
+            client=http,
+        )
+        await client.complete(({"role": "user", "content": "Return JSON."},))
+        payload = http.calls[0]["json"]
+        assert payload["provider"] == {
+            "only": ["nextbit/fp8"],
+            "allow_fallbacks": False,
+            "require_parameters": True,
+            "data_collection": "deny",
+            "zdr": True,
+        }
+        if lane is ModelRouteLane.FAST:
+            assert payload["reasoning_effort"] == "none"
+        elif lane is ModelRouteLane.BALANCED:
+            assert "reasoning_effort" not in payload
+        else:
+            assert payload["reasoning_effort"] == "max"
+            assert payload["max_tokens"] == 65_536
+        identity = settings.effective_profile_identity(lane, provider_config=lane_config)
+        assert identity.as_dict()["transport"] == "openrouter"
+        assert identity.as_dict()["providerOnly"] == ["nextbit/fp8"]
+        assert identity.as_dict()["providerDataCollection"] == "deny"
+        assert identity.as_dict()["providerZdr"] is True
+        assert identity.fingerprint != settings.effective_profile_identity(lane).fingerprint
+
+
+def test_openrouter_transport_never_falls_back_to_direct_credential() -> None:
+    with pytest.raises(ProviderConfigurationError, match="OpenRouter API key is required"):
+        ProviderConfig.from_environment({
+            "DOVIDEO_MODEL_TRANSPORT": "openrouter",
+            "DOVIDEO_MODEL_PROVIDER_TAG": "nextbit/fp8",
+            "DOVIDEO_MODEL_API_KEY": "direct-only-secret",
+            "DOVIDEO_MODEL_BASE_URL": "https://api.deepseek.com",
+        }, required=True)
+
+
 def test_missing_effort_preserves_balanced_request_defaults() -> None:
     assert ModelRequestSettings().request_fields() == {}
     assert ModelRequestSettings(max_tokens=65_536).request_fields() == {

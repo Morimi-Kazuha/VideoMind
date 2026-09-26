@@ -1,0 +1,47 @@
+{
+  "pricingVersion": "pricing-x3c-openrouter-v1",
+  "entries": [
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "inputRatePerMillion": null,
+      "outputRatePerMillion": null,
+      "currency": "USD",
+      "rateAvailability": "NOT_AVAILABLE",
+      "conditionalRates": [],
+      "sourceIdentity": "OpenRouter NextBit FP8-pinned V4.1 Flash endpoint",
+      "sourceReference": "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints",
+      "sourceDate": "2026-09-26",
+      "effectiveDate": null,
+      "pricingNote": "Use provider-reported request cost; scalar catalog pricing is withheld until the pinned provider policy is live-validated."
+    },
+    {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-pro-0813",
+      "inputRatePerMillion": null,
+      "outputRatePerMillion": null,
+      "currency": "USD",
+      "rateAvailability": "NOT_AVAILABLE",
+      "conditionalRates": [],
+      "sourceIdentity": "OpenRouter NextBit FP8-pinned V4 Pro 0813 endpoint",
+      "sourceReference": "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4-pro-0813/endpoints",
+      "sourceDate": "2026-09-26",
+      "effectiveDate": null,
+      "pricingNote": "Use provider-reported request cost; scalar catalog pricing is withheld until the pinned provider policy is live-validated."
+    },
+    {
+      "provider": "openrouter",
+      "model": "typesafe/jev-1.13",
+      "inputRatePerMillion": 0.042,
+      "outputRatePerMillion": 0.0,
+      "currency": "USD",
+      "rateAvailability": "AVAILABLE",
+      "conditionalRates": [],
+      "sourceIdentity": "OpenRouter pinned TypeSafe Jev 1.13 model pricing",
+      "sourceReference": "https://openrouter.ai/typesafe/jev-1.13/api",
+      "sourceDate": "2026-09-25",
+      "effectiveDate": null,
+      "pricingNote": "Jev route decisions remain separate from DeepSeek model execution."
+    }
+  ]
+}

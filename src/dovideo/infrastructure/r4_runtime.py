@@ -863,6 +863,7 @@ def create_r4_provider_stack(
         ModelRouteLane.BALANCED: selected_routing_settings.effective_profile_identity(
             ModelRouteLane.BALANCED,
             resolved_model_id=effective_balanced_config.model,
+            provider_config=effective_balanced_config,
         )
     }
     if selected_routing_settings.enabled:
@@ -887,6 +888,7 @@ def create_r4_provider_stack(
                 selected_routing_settings.effective_profile_identity(
                     lane,
                     resolved_model_id=lane_config.model,
+                    provider_config=lane_config,
                 )
             )
             lane_chat = _ObservedChatClient(lane_client, telemetry)

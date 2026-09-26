@@ -81,6 +81,10 @@ class ProviderConfig:
     retry_delay_seconds: float = 0.0
     embedding_model: str | None = None
     embedding_url: str | None = None
+    transport: str = "openai-compatible"
+    provider_only: tuple[str, ...] = ()
+    provider_data_collection: str | None = None
+    provider_zdr: bool | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.base_url, str) or not self.base_url.strip():
@@ -123,6 +127,21 @@ class ProviderConfig:
             embedding_parts = urlsplit(embedding_url)
             if embedding_parts.scheme not in {"http", "https"} or not embedding_parts.netloc:
                 raise ProviderConfigurationError("embedding_url must be HTTP(S)")
+        if self.transport not in {"openai-compatible", "openrouter"}:
+            raise ProviderConfigurationError("unsupported model transport")
+        if self.transport == "openrouter":
+            if base_url != "https://openrouter.ai/api/v1":
+                raise ProviderConfigurationError("OpenRouter transport requires its API base URL")
+            if not api_key:
+                raise ProviderConfigurationError("OpenRouter API key is required")
+            if not self.model.strip().startswith("deepseek/"):
+                raise ProviderConfigurationError("DeepSeek execution requires an OpenRouter DeepSeek model slug")
+            if not self.provider_only or any(not item.strip() for item in self.provider_only):
+                raise ProviderConfigurationError("OpenRouter execution provider pin is required")
+            if self.provider_data_collection != "deny" or self.provider_zdr is not True:
+                raise ProviderConfigurationError("OpenRouter execution requires deny collection and ZDR")
+        elif self.provider_only or self.provider_data_collection is not None or self.provider_zdr is not None:
+            raise ProviderConfigurationError("provider policy requires OpenRouter transport")
         object.__setattr__(self, "base_url", base_url)
         object.__setattr__(self, "model", self.model.strip())
         object.__setattr__(self, "api_key", api_key)
@@ -165,6 +184,33 @@ class ProviderConfig:
         """
 
         values = os.environ if environ is None else environ
+        transport = _first_value(values, f"{prefix}MODEL_TRANSPORT") or "openai-compatible"
+        if transport == "openrouter":
+            key = _first_value(values, f"{prefix}OPENROUTER_API_KEY")
+            provider_tag = _first_value(values, f"{prefix}MODEL_PROVIDER_TAG")
+            if provider_tag is None:
+                raise ProviderConfigurationError("OpenRouter execution provider tag is required")
+            try:
+                timeout = float(_first_value(values, f"{prefix}MODEL_TIMEOUT_SECONDS") or 120)
+                attempts = int(_first_value(values, f"{prefix}MODEL_MAX_ATTEMPTS") or 3)
+                delay = float(_first_value(values, f"{prefix}MODEL_RETRY_DELAY_SECONDS") or 0)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ProviderConfigurationError("provider numeric setting is invalid") from exc
+            return cls(
+                base_url="https://openrouter.ai/api/v1",
+                model=_first_value(values, f"{prefix}BALANCED_MODEL", f"{prefix}MODEL_MODEL")
+                or "deepseek/deepseek-v4.1-flash",
+                api_key=key,
+                transport="openrouter",
+                provider_only=(provider_tag,),
+                provider_data_collection="deny",
+                provider_zdr=True,
+                timeout_seconds=timeout,
+                max_attempts=attempts,
+                retry_delay_seconds=delay,
+            )
+        if transport != "openai-compatible":
+            raise ProviderConfigurationError("unsupported model transport")
         endpoint = _first_value(
             values,
             f"{prefix}MODEL_BASE_URL",

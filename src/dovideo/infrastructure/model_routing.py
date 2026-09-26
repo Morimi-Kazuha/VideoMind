@@ -84,6 +84,10 @@ class EffectiveModelProfileIdentity:
     resolved_model_id: str
     reasoning_effort: str | None = None
     max_tokens: int | None = None
+    transport: str = "openai-compatible"
+    provider_only: tuple[str, ...] = ()
+    provider_data_collection: str | None = None
+    provider_zdr: bool | None = None
 
     @property
     def reasoning_mode(self) -> str:
@@ -91,7 +95,7 @@ class EffectiveModelProfileIdentity:
             return "provider-default"
         return "disabled" if self.reasoning_effort == "none" else "enabled"
 
-    def as_dict(self) -> dict[str, str | int | None]:
+    def as_dict(self) -> dict[str, str | int | bool | list[str] | None]:
         """Return stable profile data without credentials or endpoints."""
 
         return {
@@ -101,6 +105,13 @@ class EffectiveModelProfileIdentity:
             "reasoningMode": self.reasoning_mode,
             "reasoningEffort": self.reasoning_effort,
             "maxTokens": self.max_tokens,
+            "transport": self.transport,
+            "providerOnly": list(self.provider_only),
+            "providerFallbacks": False if self.provider_only else None,
+            "modelFallbacks": False if self.provider_only else None,
+            "requireProviderParameters": True if self.provider_only else None,
+            "providerDataCollection": self.provider_data_collection,
+            "providerZdr": self.provider_zdr,
         }
 
     @property
@@ -255,6 +266,7 @@ class ModelRoutingProductionSettings:
         lane: ModelRouteLane | str,
         *,
         resolved_model_id: str | None = None,
+        provider_config: ProviderConfig | None = None,
     ) -> EffectiveModelProfileIdentity:
         try:
             normalized = lane if isinstance(lane, ModelRouteLane) else ModelRouteLane(lane)
@@ -273,6 +285,10 @@ class ModelRoutingProductionSettings:
             resolved_model_id=model_id,
             reasoning_effort=request.reasoning_effort,
             max_tokens=request.max_tokens,
+            transport=provider_config.transport if provider_config else "openai-compatible",
+            provider_only=provider_config.provider_only if provider_config else (),
+            provider_data_collection=(provider_config.provider_data_collection if provider_config else None),
+            provider_zdr=provider_config.provider_zdr if provider_config else None,
         )
 
     def provider_config_for(

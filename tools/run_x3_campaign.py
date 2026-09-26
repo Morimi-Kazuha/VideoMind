@@ -40,6 +40,7 @@ from dovideo.infrastructure.persistence import (
     CheckpointRepository, InMemoryHotCheckpointCache, SqliteCheckpointStore,
 )
 from dovideo.infrastructure.providers.jev import JevRouterSettings, JevTransport
+from dovideo.infrastructure.providers.config import ProviderConfig
 from dovideo.infrastructure.r4_runtime import R4AgentTelemetry, create_r4_provider_stack
 from dovideo.infrastructure.redis_observability import RedisAgentTelemetry
 from dovideo.infrastructure.x1_config import X1ToolCallingSettings
@@ -48,21 +49,23 @@ from dovideo.infrastructure.x1_config import X1ToolCallingSettings
 ROOT = Path(__file__).resolve().parents[1]
 DATASET_PATH = ROOT / "datasets" / "x3" / "golden-dataset-v2.json"
 PREPARED_MARKER = ROOT / "work" / "x3-v2-prepared-state.json"
-PRICING_PATH = ROOT / "configs" / "x3c" / "pricing-x3c-v1.json"
+PRICING_PATH = ROOT / "configs" / "x3c" / "pricing-x3c-openrouter-v1.json"
 EXPECTED_PROFILES = {
-    ModelRouteLane.FAST: "ebebf692e007162672670b434efef7b91a0f261edb381584cfc4060bd96fba6e",
-    ModelRouteLane.BALANCED: "7e2427adb87e3072a6a6b0f4127f05b27d8949133da1417905922e5196b04326",
-    ModelRouteLane.DEEP: "904e40f9774155797df2c2d13115bcc076d2f7a5adbe8b7559baead644a21a6a",
+    ModelRouteLane.FAST: "bd605d01eade256e6d3412b43fa4b376444c08e24cfb013027d45eb67b4de55b",
+    ModelRouteLane.BALANCED: "44dae58f205e22f929484dd5ddce4580653e356c70bb61122fcb65c56edfa4e0",
+    ModelRouteLane.DEEP: "8f03c705bb0a084982e1339d958a80e6bf0d70bbf96e9051d65ddff5bf0932f2",
 }
 
 
 def frozen_routing_settings(base_model: str) -> ModelRoutingProductionSettings:
+    if base_model != "deepseek/deepseek-v4.1-flash":
+        raise RuntimeError("frozen BALANCED OpenRouter model changed")
     settings = ModelRoutingProductionSettings(
         enabled=True,
         confidence_threshold=0.70,
-        fast_model="deepseek-flash",
+        fast_model="deepseek/deepseek-v4.1-flash",
         balanced_model=base_model,
-        deep_model="deepseek-v4-pro",
+        deep_model="deepseek/deepseek-v4-pro-0813",
         fast_reasoning_effort="none",
         deep_reasoning_effort="max",
         deep_max_tokens=65536,
@@ -72,8 +75,13 @@ def frozen_routing_settings(base_model: str) -> ModelRoutingProductionSettings:
         ),
     )
     settings.jev.validate_for_use()
+    config = ProviderConfig.from_environment(required=True)
+    if config is None or config.transport != "openrouter" or config.provider_only != ("nextbit/fp8",):
+        raise RuntimeError("frozen NextBit OpenRouter provider pin changed")
+    if config.provider_data_collection != "deny" or config.provider_zdr is not True:
+        raise RuntimeError("frozen OpenRouter data policy changed")
     for lane, digest in EXPECTED_PROFILES.items():
-        if settings.effective_profile_identity(lane).fingerprint != digest:
+        if settings.effective_profile_identity(lane, provider_config=config).fingerprint != digest:
             raise RuntimeError(f"frozen {lane.value} model profile changed")
     return settings
 
@@ -151,7 +159,7 @@ class IsolatedR4Adapter:
                 model = None if self.lane is None else provider.resolved_model_ids[self.lane]
                 bridge = AgentLoopEvaluationAdapter(
                     loop, media_id_resolver=lambda _ref: self.media_id,
-                    provider="deepseek", model=model,
+                    provider="openrouter", model=model,
                 )
                 with telemetry.capture_chat_usage() as records:
                     observation = await bridge.execute(
@@ -256,6 +264,11 @@ async def main() -> None:
     parser.add_argument("--diagnostic-one", action="store_true")
     args = parser.parse_args()
     load_local_environment()
+    os.environ["DOVIDEO_MODEL_TRANSPORT"] = "openrouter"
+    os.environ["DOVIDEO_MODEL_PROVIDER_TAG"] = "nextbit/fp8"
+    os.environ["DOVIDEO_BALANCED_MODEL"] = "deepseek/deepseek-v4.1-flash"
+    os.environ["DOVIDEO_FAST_MODEL"] = "deepseek/deepseek-v4.1-flash"
+    os.environ["DOVIDEO_DEEP_MODEL"] = "deepseek/deepseek-v4-pro-0813"
     freeze_sha = _clean_sha()
     dataset = read_dataset(DATASET_PATH)
     pricing = PricingCatalog.model_validate_json(PRICING_PATH.read_text(encoding="utf-8"))

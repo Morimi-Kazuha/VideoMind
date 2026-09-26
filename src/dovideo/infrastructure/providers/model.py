@@ -231,6 +231,14 @@ class OpenAICompatibleChatClient:
             "response_format": {"type": "json_object"},
         }
         payload.update(self.request_settings.request_fields())
+        if self.config.transport == "openrouter":
+            payload["provider"] = {
+                "only": list(self.config.provider_only),
+                "allow_fallbacks": False,
+                "require_parameters": True,
+                "data_collection": self.config.provider_data_collection,
+                "zdr": self.config.provider_zdr,
+            }
         last_error: ProviderTransientError | None = None
         for attempt in range(self.config.max_attempts):
             try:
