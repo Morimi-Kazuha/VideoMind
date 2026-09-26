@@ -3,10 +3,7 @@
     <header class="lab-header">
       <div class="lab-header__inner">
         <a class="lab-brand" href="/" aria-label="DOVideo home">
-          <span class="lab-brand__mark" aria-hidden="true">
-            D
-            <span></span>
-          </span>
+          <span class="lab-brand__mark"><AcademyMark /></span>
           <span>
             DOVIDEO
             <small>ACADEMY MEDIA LAB</small>
@@ -56,9 +53,10 @@
           </div>
         </div>
         <div class="lab-intro__card" aria-label="Design lab metadata">
+          <div class="lab-intro__scene" aria-hidden="true"></div>
           <div class="lab-intro__card-top">
             <span>TERMINAL ACCESS</span>
-            <span class="lab-cross" aria-hidden="true">✦</span>
+            <AcademyMark class="lab-intro__seal" />
           </div>
           <div class="lab-intro__coordinates">
             <span>A–04</span>
@@ -102,7 +100,7 @@
         <div class="workstation">
           <div class="workstation__top">
             <div>
-              <span class="lab-square"></span>
+              <AcademyMark class="workstation__mark" />
               <strong>
                 MEDIA LAB
                 <span>// A-04</span>
@@ -127,7 +125,7 @@
                 <span>02</span>
               </p>
               <div class="rail-project is-current">
-                <span class="rail-project__glyph">▣</span>
+                <AcademyMark class="rail-project__mark" />
                 <span>
                   Night archive
                   <small>MEDIA SET / 04</small>
@@ -173,17 +171,7 @@
                 </span>
               </div>
               <div class="media-viewport">
-                <div class="campus-scene" aria-hidden="true">
-                  <span class="campus-scene__moon"></span>
-                  <span class="campus-scene__tower"></span>
-                  <span
-                    class="campus-scene__building campus-scene__building--left"
-                  ></span>
-                  <span
-                    class="campus-scene__building campus-scene__building--right"
-                  ></span>
-                  <span class="campus-scene__bridge"></span>
-                </div>
+                <div class="campus-scene" aria-hidden="true"></div>
                 <span class="media-viewport__corner">
                   CAM 01
                   <span>·</span>
@@ -225,7 +213,7 @@
                   <p class="lab-eyebrow">AI ASSISTANT // ACTIVE</p>
                   <h3>Research notes</h3>
                 </div>
-                <span class="agent-sigil" aria-hidden="true">✧</span>
+                <AcademyMark class="agent-sigil" />
               </div>
               <div class="workstation__agent-body">
                 <AgentMessage sender="user" time="21:48">
@@ -235,7 +223,7 @@
                   </p>
                 </AgentMessage>
                 <div class="agent-step">
-                  <span class="lab-square"></span>
+                  <span class="pixel-cluster" aria-hidden="true"></span>
                   EVIDENCE RETRIEVED
                   <span>02 / 02</span>
                 </div>
@@ -532,7 +520,7 @@
               <span></span>
             </div>
             <div class="academy-empty">
-              <span class="academy-empty__glyph" aria-hidden="true">◫</span>
+              <AcademyMark class="academy-empty__glyph" />
               <div>
                 <strong>NO MATCHING FRAMES</strong>
                 <p>Try a different timestamp or search term.</p>
@@ -600,7 +588,7 @@
                 </p>
               </AgentMessage>
               <div class="agent-step">
-                <span class="lab-square"></span>
+                <span class="pixel-cluster" aria-hidden="true"></span>
                 RETRIEVING EVIDENCE
                 <span class="agent-step__cursor" aria-hidden="true">▌</span>
               </div>
@@ -662,6 +650,7 @@ import AcademyTabs from './AcademyTabs.vue'
 import AcademyTimeline from './AcademyTimeline.vue'
 import EvidenceCard from './EvidenceCard.vue'
 import AgentMessage from './AgentMessage.vue'
+import AcademyMark from './AcademyMark.vue'
 
 const swatches = [
   { name: 'VOID', token: 'bg-void', color: '#070A12' },
@@ -674,7 +663,7 @@ const swatches = [
   { name: 'BORDER', token: 'border-normal', color: '#273650' },
 ]
 const spacing = [4, 8, 12, 16, 24, 32, 48]
-const segments = [
+const segmentKinds = [
   'quiet',
   'asr',
   'asr',
@@ -699,7 +688,17 @@ const segments = [
   'ocr',
   'quiet',
   'asr',
-].map((kind) => ({ kind, label: kind.toUpperCase() }))
+]
+const segments = segmentKinds.map((kind, index) => ({
+  kind,
+  label: kind.toUpperCase(),
+  channels:
+    kind === 'evidence'
+      ? ['asr', ...(index % 2 === 0 ? ['ocr'] : []), 'evidence']
+      : kind === 'quiet'
+        ? []
+        : [kind],
+}))
 const activeSegment = ref(13)
 const activeTime = computed(() =>
   activeSegment.value === 13

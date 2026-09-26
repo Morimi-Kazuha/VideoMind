@@ -22,7 +22,21 @@
         :aria-pressed="modelValue === index"
         @click="$emit('update:modelValue', index)"
       >
-        <span aria-hidden="true"></span>
+        <span
+          class="academy-timeline__lane is-asr"
+          :class="{ 'is-lit': segment.channels.includes('asr') }"
+          aria-hidden="true"
+        ></span>
+        <span
+          class="academy-timeline__lane is-ocr"
+          :class="{ 'is-lit': segment.channels.includes('ocr') }"
+          aria-hidden="true"
+        ></span>
+        <span
+          class="academy-timeline__lane is-evidence"
+          :class="{ 'is-lit': segment.channels.includes('evidence') }"
+          aria-hidden="true"
+        ></span>
       </button>
     </div>
     <div class="academy-timeline__legend">
