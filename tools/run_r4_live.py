@@ -294,6 +294,40 @@ def main() -> int:
             if not isinstance(hits_payload, list):
                 raise RuntimeError("production evidence search shape is invalid")
 
+            windows_response = client.get(
+                "/analysis/temporal-windows",
+                params={"id": media_id, "limit": 200, "offset": 0},
+                headers=headers,
+            )
+            observations_response = client.get(
+                "/analysis/temporal-observations",
+                params={"id": media_id, "limit": 200, "offset": 0},
+                headers=headers,
+            )
+            citations_response = client.get(
+                "/analysis/agent-citations",
+                params={"id": media_id, "goal": goal, "mode": "GENERAL"},
+                headers=headers,
+            )
+            if any(
+                response.status_code != 200
+                for response in (
+                    windows_response,
+                    observations_response,
+                    citations_response,
+                )
+            ):
+                raise RuntimeError("production temporal or citation read failed")
+            windows_page = windows_response.json()["data"]
+            observations_page = observations_response.json()["data"]
+            citations = citations_response.json()["data"]
+            if not isinstance(citations, list):
+                raise RuntimeError("production citation read shape is invalid")
+            if windows_page["total"] != len(windows_page["items"]):
+                raise RuntimeError("representative context windows were not fully paged")
+            if observations_page["total"] != len(observations_page["items"]):
+                raise RuntimeError("representative observations were not fully paged")
+
             trace_response = client.get(
                 "/analysis/agent-trace",
                 params={"id": media_id, "goal": goal, "mode": "GENERAL"},
@@ -323,6 +357,9 @@ def main() -> int:
                     "sse_terminal_seen": "COMPLETED" in sse_stages,
                     "sse_error": bool(sse_error),
                     "evidence_candidate_count": len(hits_payload),
+                    "temporal_window_api_count": windows_page["total"],
+                    "temporal_observation_api_count": observations_page["total"],
+                    "citation_count": len(citations),
                     "duplicate_status": duplicate.status_code,
                     "trace": trace,
                     "hits": hits_payload,
@@ -339,6 +376,23 @@ def main() -> int:
             state = asyncio.run(checkpoint.load_result(key))
             if context is None or chunks is None or state is None or state.result is None:
                 raise RuntimeError("durable R4 checkpoint/result is incomplete")
+            source_item_ids = {
+                item.source_item_id
+                for segment in context.segments
+                for item in segment.source_items
+            }
+            if (
+                observations_page["sourceRevision"] != context.source_revision
+                or observations_page["total"] != len(context.observations)
+                or {item["id"] for item in observations_page["items"]}
+                != source_item_ids
+                or any(
+                    citation["sourceRevision"] != context.source_revision
+                    or not set(citation["sourceItemIds"]).issubset(source_item_ids)
+                    for citation in citations
+                )
+            ):
+                raise RuntimeError("temporal or citation provenance does not match durable context")
             records = recovery.checkpoint_store.records(media_id)
             stored_media = asyncio.run(recovery.media_repository.get(media_id))
             if stored_media is None or stored_media.source.split(":", 1)[0] != "minio":

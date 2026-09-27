@@ -72,3 +72,35 @@ def test_citations_are_empty_before_analysis_and_owned(tmp_path) -> None:
         params = {"id": media_id, "goal": "summarize", "mode": "GENERAL"}
         assert client.get("/analysis/agent-citations", params=params, headers=stranger).status_code == 403
         assert client.get("/analysis/agent-citations", params=params, headers=owner).json()["data"] == []
+
+
+def test_observation_api_is_owned_paged_and_keeps_source_identity(tmp_path) -> None:
+    with TestClient(create_app(work_dir=tmp_path / "media")) as client:
+        owner = _register(client, "observation_owner")
+        stranger = _register(client, "observation_other")
+        media_id = client.post(
+            "/media/upload",
+            files={"file": ("sample.mp4", b"local-video", "video/mp4")},
+            headers=owner,
+        ).json()["data"]["id"]
+        path = "/analysis/temporal-observations"
+        assert client.get(path, params={"id": media_id}, headers=stranger).status_code == 403
+        response = client.get(
+            path, params={"id": media_id, "limit": 1, "offset": 0}, headers=owner
+        )
+        assert response.status_code == 200
+        page = response.json()["data"]
+        assert page["available"] is True
+        assert page["granularity"] == "source-observation"
+        assert page["total"] >= 2
+        assert len(page["items"]) == 1
+        assert page["items"][0]["id"].startswith("item_")
+        assert page["items"][0]["sourceRevision"] == page["sourceRevision"]
+        assert page["items"][0]["kind"] == "ASR"
+        assert "frameRef" not in page["items"][0]
+        assert client.get(
+            path, params={"id": media_id, "limit": 1, "offset": 1}, headers=owner
+        ).json()["data"]["items"][0]["startMs"] > page["items"][0]["startMs"]
+        assert client.get(
+            path, params={"id": media_id, "limit": 201}, headers=owner
+        ).status_code == 400

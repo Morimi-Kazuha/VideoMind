@@ -230,6 +230,9 @@
         <AnalysisTimeline
           :hits="sidebar.evidenceResults"
           :windows="temporalWindows"
+          :window-total="temporalTotal"
+          :observations="temporalObservations"
+          :observation-total="observationTotal"
           :citations="citations"
           :duration="duration"
           :current-time="currentTime"
@@ -239,14 +242,20 @@
 
         <TemporalRecords
           :windows="temporalWindows"
+          :observations="temporalObservations"
+          :observation-total="observationTotal"
+          :observation-loading="observationLoading"
+          :observation-error="observationError"
           :total="temporalTotal"
           :available="temporalAvailable"
           :loading="temporalLoading"
           :error="temporalError"
           :selected-key="selectedKey"
-          @select="selectTemporalWindow"
+          @select="selectTemporalRecord"
           @retry="loadTemporal(true)"
           @more="loadTemporal(false)"
+          @retry-observations="loadObservations(true)"
+          @more-observations="loadObservations(false)"
         />
 
         <section class="analysis-transcript" aria-labelledby="transcript-title">
@@ -646,8 +655,13 @@ const temporalTotal = ref(0);
 const temporalAvailable = ref(false);
 const temporalLoading = ref(false);
 const temporalError = ref("");
+const temporalObservations = ref([]);
+const observationTotal = ref(0);
+const observationLoading = ref(false);
+const observationError = ref("");
 const citations = ref([]);
 let temporalRequest = 0;
+let observationRequest = 0;
 let citationRequest = 0;
 
 const mediaStatusText = computed(
@@ -702,6 +716,13 @@ function selectTemporalWindow(window) {
   seekVideo(Number(window.startMs) / 1000);
 }
 
+function selectTemporalRecord(record) {
+  if (record.id) {
+    selectedKey.value = `observation:${record.id}`;
+    seekVideo(Number(record.startMs) / 1000);
+  } else selectTemporalWindow(record);
+}
+
 function selectCitation(citation) {
   selectedKey.value = `citation:${citation.id}`;
   seekVideo(Number(citation.timestampMs) / 1000);
@@ -709,6 +730,8 @@ function selectCitation(citation) {
 
 function selectTimelineItem(marker) {
   if (marker.hit.cited) selectCitation(marker.hit);
+  else if (marker.key.startsWith("observation:"))
+    selectTemporalRecord(marker.hit);
   else if (marker.key.startsWith("window:")) selectTemporalWindow(marker.hit);
   else selectEvidence(marker.hit, marker.key);
 }
@@ -747,6 +770,44 @@ async function loadTemporal(reset = true) {
       temporalError.value = error?.message || "时间记录读取失败";
   } finally {
     if (request === temporalRequest) temporalLoading.value = false;
+  }
+}
+
+async function loadObservations(reset = true) {
+  if (observationLoading.value || props.demoMode || !props.sidebar.mediaId)
+    return;
+  const request = ++observationRequest;
+  const mediaId = props.sidebar.mediaId;
+  if (reset) {
+    temporalObservations.value = [];
+    observationTotal.value = 0;
+  }
+  observationLoading.value = true;
+  observationError.value = "";
+  try {
+    const params = new URLSearchParams({
+      id: String(mediaId),
+      limit: "200",
+      offset: String(temporalObservations.value.length),
+    });
+    const response = await apiRequest(
+      `/analysis/temporal-observations?${params}`,
+    );
+    if (!response.ok)
+      throw new Error((await response.text()) || "逐条来源记录读取失败");
+    const page = await response.json();
+    if (request !== observationRequest || mediaId !== props.sidebar.mediaId)
+      return;
+    observationTotal.value = Number(page.total) || 0;
+    temporalObservations.value = [
+      ...temporalObservations.value,
+      ...(Array.isArray(page.items) ? page.items : []),
+    ];
+  } catch (error) {
+    if (request === observationRequest)
+      observationError.value = error?.message || "逐条来源记录读取失败";
+  } finally {
+    if (request === observationRequest) observationLoading.value = false;
   }
 }
 
@@ -846,7 +907,13 @@ watch(
     temporalWindows.value = [];
     temporalTotal.value = 0;
     temporalAvailable.value = false;
+    observationRequest += 1;
+    observationLoading.value = false;
+    temporalObservations.value = [];
+    observationTotal.value = 0;
+    observationError.value = "";
     loadTemporal();
+    loadObservations();
   },
 );
 watch(
@@ -863,6 +930,7 @@ watch(
         props.actions.retryPlayback();
       refreshTranscript();
       loadTemporal();
+      loadObservations();
     }
   },
 );
@@ -875,10 +943,20 @@ watch(
   ],
   refreshCitations,
 );
+watch(
+  () => props.sidebar.loading,
+  (loading, wasLoading) => {
+    if (props.sidebar.type === "ai" && wasLoading && !loading) {
+      loadTemporal(true);
+      loadObservations(true);
+    }
+  },
+);
 onMounted(() => {
   focus();
   refreshTranscript();
   loadTemporal();
+  loadObservations();
   refreshCitations();
 });
 </script>

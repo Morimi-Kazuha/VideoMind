@@ -18,7 +18,7 @@ from ._base import (
     tuple_or_empty,
     value_or_empty,
 )
-from .provenance import SourceItemIdentity
+from .provenance import SourceItemIdentity, canonical_frame_ref, content_digest
 
 
 class VideoSegment(DomainModel):
@@ -150,12 +150,36 @@ class VideoSegment(DomainModel):
         return tuple(item.source_item_id for item in self.source_items)
 
 
+class TemporalObservation(DomainModel):
+    """Original text and stable provenance for one ASR or OCR observation."""
+
+    source_item: SourceItemIdentity = Field(alias="sourceItem")
+    text: str = ""
+    frame_ref: str | None = Field(default=None, alias="frameRef")
+
+    @model_validator(mode="after")
+    def _matches_identity(self) -> "TemporalObservation":
+        if content_digest(self.text) != self.source_item.content_digest:
+            raise ValueError("observation text does not match source identity")
+        if self.source_item.source_type == "ASR" and self.frame_ref is not None:
+            raise ValueError("ASR observation cannot have a frame reference")
+        frame_digest = (
+            content_digest(canonical_frame_ref(self.frame_ref))
+            if self.frame_ref and self.frame_ref.strip()
+            else ""
+        )
+        if frame_digest != self.source_item.frame_ref_digest:
+            raise ValueError("observation frame does not match source identity")
+        return self
+
+
 class VideoContext(DomainModel):
     """Unified time-ordered context consumed by retrieval and Agent roles."""
 
     source: str
     user_goal: str = Field(default="", alias="userGoal")
     segments: tuple[VideoSegment, ...] = ()
+    observations: tuple[TemporalObservation, ...] = ()
     source_revision: Annotated[str, Field(alias="sourceRevision")] = ""
     provenance_version: Annotated[str, Field(alias="provenanceVersion")] = ""
 
@@ -195,10 +219,31 @@ class VideoContext(DomainModel):
     def _trim_provenance_text(cls, value: str) -> str:
         return value.strip()
 
-    @field_validator("segments", mode="before")
+    @field_validator("segments", "observations", mode="before")
     @classmethod
     def _copy_segments(cls, value: Any) -> tuple[Any, ...]:
         return tuple_or_empty(value)
+
+    @model_validator(mode="after")
+    def _valid_observations(self) -> "VideoContext":
+        if not self.observations:
+            return self
+        identities = {
+            item.source_item_id: item
+            for segment in self.segments
+            for item in segment.source_items
+        }
+        seen: set[str] = set()
+        for observation in self.observations:
+            item = observation.source_item
+            if (
+                item.source_item_id in seen
+                or item.source_revision != self.source_revision
+                or identities.get(item.source_item_id) != item
+            ):
+                raise ValueError("observation is not part of this context revision")
+            seen.add(item.source_item_id)
+        return self
 
     def transcript_text(self) -> str:
         """Join non-blank transcript text in segment order."""

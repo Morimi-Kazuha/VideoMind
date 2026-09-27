@@ -270,6 +270,7 @@ class AgentCheckpointService(
             source=context.source,
             user_goal="",
             segments=tuple(context.segments),
+            observations=tuple(context.observations),
             source_revision=context.source_revision,
             provenance_version=context.provenance_version,
         )

@@ -16,6 +16,8 @@ export function timelineMarkers(
   durationSeconds,
   windows = [],
   citations = [],
+  observations = [],
+  observationTotal = observations.length,
 ) {
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return [];
   const evidence = [
@@ -57,32 +59,46 @@ export function timelineMarkers(
     }
     return markers;
   });
-  if (!windows.length) return evidenceMarkers;
-  const windowMarkers = windows.flatMap((window) => {
-    if (!validEvidenceTime(window)) return [];
-    const seconds = Number(window.startMs) / 1000;
+  const useObservations =
+    observations.length > 0 && observations.length >= observationTotal;
+  const temporalSources = useObservations ? observations : windows;
+  if (!temporalSources.length) return evidenceMarkers;
+  const temporalMarkers = temporalSources.flatMap((record) => {
+    if (!validEvidenceTime(record)) return [];
+    const seconds = Number(record.startMs) / 1000;
     if (seconds > durationSeconds) return [];
     const left = Math.min(100, (seconds / durationSeconds) * 100);
-    const end = Math.max(seconds, Number(window.endMs) / 1000 || seconds);
+    const end = Math.max(seconds, Number(record.endMs) / 1000 || seconds);
     const width = Math.max(
       0.65,
       Math.min(100 - left, ((end - seconds) / durationSeconds) * 100),
     );
     const base = {
-      key: `window:${window.segmentId || window.startMs}`,
-      hit: window,
+      key: useObservations
+        ? `observation:${record.id}`
+        : `window:${record.segmentId || record.startMs}`,
+      hit: record,
       seconds,
       left,
       width,
       count: 1,
     };
     const result = [];
-    if (window.transcript?.trim()) result.push({ ...base, lane: "asr" });
-    if (window.ocrTexts?.some((text) => text?.trim()))
+    if (
+      useObservations
+        ? record.kind === "ASR" && record.text?.trim()
+        : record.transcript?.trim()
+    )
+      result.push({ ...base, lane: "asr" });
+    if (
+      useObservations
+        ? record.kind === "OCR"
+        : record.ocrTexts?.some((text) => text?.trim())
+    )
       result.push({ ...base, lane: "ocr" });
     return result;
   });
-  return [...aggregateDenseWindows(windowMarkers), ...evidenceMarkers];
+  return [...aggregateDenseWindows(temporalMarkers), ...evidenceMarkers];
 }
 
 function aggregateDenseWindows(markers) {

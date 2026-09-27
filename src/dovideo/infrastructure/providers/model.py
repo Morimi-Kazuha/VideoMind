@@ -1419,7 +1419,12 @@ def _usage_number(usage: Mapping[str, Any], *names: str) -> int | float | None:
 
 
 def _dump_json(value: Any) -> str:
-    if isinstance(value, BaseModel):
+    if isinstance(value, VideoContext):
+        # Original observations are a durable read model, while the Agent
+        # prompt contract consumes the existing 60-second segment projection.
+        # Including both repeats source text and can exhaust the token budget.
+        value = value.model_dump(mode="json", by_alias=True, exclude={"observations"})
+    elif isinstance(value, BaseModel):
         value = value.model_dump(mode="json", by_alias=True)
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 

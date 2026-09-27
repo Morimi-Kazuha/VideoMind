@@ -79,3 +79,43 @@ test("dense windows aggregate to bounded timeline nodes", () => {
   assert.ok(markers.length <= 240);
   assert.ok(markers.some((marker) => marker.count > 1));
 });
+
+test("source observations replace coarse lanes while evidence stays distinct", () => {
+  const windows = [
+    { segmentId: "window", startMs: 0, endMs: 60000, transcript: "combined" },
+  ];
+  const observations = [
+    { id: "asr-1", kind: "ASR", startMs: 5000, endMs: 6500, text: "first" },
+    { id: "ocr-1", kind: "OCR", startMs: 30000, endMs: null, text: "slide" },
+  ];
+  const markers = timelineMarkers(
+    [{ startMs: 5000, endMs: 6500, snippet: "evidence" }],
+    60,
+    windows,
+    [],
+    observations,
+  );
+  assert.deepEqual(
+    markers.map((marker) => marker.lane),
+    ["asr", "ocr", "evidence"],
+  );
+  assert.equal(markers[0].key, "observation:asr-1");
+  assert.ok(Math.abs(markers[0].left - 5000 / 600) < 0.000001);
+  assert.equal(markers[1].left, 50);
+  assert.ok(markers.every((marker) => marker.key !== "window:window"));
+});
+
+test("a partial observation page keeps the window overview", () => {
+  const windows = [
+    { segmentId: "first", startMs: 0, endMs: 60000, transcript: "first" },
+    { segmentId: "later", startMs: 60000, endMs: 120000, transcript: "later" },
+  ];
+  const observations = [
+    { id: "asr-first", kind: "ASR", startMs: 5000, text: "first" },
+  ];
+  const markers = timelineMarkers([], 120, windows, [], observations, 300);
+  assert.deepEqual(
+    markers.map((marker) => marker.key),
+    ["window:first", "window:later"],
+  );
+});

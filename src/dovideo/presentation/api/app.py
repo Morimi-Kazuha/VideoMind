@@ -41,6 +41,7 @@ from dovideo.application import (
 )
 from dovideo.domain import AnalysisMode, TaskEvent
 from dovideo.application.temporal_read import (
+    temporal_observation_page,
     temporal_window_page,
     verified_answer_citations,
 )
@@ -534,6 +535,17 @@ def create_app(
         await selected_services.media.require_owned(id, int(user["id"]))
         context = await selected_services.checkpoint.load_context(id)
         return _ok(temporal_window_page(context, limit=limit, offset=offset))
+
+    @app.get("/analysis/temporal-observations")
+    async def temporal_observations(
+        id: int = Query(...),
+        limit: int = Query(100, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+        user: dict[str, Any] = Depends(require_user),
+    ) -> JSONResponse:
+        await selected_services.media.require_owned(id, int(user["id"]))
+        context = await selected_services.checkpoint.load_context(id)
+        return _ok(temporal_observation_page(context, limit=limit, offset=offset))
 
     @app.get("/analysis/agent-citations")
     async def agent_citations(

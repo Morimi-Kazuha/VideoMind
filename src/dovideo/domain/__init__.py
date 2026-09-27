@@ -43,6 +43,7 @@ from .provenance import (
 )
 from .tasks import TaskEvent, TaskStage, TaskStatus, TaskStatusState
 from .video import (
+    TemporalObservation,
     ChunkSummary,
     VideoChunk,
     VideoContext,
@@ -86,6 +87,7 @@ __all__ = [
     "TaskStatusState",
     "VideoChunk",
     "VideoContext",
+    "TemporalObservation",
     "VideoEvidenceHit",
     "VideoRetrievalIntent",
     "VideoSegment",

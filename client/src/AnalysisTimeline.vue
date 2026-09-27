@@ -3,7 +3,11 @@
     <div class="analysis-section-head">
       <h3 id="timeline-title">时间轴</h3>
       <span>{{
-        windows.length ? "60 秒窗口 + 检索证据" : "证据检索范围"
+        completeObservations
+          ? "逐条来源记录 + 检索证据"
+          : windows.length
+            ? "已加载的 60 秒窗口 + 检索证据"
+            : "证据检索范围"
       }}</span>
     </div>
     <div v-if="!duration" class="analysis-timeline__empty">
@@ -29,7 +33,7 @@
               },
             ]"
             :style="{ left: `${marker.left}%`, width: `${marker.width}%` }"
-            :title="`${lane.label} ${formatMediaTime(marker.seconds)} · ${marker.count > 1 ? `${marker.count} 个时间窗口` : marker.hit.snippet || marker.hit.transcript || marker.hit.ocrTexts?.join(' · ') || '视频证据'}`"
+            :title="`${lane.label} ${formatMediaTime(marker.seconds)} · ${marker.count > 1 ? `${marker.count} 条记录` : marker.hit.snippet || marker.hit.text || marker.hit.transcript || marker.hit.ocrTexts?.join(' · ') || '视频证据'}`"
             :aria-label="`${lane.label} ${formatMediaTime(marker.seconds)}，跳转播放`"
             @click="$emit('select', marker)"
           ></button>
@@ -46,8 +50,14 @@
         <span>00:00</span>
         <span>{{ formatMediaTime(duration) }}</span>
       </div>
-      <p v-if="windows.length" class="analysis-timeline__note">
-        ASR / OCR 色块表示汇总窗口，不代表逐句或逐帧的持续时间。
+      <p
+        v-if="windows.length && !completeObservations"
+        class="analysis-timeline__note"
+      >
+        ASR / OCR 色块表示汇总窗口，不代表逐句或逐帧的持续时间。<span
+          v-if="windows.length < windowTotal"
+          >尚有未加载的时间窗口。</span
+        >
       </p>
     </div>
   </section>
@@ -60,6 +70,9 @@ import { formatMediaTime, timelineMarkers } from "./analysisTimeline.js";
 const props = defineProps({
   hits: { type: Array, default: () => [] },
   windows: { type: Array, default: () => [] },
+  windowTotal: { type: Number, default: 0 },
+  observations: { type: Array, default: () => [] },
+  observationTotal: { type: Number, default: 0 },
   citations: { type: Array, default: () => [] },
   duration: { type: Number, default: 0 },
   currentTime: { type: Number, default: 0 },
@@ -71,7 +84,19 @@ const lanes = [
   { id: "ocr", label: "OCR" },
   { id: "evidence", label: "证据" },
 ];
+const completeObservations = computed(
+  () =>
+    props.observations.length > 0 &&
+    props.observations.length >= props.observationTotal,
+);
 const markers = computed(() =>
-  timelineMarkers(props.hits, props.duration, props.windows, props.citations),
+  timelineMarkers(
+    props.hits,
+    props.duration,
+    props.windows,
+    props.citations,
+    props.observations,
+    props.observationTotal,
+  ),
 );
 </script>

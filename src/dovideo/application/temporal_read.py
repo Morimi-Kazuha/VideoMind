@@ -8,6 +8,44 @@ from dovideo.domain.video import VideoContext
 from .evidence import EvidenceVerificationService, bind_evidence_provenance
 
 
+def temporal_observation_page(
+    context: VideoContext | None, *, limit: int, offset: int
+) -> dict[str, object]:
+    """Page original observations from the current media context revision."""
+    observations = () if context is None else context.observations
+    ordered = sorted(
+        observations,
+        key=lambda observation: (
+            observation.source_item.timestamp_ms,
+            observation.source_item.source_type,
+            observation.source_item.ordinal,
+            observation.source_item.source_item_id,
+        ),
+    )
+    return {
+        "available": bool(ordered),
+        "granularity": "source-observation",
+        "sourceRevision": context.source_revision if context is not None else "",
+        "total": len(ordered),
+        "limit": limit,
+        "offset": offset,
+        "items": [
+            {
+                "id": observation.source_item.source_item_id,
+                "segmentId": observation.source_item.segment_id,
+                "sourceRevision": observation.source_item.source_revision,
+                "kind": observation.source_item.source_type,
+                "ordinal": observation.source_item.ordinal,
+                "startMs": observation.source_item.timestamp_ms,
+                "endMs": observation.source_item.end_ms,
+                "text": observation.text,
+                "frameId": observation.source_item.frame_ref_digest or None,
+            }
+            for observation in ordered[offset : offset + limit]
+        ],
+    }
+
+
 def temporal_window_page(
     context: VideoContext | None, *, limit: int, offset: int
 ) -> dict[str, object]:

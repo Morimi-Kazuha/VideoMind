@@ -16,6 +16,7 @@ from dovideo.domain import (
     PROVENANCE_VERSION,
     SourceItemIdentity,
     SourceType,
+    TemporalObservation,
     VideoContext,
     VideoSegment,
     compute_source_revision,
@@ -120,6 +121,29 @@ class _WindowBuilder:
             provenance_version=PROVENANCE_VERSION,
         )
 
+    def original_observations(
+        self, segment: VideoSegment
+    ) -> tuple[TemporalObservation, ...]:
+        """Attach original text to the exact identities emitted by this window."""
+        originals = {
+            (SourceType.ASR.value, ordinal): (item.text, None)
+            for ordinal, item in self.asr_observations
+        }
+        originals.update(
+            {
+                (SourceType.OCR.value, ordinal): (item.text, item.frame_ref)
+                for ordinal, item in self.ocr_observations
+            }
+        )
+        return tuple(
+            TemporalObservation(
+                source_item=item,
+                text=originals[(item.source_type, item.ordinal)][0],
+                frame_ref=originals[(item.source_type, item.ordinal)][1],
+            )
+            for item in segment.source_items
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class VideoContextBuilder:
@@ -211,10 +235,13 @@ class VideoContextBuilder:
                 window.evidence_frames.append(observation.frame_location or frame)
             window.ocr_observations.append((source_ordinal, observation))
 
-        segments = tuple(
-            window.build(source_revision, ordinal)
-            for ordinal, (_start_ms, window) in enumerate(sorted(windows.items()))
-        )
+        segments_list: list[VideoSegment] = []
+        original_observations: list[TemporalObservation] = []
+        for ordinal, (_start_ms, window) in enumerate(sorted(windows.items())):
+            segment = window.build(source_revision, ordinal)
+            segments_list.append(segment)
+            original_observations.extend(window.original_observations(segment))
+        segments = tuple(segments_list)
         if not segments:
             raise EmptyVideoContextError(
                 "video contains no usable speech or visual evidence"
@@ -223,6 +250,7 @@ class VideoContextBuilder:
             source=source,
             user_goal=user_goal,
             segments=segments,
+            observations=tuple(original_observations),
             source_revision=source_revision,
             provenance_version=PROVENANCE_VERSION,
         )
