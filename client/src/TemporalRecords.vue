@@ -4,17 +4,12 @@
       <h2 id="temporal-title">全片时间记录</h2>
       <span>60 秒上下文窗口</span>
     </div>
-    <div
-      class="temporal-records__tabs"
-      role="tablist"
-      aria-label="时间记录类型"
-    >
+    <div class="temporal-records__tabs" role="group" aria-label="时间记录类型">
       <button
         v-for="choice in choices"
         :key="choice.id"
         type="button"
-        role="tab"
-        :aria-selected="tab === choice.id"
+        :aria-pressed="tab === choice.id"
         :class="{ 'is-active': tab === choice.id }"
         @click="
           tab = choice.id;
