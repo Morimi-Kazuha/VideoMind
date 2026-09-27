@@ -34,6 +34,7 @@ from .ports.tasks import (
     TaskResultPort,
 )
 from .dead_letter_handoff import PendingDeadLetterHandoff
+from .errors import BudgetExceededError
 from .mode_profiles import mode_profile_for
 from .task_lifecycle import DEFAULT_MAX_ATTEMPTS, TaskLifecycle
 from .value_objects import AnalysisRequest
@@ -268,10 +269,18 @@ class TaskWorker:
                 )
                 return outcome
 
-            failed = started.fail(
-                "分析失败，已进入人工处理队列",
-                stage=TaskStage.DEAD_LETTERED,
+            budget_exhausted = isinstance(error, BudgetExceededError)
+            public_failure = (
+                "本次分析超过执行预算，请缩小分析范围后重试"
+                if budget_exhausted
+                else "分析失败，已进入人工处理队列"
             )
+            failure_stage = (
+                TaskStage.BUDGET_EXHAUSTED
+                if budget_exhausted
+                else TaskStage.DEAD_LETTERED
+            )
+            failed = started.fail(public_failure, stage=failure_stage)
             if self._execution_records is not None:
                 await self._execution_records.fail_for_task(
                     key,
@@ -329,8 +338,8 @@ class TaskWorker:
                     raise
             await self._publish(
                 key,
-                TaskStatus.of(TaskStatus.State.FAILED, "分析失败，已进入人工处理队列"),
-                TaskStage.DEAD_LETTERED,
+                TaskStatus.of(TaskStatus.State.FAILED, public_failure),
+                failure_stage,
             )
             outcome = WorkerOutcome(
                 WorkerDisposition.DEAD_LETTERED,
@@ -517,7 +526,7 @@ class TaskWorker:
             if identity in seen:
                 return False
             seen.add(identity)
-            if isinstance(current, (ValueError, TypeError, PermissionError, LookupError)):
+            if isinstance(current, (BudgetExceededError, ValueError, TypeError, PermissionError, LookupError)):
                 return True
 
             cause = current.__cause__

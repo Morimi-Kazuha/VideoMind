@@ -747,7 +747,7 @@ def _agent_budget_from_environment(environ: Mapping[str, str] | None = None) -> 
     return AgentBudgetConfig(
         max_rounds=_int_setting(values, ("DOVIDEO_AGENT_MAX_ROUNDS",), 2),
         max_duration_ms=_int_setting(
-            values, ("DOVIDEO_AGENT_MAX_DURATION_MS",), 120_000
+            values, ("DOVIDEO_AGENT_MAX_DURATION_MS",), 240_000
         ),
         max_estimated_tokens=_int_setting(
             values, ("DOVIDEO_AGENT_MAX_ESTIMATED_TOKENS",), 50_000

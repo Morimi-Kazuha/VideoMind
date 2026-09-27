@@ -125,7 +125,10 @@ async def test_tool_turn_structural_repair_is_one_bounded_retry() -> None:
 
     assert turn.kind is ExecutorTurnKind.TOOL_REQUEST
     assert len(chat.calls) == 2
-    assert all(call["stage"] == "EXECUTOR_TURN" for call in chat.calls)
+    assert [call["stage"] for call in chat.calls] == [
+        "EXECUTOR_TURN", "EXECUTOR_TURN_REPAIR"
+    ]
+    assert "VideoContext:" not in chat.calls[1]["messages"][1]["content"]
     repair_prompt = chat.calls[1]["messages"][1]["content"]
     assert "Structural" not in repair_prompt
     assert "previous ExecutorTurn response was structurally invalid" in repair_prompt

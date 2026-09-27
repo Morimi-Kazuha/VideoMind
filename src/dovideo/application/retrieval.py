@@ -19,6 +19,7 @@ from dovideo.domain import (
     VideoSegment,
 )
 
+from .errors import BudgetExceededError
 from .ports.ai import EmbeddingPort, RetrievalPlannerPort
 from .ports.observability import TelemetryPort
 from .ports.retrieval import VectorIndexPort
@@ -187,6 +188,8 @@ class VideoEvidenceRetrievalService:
                 raise TypeError("retrieval planner returned an invalid intent")
             if intent.semantic_query.strip():
                 return intent
+        except BudgetExceededError:
+            raise
         except Exception:
             self._increment("retrievalIntentFallbacks")
 

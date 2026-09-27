@@ -380,6 +380,9 @@ async def test_critic_prompt_uses_the_same_evidence_binding_contract() -> None:
     assert "character-for-character" in prompt
     assert "Reject paraphrased or merely related claims" in prompt
     assert "timestampMs must fall within the VideoContext segment" in prompt
+    assert '"unsupportedClaims" as arrays of strings' in prompt
+    assert '"requiredTimestamps" as an array of integers' in prompt
+    assert 'all four arrays must be empty' in prompt
 
 
 @pytest.mark.asyncio
@@ -410,12 +413,15 @@ async def test_executor_structural_failure_retries_once_and_preserves_contract()
 
     assert result == _result()
     assert len(chat.calls) == 2
-    assert [call["stage"] for call in chat.calls] == ["EXECUTOR", "EXECUTOR"]
+    assert [call["stage"] for call in chat.calls] == ["EXECUTOR", "EXECUTOR_REPAIR"]
     first_prompt = chat.calls[0]["messages"][1]["content"]
     second_prompt = chat.calls[1]["messages"][1]["content"]
     assert isinstance(first_prompt, str)
     assert isinstance(second_prompt, str)
-    assert second_prompt.startswith(first_prompt)
+    assert not second_prompt.startswith(first_prompt)
+    assert "InvalidDraft:" in second_prompt
+    assert "wrong shape" in second_prompt
+    assert "VideoContext:" not in second_prompt
     assert "previous output did not satisfy" in second_prompt
     assert observer.attempts == [
         {
@@ -440,7 +446,7 @@ async def test_executor_structural_failure_stops_after_second_response() -> None
         await ExecutorModelAdapter(chat).execute(_context(), _plan())
 
     assert len(chat.calls) == 2
-    assert [call["stage"] for call in chat.calls] == ["EXECUTOR", "EXECUTOR"]
+    assert [call["stage"] for call in chat.calls] == ["EXECUTOR", "EXECUTOR_REPAIR"]
 
 
 @pytest.mark.asyncio
@@ -514,25 +520,66 @@ async def test_malformed_model_json_is_not_silently_business_repaired() -> None:
 
 @pytest.mark.asyncio
 async def test_critic_dto_validation_keeps_structural_diagnostics() -> None:
+    invalid = (
+        '{"passed":false,"feedback":"rewrite",'
+        '"missingRequirements":[],"unsupportedClaims":[],'
+        '"requiredTimestamps":[]}'
+    )
     chat = FakeChat(
-        [
-            '{"passed":false,"feedback":"rewrite",'
-            '"missingRequirements":[],"unsupportedClaims":[],'
-            '"requiredTimestamps":[]}'
-        ]
+        [invalid, invalid]
     )
 
     with pytest.raises(ModelResponseError) as caught:
         await CriticModelAdapter(chat).critique(_context(), _plan(), _result())
 
     message = str(caught.value)
-    assert "CRITIC response did not match its DTO" in message
+    assert "CRITIC_REPAIR response did not match its DTO" in message
     assert '"payload_type":"dict"' in message
     assert '"feedback":"str"' in message
     assert '"loc":["feedback"]' in message
     assert '"type":"value_error"' in message
     assert '"msg":"Value error, expected a collection"' in message
     assert "rewrite" not in message
+    assert [call["stage"] for call in chat.calls] == ["CRITIC", "CRITIC_REPAIR"]
+    assert "VideoContext" not in chat.calls[1]["messages"][1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_critic_repairs_object_issue_entries_without_changing_verdict() -> None:
+    invalid = json.dumps({
+        "passed": False,
+        "unsupportedClaims": [{"claim": "unsupported", "reason": "no timestamp"}],
+    })
+    repaired = json.dumps({
+        "passed": False,
+        "unsupportedClaims": ["unsupported: no timestamp"],
+    })
+    chat = FakeChat([invalid, repaired])
+
+    critique = await CriticModelAdapter(chat).critique(_context(), _plan(), _result())
+
+    assert critique.passed is False
+    assert critique.unsupported_claims == ("unsupported: no timestamp",)
+    assert "VideoContext" not in chat.calls[1]["messages"][1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_critic_repair_rejects_changed_verdict() -> None:
+    invalid = '{"passed":false,"unsupportedClaims":[{"claim":"unsupported"}]}'
+    repaired = '{"passed":true,"unsupportedClaims":["unsupported"]}'
+    chat = FakeChat([invalid, repaired])
+
+    with pytest.raises(ModelResponseError, match="changed the Critic verdict"):
+        await CriticModelAdapter(chat).critique(_context(), _plan(), _result())
+
+
+@pytest.mark.asyncio
+async def test_critic_without_parseable_verdict_cannot_be_repaired_into_a_pass() -> None:
+    chat = FakeChat(['{"feedback":"malformed"}'])
+
+    with pytest.raises(ModelResponseError):
+        await CriticModelAdapter(chat).critique(_context(), _plan(), _result())
+    assert [call["stage"] for call in chat.calls] == ["CRITIC"]
 
 
 @pytest.mark.asyncio

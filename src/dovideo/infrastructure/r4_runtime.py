@@ -40,6 +40,7 @@ from dovideo.application import (
     VideoReadOnlyToolExecutor,
     ExecutionRecordService,
     EXECUTION_CONTRACT_VERSION_V2,
+    BudgetExceededError,
 )
 from dovideo.application.ports.checkpoint import ContextCheckpointPort
 from dovideo.application.ports.tasks import AgentLoopEntryPort, TaskEventPublisherPort
@@ -55,6 +56,7 @@ from dovideo.domain import (
     VideoChunk,
     VideoContext,
     VideoSegment,
+    AgentBudgetConfig,
 )
 from dovideo.infrastructure.media import (
     AudioSegmenter,
@@ -130,8 +132,14 @@ _CURRENT_R4_REQUEST: ContextVar[AnalysisRequest | None] = ContextVar(
 class R4AgentTelemetry:
     """Use the existing Redis trace as both metrics and budget usage sink."""
 
-    def __init__(self, store: RedisAgentTelemetry) -> None:
+    def __init__(
+        self,
+        store: RedisAgentTelemetry,
+        *,
+        budget_config: AgentBudgetConfig | None = None,
+    ) -> None:
         self.store = store
+        self._budget_config = budget_config
         self._model_identifier = ""
         self._current_key: ContextVar[TaskKey | None] = ContextVar(
             "dovideo_r4_telemetry_task",
@@ -144,6 +152,167 @@ class R4AgentTelemetry:
         self._chat_usage_capture: ContextVar[list[dict[str, Any]] | None] = ContextVar(
             "dovideo_r4_chat_usage_capture", default=None
         )
+        self._model_call_context: ContextVar[tuple[int | None, str]] = ContextVar(
+            "dovideo_r4_model_call_context", default=(None, "normal")
+        )
+
+    @contextmanager
+    def model_call_scope(self, *, round: int | None, reason: str) -> Iterator[None]:
+        token = self._model_call_context.set((round, str(reason)[:32]))
+        try:
+            yield
+        finally:
+            self._model_call_context.reset(token)
+
+    def admit_model_call(
+        self,
+        *,
+        stage: str,
+        model: str,
+        messages: Sequence[Mapping[str, str]],
+        attempt: int,
+        max_output_tokens: int | None,
+    ) -> dict[str, Any] | None:
+        """Reserve measured input and stage output headroom before HTTP work.
+
+        The input estimate is deliberately conservative; provider usage replaces
+        it for completed calls. No prompt or media text enters the trace.
+        """
+
+        key = self._current_key.get()
+        config = self._budget_config
+        if key is None or config is None or self._scoped_counters.get() is not None:
+            return None
+        input_bytes = sum(
+            len(str(message.get("role", "")).encode("utf-8"))
+            + len(str(message.get("content", "")).encode("utf-8"))
+            for message in messages
+        )
+        input_estimate = max(1, (input_bytes + 1) // 2)
+        reserves = {
+            "CHUNK_SUMMARY": 4096,
+            "RETRIEVAL_PLANNER": 1024,
+            "PLANNER": 2048,
+            "PLANNER_REPAIR": 2048,
+            "REPLANNER": 2048,
+            "EXECUTOR": 8192,
+            "EXECUTOR_REPAIR": 8192,
+            "EXECUTOR_TURN": 8192,
+            "EXECUTOR_CONTINUATION": 8192,
+            "CRITIC": 16000,
+        }
+        stage_reserve = reserves.get(stage.upper(), 8192)
+        output_reserve = (
+            min(max_output_tokens, stage_reserve)
+            if max_output_tokens is not None
+            else stage_reserve
+        )
+        usage = self.store.current_usage_for_key(key)
+        remaining = config.max_estimated_tokens - usage.estimated_tokens
+        allowed = (
+            input_estimate + output_reserve <= remaining
+            and (
+                config.max_estimated_cost <= 0
+                or usage.estimated_cost < config.max_estimated_cost
+            )
+        )
+        call_round, call_reason = self._model_call_context.get()
+        admission = {
+            "stage": str(stage)[:48],
+            "model": str(model)[:128],
+            "attempt": max(1, int(attempt)),
+            "round": call_round,
+            "reason": "repair" if stage.upper().endswith("_REPAIR") else call_reason,
+            "inputEstimate": input_estimate,
+            "outputReserve": output_reserve,
+            "cumulativeBefore": usage.estimated_tokens,
+            "remainingBefore": max(0, remaining),
+            "allowed": allowed,
+        }
+        self.store.record_structural_for_key(
+            key, {"kind": "modelCallAdmission", **admission}
+        )
+        if not allowed:
+            self.increment("modelBudgetDenials")
+            self.increment("budgetTerminations")
+            raise BudgetExceededError(
+                "本次分析超过执行预算，请缩小分析范围或重试。"
+            )
+        return admission
+
+    def record_unreported_model_usage(
+        self,
+        *,
+        stage: str,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        provider_reported_cost: float | None = None,
+    ) -> None:
+        """Charge a conservative fallback when a sent request has no usage."""
+
+        self.record_chat_usage(
+            stage=stage,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            provider_reported_cost=provider_reported_cost,
+            usage_source=(
+                "heuristic_tokens_provider_cost"
+                if provider_reported_cost is not None
+                else "heuristic"
+            ),
+        )
+        self.add(
+            estimated_tokens=input_tokens + output_tokens,
+            estimated_cost=0.0 if provider_reported_cost is None else provider_reported_cost,
+        )
+
+    def finish_model_call(
+        self,
+        admission: Mapping[str, Any] | None,
+        *,
+        input_tokens: int | float | None,
+        output_tokens: int | float | None,
+        total_tokens: int | float | None,
+        usage_source: str,
+    ) -> None:
+        key = self._current_key.get()
+        if key is None or admission is None or self._scoped_counters.get() is not None:
+            return
+        usage = self.store.current_usage_for_key(key)
+        limit = self._budget_config.max_estimated_tokens if self._budget_config else 0
+        self.store.record_structural_for_key(
+            key,
+            {
+                "kind": "modelCallUsage",
+                "stage": admission["stage"],
+                "attempt": admission["attempt"],
+                "round": admission["round"],
+                "reason": admission["reason"],
+                "inputEstimate": admission["inputEstimate"],
+                "outputReserve": admission["outputReserve"],
+                "inputTokens": input_tokens,
+                "outputTokens": output_tokens,
+                "totalTokens": total_tokens,
+                "usageSource": usage_source,
+                "cumulativeTotal": usage.estimated_tokens,
+                "remainingBudget": max(0, limit - usage.estimated_tokens),
+            },
+        )
+        if self._budget_config and (
+            usage.estimated_tokens > self._budget_config.max_estimated_tokens
+            or (
+                self._budget_config.max_estimated_cost > 0
+                and usage.estimated_cost > self._budget_config.max_estimated_cost
+            )
+        ):
+            self.increment("modelBudgetOverruns")
+            self.increment("budgetTerminations")
+            raise BudgetExceededError(
+                "本次分析超过执行预算，请缩小分析范围或重试。"
+            )
 
     def set_model_identifier(self, model: str | None) -> None:
         value = str(model or "").strip()
@@ -180,6 +349,7 @@ class R4AgentTelemetry:
         output_tokens: int | float | None,
         total_tokens: int | float | None,
         provider_reported_cost: int | float | None,
+        usage_source: str = "provider",
     ) -> None:
         """Retain provider counts without estimating missing fields."""
 
@@ -190,6 +360,7 @@ class R4AgentTelemetry:
             "outputTokens": output_tokens,
             "totalTokens": total_tokens,
             "providerReportedCost": provider_reported_cost,
+            "usageSource": usage_source,
         }
         capture = self._chat_usage_capture.get()
         if capture is not None:
@@ -1284,7 +1455,9 @@ class R4WorkerRuntime:
             redis_client=selected_infrastructure.redis_client,
         )
         baseline_trace = RedisAgentTelemetry(selected_infrastructure.redis_client)
-        telemetry = R4AgentTelemetry(baseline_trace)
+        telemetry = R4AgentTelemetry(
+            baseline_trace, budget_config=_agent_budget_from_environment()
+        )
         execution_records = ExecutionRecordService(
             selected_infrastructure.execution_record_repository,
             trace_projection=telemetry.project_execution,
@@ -1418,7 +1591,7 @@ def _role_name(stage: str) -> str:
     normalized = str(stage).upper()
     if normalized in {"PLANNER", "PLANNER_REPAIR", "REPLANNER"}:
         return "PLANNER"
-    if normalized == "EXECUTOR":
+    if normalized in {"EXECUTOR", "EXECUTOR_REPAIR"}:
         return "EXECUTOR"
     if normalized == "CRITIC":
         return "CRITIC"

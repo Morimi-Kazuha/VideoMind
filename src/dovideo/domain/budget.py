@@ -42,7 +42,7 @@ class AgentBudgetConfig(DomainModel):
     """
 
     max_rounds: Annotated[int, Field(alias="maxRounds")] = 2
-    max_duration_ms: Annotated[int, Field(alias="maxDurationMs")] = 120_000
+    max_duration_ms: Annotated[int, Field(alias="maxDurationMs")] = 240_000
     max_estimated_tokens: Annotated[int, Field(alias="maxEstimatedTokens")] = 50_000
     max_estimated_cost: Annotated[float, Field(alias="maxEstimatedCost")] = 0.0
 

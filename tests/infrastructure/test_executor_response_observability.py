@@ -329,7 +329,7 @@ def test_r4_telemetry_reuses_existing_trace_and_bounds_structural_records() -> N
     token = telemetry.bind(key)
     try:
         telemetry.set_model_identifier("executor-test-model")
-        for _ in range(40):
+        for _ in range(140):
             telemetry.record_structured_response(
                 "EXECUTOR",
                 {
@@ -362,7 +362,7 @@ def test_r4_telemetry_reuses_existing_trace_and_bounds_structural_records() -> N
 
     document = trace.latest(key)
     records = document["responseDiagnostics"]
-    assert len(records) == 32
+    assert len(records) == 128
     assert any(item.get("truncated") is True for item in records)
     assert records[-1] == {
         "kind": "executorStructuralAttempt",

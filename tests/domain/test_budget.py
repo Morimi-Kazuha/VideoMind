@@ -6,6 +6,14 @@ import pytest
 from pydantic import ValidationError
 
 from dovideo.domain import AgentBudgetConfig, BudgetUsage
+from dovideo.presentation.composition import _agent_budget_from_environment
+
+
+def test_r5_default_keeps_50k_tokens_with_four_minute_execution_window() -> None:
+    budget = _agent_budget_from_environment({})
+    assert budget.max_estimated_tokens == 50_000
+    assert budget.max_duration_ms == 240_000
+    assert AgentBudgetConfig().max_duration_ms == 240_000
 
 
 def test_budget_models_have_java_aliases_and_allow_zero() -> None:

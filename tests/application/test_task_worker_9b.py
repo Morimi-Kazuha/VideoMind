@@ -15,6 +15,7 @@ from dovideo.application import (
     TaskWorker,
     WorkerDisposition,
     mode_profile_for,
+    BudgetExceededError,
 )
 from dovideo.domain import (
     AgentState,
@@ -338,6 +339,24 @@ async def test_worker_permanent_failure_dead_letters_on_first_attempt() -> None:
     assert dead.calls[0][1] == 1
     assert events.events[-1][1].state is TaskStatusState.FAILED
     assert active.release_calls == [request.task_key]
+
+
+@pytest.mark.asyncio
+async def test_budget_exhaustion_stops_without_repeating_expensive_model_calls() -> None:
+    request = _request()
+    worker, _active, _completion, _lock, _lifecycle, _context, _results, events, dead, loop = _worker(
+        request, [BudgetExceededError("internal token arithmetic")]
+    )
+
+    outcome = await worker.handle(request)
+
+    assert outcome.disposition is WorkerDisposition.DEAD_LETTERED
+    assert outcome.attempt == 1
+    assert outcome.lifecycle.stage is TaskStage.BUDGET_EXHAUSTED
+    assert len(loop.calls) == len(dead.calls) == 1
+    assert events.events[-1][1].stage is TaskStage.BUDGET_EXHAUSTED
+    assert "缩小分析范围" in events.events[-1][1].message
+    assert "arithmetic" not in events.events[-1][1].message
 
 
 @pytest.mark.asyncio

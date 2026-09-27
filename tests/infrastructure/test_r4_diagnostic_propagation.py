@@ -149,8 +149,12 @@ async def test_critic_dto_diagnostic_survives_r4_observation_and_failure_boundar
         )
 
     error = caught.value
-    assert http.calls == 1
-    assert telemetry.counters == {"modelCalls": 1, "CRITICCalls": 1}
+    assert http.calls == 2
+    assert telemetry.counters == {
+        "modelCalls": 2,
+        "CRITICCalls": 1,
+        "CRITIC_REPAIRCalls": 1,
+    }
     assert isinstance(error.diagnostic, str)
 
     request = _request()
@@ -174,7 +178,7 @@ async def test_critic_dto_diagnostic_survives_r4_observation_and_failure_boundar
     failure_document = publisher.published["error"]
     assert isinstance(failure_document, dict)
     assert failure_document["type"] == "ModelResponseError"
-    assert "CRITIC response did not match its DTO" in failure_document["message"]
+    assert "CRITIC_REPAIR response did not match its DTO" in failure_document["message"]
     assert failure_document["diagnostic"] == error.diagnostic
 
     prefix, serialized = failure_document["diagnostic"].split("=", 1)

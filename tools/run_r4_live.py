@@ -24,6 +24,8 @@ from uuid import uuid4
 REPO = Path(__file__).resolve().parents[1]
 MEDIA = REPO / "work" / "media" / "representative-long.mp4"
 EVIDENCE_PATH = REPO / "work" / "r4-live-evidence.json"
+GOAL = "Find the later After Love passage describing the sea, pool, and tide, and provide timestamped evidence"
+REQUIRE_LATER_REGION = True
 
 
 def load_local_environment() -> None:
@@ -180,7 +182,7 @@ def main() -> int:
         password = "R4-" + uuid4().hex + "-LocalOnly"
         username_two = "r4_owner_check_" + uuid4().hex[:12]
         password_two = "R4-" + uuid4().hex + "-LocalOnly"
-        goal = "Find the later After Love passage describing the sea, pool, and tide, and provide timestamped evidence"
+        goal = GOAL
 
         with TestClient(create_app()) as client:
             registered = client.post(
@@ -421,6 +423,12 @@ def main() -> int:
                 if isinstance(item, dict) and "startMs" in item
             )
             later_ok = _later_retrieval_proof(context, final_hits)
+            if not state.critique or not state.critique.passed:
+                raise RuntimeError("production Critic did not pass")
+            if not citations:
+                raise RuntimeError("production answer has no verified source citations")
+            if REQUIRE_LATER_REGION and not later_ok:
+                raise RuntimeError("required later source region was not retrieved")
             counters = result.get("trace", {}).get("counters", {})
             result.update(
                 {

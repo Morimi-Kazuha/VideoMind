@@ -25,9 +25,12 @@ from dovideo.domain import (
     ChunkSummary,
     CriticResult,
     VideoContext,
+    VideoSegment,
     VideoRetrievalIntent,
+    content_digest,
 )
 from dovideo.application.tool_contracts import ExecutorTurn, ToolResult
+from dovideo.application.errors import BudgetExceededError
 
 from .config import ModelRequestSettings, ProviderConfig
 from .errors import (
@@ -107,11 +110,25 @@ EVIDENCE_BINDING_CONTRACT = (
     "The deterministic Evidence Guard compares claims after lowercasing and "
     "removing Unicode whitespace, punctuation, and symbols, but still emit an "
     "exact copy. Copy evidence.content as a non-empty verbatim excerpt from "
-    "the selected ASR transcript or OCR text supplied in VideoContext, long "
-    "enough that it is a substring under that same normalization. Do not "
+    "one ASR or OCR sourceItems.text entry supplied in VideoContext when "
+    "sourceItems are present (otherwise its transcript or ocrTexts), long "
+    "enough that it is a substring under that same normalization. Use that "
+    "item's startMs as timestampMs. Do not "
     "paraphrase or invent evidence content. timestampMs must fall within the "
     "VideoContext segment containing the text, and source must identify the "
     "actual available evidence using exactly ASR, OCR, or ASR+OCR."
+)
+
+CRITIC_OUTPUT_CONTRACT = (
+    'Return exactly one CriticResult JSON object with "passed" as a boolean, '
+    '"feedback", "missingRequirements", and "unsupportedClaims" as arrays '
+    'of strings, and "requiredTimestamps" as an array of integers. Never '
+    'put objects in these arrays or add alternative review fields. If any '
+    'claim, citation, timestamp, source text, or requirement fails, set '
+    '"passed" to false and describe each issue in the string arrays. '
+    'When "passed" is true, all four arrays must be empty; do not put '
+    'approval or praise text in feedback. Use feedback only for failures. '
+    'Keep failure descriptions concise but specific.'
 )
 
 EXECUTOR_STRUCTURAL_REPAIR_INSTRUCTION = (
@@ -241,7 +258,13 @@ class OpenAICompatibleChatClient:
             }
         last_error: ProviderTransientError | None = None
         for attempt in range(self.config.max_attempts):
+            admission = self._admit_model_call(normalized, stage, attempt + 1)
+            sent = False
+            response_status: int | None = None
+            response_chars = 0
+            reported_usage = None
             try:
+                sent = True
                 response = await post_json(
                     self._client,
                     self.config.chat_url,
@@ -250,7 +273,10 @@ class OpenAICompatibleChatClient:
                     timeout=self.config.timeout_seconds,
                 )
                 status, body = response_parts(response)
+                response_status = status
                 self._record_model_transport(stage, status, body)
+                _present, response_chars, _content_type = _response_content_metadata(body)
+                reported_usage = self._record_provider_usage(body, stage=stage)
                 if status in (401, 403):
                     raise ProviderAuthenticationError(
                         f"{stage} provider authentication failed"
@@ -263,8 +289,9 @@ class OpenAICompatibleChatClient:
                     raise ProviderRequestError(
                         f"{stage} provider rejected request ({status})"
                     )
-                self._record_provider_usage(body, stage=stage)
                 return _extract_content(body, stage)
+            except BudgetExceededError:
+                raise
             except asyncio.CancelledError:
                 raise
             except TimeoutError:
@@ -295,6 +322,40 @@ class OpenAICompatibleChatClient:
                 raise ProviderTransportError(
                     f"{stage} provider transport failed"
                 ) from exc
+            finally:
+                if sent and admission is not None:
+                    if reported_usage is not None and reported_usage[2] is not None:
+                        self._finish_model_call(admission, reported_usage, "provider")
+                    elif reported_usage is not None or (
+                        response_status is None
+                        or response_status in (408, 429)
+                        or response_status >= 500
+                        or 200 <= response_status < 300
+                    ):
+                        estimated_input = int(admission["inputEstimate"])
+                        estimated_output = (response_chars + 1) // 2
+                        self._record_unreported_usage(
+                            stage,
+                            estimated_input,
+                            estimated_output,
+                            provider_reported_cost=(
+                                None if reported_usage is None else reported_usage[3]
+                            ),
+                        )
+                        self._finish_model_call(
+                            admission,
+                            (
+                                estimated_input,
+                                estimated_output,
+                                estimated_input + estimated_output,
+                                None if reported_usage is None else reported_usage[3],
+                            ),
+                            (
+                                "heuristic_tokens_provider_cost"
+                                if reported_usage is not None
+                                else "heuristic"
+                            ),
+                        )
         if last_error is not None:
             raise last_error
         raise ProviderResponseError(f"{stage} provider returned no response")
@@ -336,15 +397,65 @@ class OpenAICompatibleChatClient:
             if isawaitable(value):
                 await value
 
-    def _record_provider_usage(self, body: Any, *, stage: str = "MODEL") -> None:
+    def _admit_model_call(
+        self, messages: Sequence[Mapping[str, str]], stage: str, attempt: int
+    ) -> Mapping[str, Any] | None:
+        admit = getattr(self._usage_sink, "admit_model_call", None)
+        if not callable(admit):
+            return None
+        return admit(
+            stage=stage,
+            model=self.config.model,
+            messages=messages,
+            attempt=attempt,
+            max_output_tokens=self.request_settings.max_tokens,
+        )
+
+    def _finish_model_call(
+        self,
+        admission: Mapping[str, Any],
+        usage: tuple[int | float | None, int | float | None, int | float | None, int | float | None],
+        source: str,
+    ) -> None:
+        finish = getattr(self._usage_sink, "finish_model_call", None)
+        if callable(finish):
+            finish(
+                admission,
+                input_tokens=usage[0],
+                output_tokens=usage[1],
+                total_tokens=usage[2],
+                usage_source=source,
+            )
+
+    def _record_unreported_usage(
+        self,
+        stage: str,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        provider_reported_cost: int | float | None = None,
+    ) -> None:
+        record = getattr(self._usage_sink, "record_unreported_model_usage", None)
+        if callable(record):
+            record(
+                stage=stage,
+                model=self.config.model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                provider_reported_cost=provider_reported_cost,
+            )
+
+    def _record_provider_usage(
+        self, body: Any, *, stage: str = "MODEL"
+    ) -> tuple[int | float | None, int | float | None, int | float | None, int | float | None] | None:
         """Forward provider-reported usage without estimating from prompts."""
 
         sink = self._usage_sink
         if sink is None or not isinstance(body, Mapping):
-            return
+            return None
         usage = body.get("usage")
         if not isinstance(usage, Mapping):
-            return
+            return None
         tokens = _usage_number(usage, "total_tokens", "totalTokens")
         if tokens is None:
             prompt = _usage_number(usage, "prompt_tokens", "promptTokens")
@@ -358,7 +469,11 @@ class OpenAICompatibleChatClient:
             "cost",
         )
         if tokens is None and cost is None:
-            return
+            return None
+        if tokens is None and callable(
+            getattr(sink, "record_unreported_model_usage", None)
+        ):
+            return (None, None, None, cost)
         record_chat_usage = getattr(sink, "record_chat_usage", None)
         if callable(record_chat_usage):
             record_chat_usage(
@@ -375,7 +490,12 @@ class OpenAICompatibleChatClient:
                 estimated_tokens=0 if tokens is None else tokens,
                 estimated_cost=0.0 if cost is None else cost,
             )
-            return
+            return (
+                _usage_number(usage, "prompt_tokens", "promptTokens"),
+                _usage_number(usage, "completion_tokens", "completionTokens"),
+                tokens,
+                cost,
+            )
         record = getattr(sink, "record", None)
         if callable(record):
             record(
@@ -384,6 +504,12 @@ class OpenAICompatibleChatClient:
                     "estimatedCost": 0.0 if cost is None else cost,
                 }
             )
+        return (
+            _usage_number(usage, "prompt_tokens", "promptTokens"),
+            _usage_number(usage, "completion_tokens", "completionTokens"),
+            tokens,
+            cost,
+        )
 
 
 class _StructuredRoleAdapter:
@@ -519,12 +645,13 @@ class ExecutorModelAdapter(_StructuredRoleAdapter):
             + "\n\nPreviousCritique:\n"
             + _dump_json(previous_critique)
             + "\n\nVideoContext:\n"
-            + _dump_json(context)
+            + _dump_json(context, evidence_items=True)
             + _execute_suffix(instruction)
         )
+        raw = await self._complete("EXECUTOR", prompt)
         try:
             result = decode_structured_model(
-                await self._complete("EXECUTOR", prompt),
+                raw,
                 AnalysisResult,
                 "EXECUTOR",
                 diagnostic_observer=self._diagnostic_observer,
@@ -546,15 +673,23 @@ class ExecutorModelAdapter(_StructuredRoleAdapter):
             return result
 
         repair_prompt = (
-            prompt
-            + "\n\nStructural repair instruction:\n"
+            "You are the Video Agent Executor. Repair only the JSON structure "
+            "of the untrusted draft below. Preserve its claims and source "
+            "excerpts; do not invent new facts or evidence. Return only a "
+            "complete AnalysisResult JSON object.\n"
+            + EXECUTOR_OUTPUT_CONTRACT
+            + "\nEvidence binding requirements:\n"
+            + EVIDENCE_BINDING_CONTRACT
+            + "\n"
             + EXECUTOR_STRUCTURAL_REPAIR_INSTRUCTION
+            + "\n\nInvalidDraft:\n"
+            + _repair_payload(raw)
         )
         try:
             result = decode_structured_model(
-                await self._complete("EXECUTOR", repair_prompt),
+                await self._complete("EXECUTOR_REPAIR", repair_prompt),
                 AnalysisResult,
-                "EXECUTOR",
+                "EXECUTOR_REPAIR",
                 diagnostic_observer=self._diagnostic_observer,
             )
         except ModelResponseError:
@@ -640,18 +775,19 @@ class ExecutorModelAdapter(_StructuredRoleAdapter):
             + "\n\nPreviousCritique:\n"
             + _dump_json(previous_critique)
             + "\n\nVideoContext:\n"
-            + _dump_json(context)
+            + _dump_json(context, evidence_items=True)
             + _execute_suffix(instruction)
         )
 
     async def _decode_tool_turn(self, prompt: str, stage: str) -> ExecutorTurn:
+        raw = await self._complete(
+            stage,
+            prompt,
+            system_policy=EXECUTOR_TOOL_AWARE_SYSTEM_POLICY,
+        )
         try:
             turn = decode_structured_model(
-                await self._complete(
-                    stage,
-                    prompt,
-                    system_policy=EXECUTOR_TOOL_AWARE_SYSTEM_POLICY,
-                ),
+                raw,
                 ExecutorTurn,
                 stage,
                 diagnostic_observer=self._diagnostic_observer,
@@ -675,12 +811,20 @@ class ExecutorModelAdapter(_StructuredRoleAdapter):
         try:
             turn = decode_structured_model(
                 await self._complete(
-                    stage,
-                    prompt + "\n\n" + EXECUTOR_TOOL_TURN_REPAIR_INSTRUCTION,
+                    stage + "_REPAIR",
+                    EXECUTOR_TOOL_TURN_CONTRACT
+                    + "\nFinal AnalysisResult contract:\n"
+                    + EXECUTOR_OUTPUT_CONTRACT
+                    + "\nEvidence binding requirements:\n"
+                    + EVIDENCE_BINDING_CONTRACT
+                    + "\n\n"
+                    + EXECUTOR_TOOL_TURN_REPAIR_INSTRUCTION
+                    + "\n\nInvalidTurn:\n"
+                    + _repair_payload(raw),
                     system_policy=EXECUTOR_TOOL_AWARE_SYSTEM_POLICY,
                 ),
                 ExecutorTurn,
-                stage,
+                stage + "_REPAIR",
                 diagnostic_observer=self._diagnostic_observer,
             )
         except ModelResponseError:
@@ -714,6 +858,8 @@ class CriticModelAdapter(_StructuredRoleAdapter):
         prompt = (
             "You are the Video Agent Critic. Inspect coverage, unsupported "
             "claims, and complete title/conclusions/evidence/suggestions. "
+            + CRITIC_OUTPUT_CONTRACT
+            + " "
             "Apply this same evidence-binding contract:\n"
             + EVIDENCE_BINDING_CONTRACT
             + " Reject paraphrased or merely related claims and set passed "
@@ -724,15 +870,53 @@ class CriticModelAdapter(_StructuredRoleAdapter):
             + "\n\nDraft:\n"
             + _dump_json(result)
             + "\n\nVideoContext:\n"
-            + _dump_json(context)
+            + _dump_json(context, evidence_items=True)
             + _mode_suffix("Additional mode review requirements:\n", instruction)
         )
-        return decode_structured_model(
-            await self._complete("CRITIC", prompt),
+        raw = await self._complete("CRITIC", prompt)
+        try:
+            return decode_structured_model(
+                raw,
+                CriticResult,
+                "CRITIC",
+                diagnostic_observer=self._diagnostic_observer,
+            )
+        except ModelResponseError as original_error:
+            original = _json_object_or_none(raw)
+            if original is None or not isinstance(original.get("passed"), bool):
+                raise original_error
+
+        # This is DTO repair only. The original verdict and issue lists stay
+        # authoritative; a changed verdict or discarded issue fails closed.
+        repair_prompt = (
+            "Repair only the JSON shape of this untrusted CriticResult. "
+            "Keep passed exactly unchanged. Preserve every feedback, missing "
+            "requirement, unsupported claim and required timestamp. Convert "
+            "object-valued issue entries into complete strings without dropping "
+            "their information. Do not reassess the answer. Return only JSON "
+            "with passed (boolean), feedback (string array), missingRequirements "
+            "(string array), unsupportedClaims (string array), and "
+            "requiredTimestamps (integer array).\n\nInvalidCriticResult:\n"
+            + _repair_payload(raw)
+        )
+        repaired = decode_structured_model(
+            await self._complete("CRITIC_REPAIR", repair_prompt),
             CriticResult,
-            "CRITIC",
+            "CRITIC_REPAIR",
             diagnostic_observer=self._diagnostic_observer,
         )
+        if repaired.passed != original["passed"]:
+            raise ModelResponseError("CRITIC_REPAIR changed the Critic verdict")
+        for name, values in (
+            ("feedback", repaired.feedback),
+            ("missingRequirements", repaired.missing_requirements),
+            ("unsupportedClaims", repaired.unsupported_claims),
+            ("requiredTimestamps", repaired.required_timestamps),
+        ):
+            previous = original.get(name)
+            if isinstance(previous, list) and len(values) < len(previous):
+                raise ModelResponseError(f"CRITIC_REPAIR discarded {name} entries")
+        return repaired
 
 
 class ChunkSummaryModelAdapter(_StructuredRoleAdapter):
@@ -1418,15 +1602,82 @@ def _usage_number(usage: Mapping[str, Any], *names: str) -> int | float | None:
     return None
 
 
-def _dump_json(value: Any) -> str:
+def _dump_json(value: Any, *, evidence_items: bool = False) -> str:
     if isinstance(value, VideoContext):
-        # Original observations are a durable read model, while the Agent
-        # prompt contract consumes the existing 60-second segment projection.
-        # Including both repeats source text and can exhaust the token budget.
-        value = value.model_dump(mode="json", by_alias=True, exclude={"observations"})
+        # The domain checkpoint keeps source identities, digests, frame refs,
+        # and original observations. Model roles only need exact source text
+        # and time windows; deterministic provenance binding stays in code.
+        value = {
+            "userGoal": value.user_goal,
+            "segments": [
+                _prompt_segment(segment, evidence_items=evidence_items)
+                for segment in value.segments
+            ],
+        }
+    elif isinstance(value, VideoSegment):
+        value = _prompt_segment(value)
+    elif isinstance(value, (tuple, list)) and all(
+        isinstance(item, VideoSegment) for item in value
+    ):
+        value = [_prompt_segment(item) for item in value]
     elif isinstance(value, BaseModel):
         value = value.model_dump(mode="json", by_alias=True)
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def _prompt_segment(
+    segment: VideoSegment, *, evidence_items: bool = False
+) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "startMs": segment.start_ms,
+        "endMs": segment.end_ms,
+    }
+    if evidence_items and segment.source_items:
+        source_texts = {
+            content_digest(line): line
+            for line in (*segment.transcript.split("\n"), *segment.ocr_texts)
+        }
+        items = [
+            {
+                "source": item.source_type,
+                "startMs": item.timestamp_ms,
+                "endMs": item.end_ms,
+                "text": source_texts[item.content_digest],
+            }
+            for item in segment.source_items
+            if item.content_digest in source_texts
+        ]
+        if len(items) == len(segment.source_items):
+            base["sourceItems"] = items
+            return base
+    base["transcript"] = segment.transcript
+    base["ocrTexts"] = list(segment.ocr_texts)
+    return base
+
+
+def _repair_payload(raw: Any) -> str:
+    """Keep the prior untrusted output for structure-only repair in memory."""
+
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw).decode("utf-8", errors="replace")
+    return _dump_json(raw)
+
+
+def _json_object_or_none(raw: Any) -> Mapping[str, Any] | None:
+    if isinstance(raw, Mapping):
+        return raw
+    if not isinstance(raw, str):
+        return None
+    start, end = raw.find("{"), raw.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        value = json.loads(raw[start : end + 1])
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, Mapping) else None
 
 
 def _mode_suffix(prefix: str, instruction: str | None) -> str:

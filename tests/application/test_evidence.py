@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import pytest
 
+from dovideo.application import VideoContextBuilder
+from dovideo.application.value_objects import (
+    AsrBranchOutcome,
+    MediaObservationBundle,
+    OcrBranchOutcome,
+    TranscriptSpan,
+)
 from dovideo.application.evidence import (
     EMPTY_CRITIQUE_FEEDBACK,
     INVALID_EVIDENCE_FEEDBACK,
@@ -403,3 +410,32 @@ def test_module_level_java_named_wrappers_bind_their_arguments() -> None:
     assert timestamp_covered(context, evidence)
     assert supported(context, evidence)
     assert supports_claim(context, "claim", evidence)
+
+
+def test_authoritative_context_requires_bound_source_items_for_passing_critic() -> None:
+    context = VideoContextBuilder().build(
+        "memory://video",
+        "find speech",
+        MediaObservationBundle(
+            asr=AsrBranchOutcome(
+                observations=(TranscriptSpan(3000, 5000, "precise source speech"),),
+                attempted=1,
+            ),
+            ocr=OcrBranchOutcome(),
+        ),
+    )
+    result = AnalysisResult(
+        title="Analysis",
+        conclusions=("precise source speech",),
+        evidence=(
+            _evidence(3000, content="precise source speech", claim="precise source speech"),
+        ),
+    )
+    verifier = EvidenceVerificationService()
+    assert verifier.supported(context, result.evidence[0])
+    assert not verifier.enforce_evidence_bounds(context, result, CriticResult(passed=True)).passed
+
+    bound = verifier.bind_provenance(context, result)
+    assert bound is not None
+    assert bound.evidence[0].source_item_ids
+    assert verifier.enforce_evidence_bounds(context, bound, CriticResult(passed=True)).passed

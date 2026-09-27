@@ -17,6 +17,7 @@ from dovideo.domain import (
     chunk_id_for,
 )
 
+from .errors import BudgetExceededError
 from .ports.ai import ChunkSummaryPort, EmbeddingPort
 from .ports.observability import TelemetryPort
 
@@ -113,6 +114,8 @@ class VideoChunkingService:
             if not isinstance(summary, ChunkSummary):
                 raise TypeError("chunk summary port returned an invalid value")
             return summary
+        except BudgetExceededError:
+            raise
         except Exception:
             self._increment("summaryFallbacks")
             return ChunkSummary(

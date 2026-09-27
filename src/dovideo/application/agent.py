@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from contextlib import nullcontext
 from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -462,6 +463,8 @@ class AgentLoopService:
                 "Planner",
                 self._planner.plan,
                 context,
+                _call_round=0,
+                _call_reason="initial",
                 instruction=instruction,
             )
             should_persist = True
@@ -474,6 +477,8 @@ class AgentLoopService:
                 self._planner.repair_plan,
                 context,
                 plan,  # type: ignore[arg-type]
+                _call_round=0,
+                _call_reason="repair",
                 instruction=instruction,
             )
             self._increment("planStructureRepairs")
@@ -539,6 +544,8 @@ class AgentLoopService:
                 context,
                 executable_plan,
                 previous_critique,
+                _call_round=round,
+                _call_reason="rewrite" if previous_critique is not None else "initial",
                 instruction=self._execute_instruction(profile),
             )
         else:
@@ -1301,6 +1308,8 @@ class AgentLoopService:
             context,
             plan,
             result,
+            _call_round=round,
+            _call_reason="validation",
             instruction=self._critic_instruction(profile),
         )
         bound_result = _bind_evidence_provenance(context, result)
@@ -1433,6 +1442,8 @@ class AgentLoopService:
                 context,
                 current_plan,
                 critique,
+                _call_round=record_round,
+                _call_reason="replan",
                 instruction=self._plan_instruction(profile),
             )
             revised = validate_plan(revised)
@@ -1711,9 +1722,29 @@ class AgentLoopService:
         stage: str,
         operation: Any,
         *args: Any,
+        _call_round: int | None = None,
+        _call_reason: str = "normal",
         **kwargs: Any,
     ) -> Any:
-        """Invoke one async provider call with the active deadline timeout."""
+        """Invoke one async provider call with scoped usage metadata."""
+
+        scope = getattr(self._telemetry, "model_call_scope", None)
+        manager = (
+            scope(round=_call_round, reason=_call_reason)
+            if callable(scope)
+            else nullcontext()
+        )
+        with manager:
+            return await self._invoke_unscoped(stage, operation, *args, **kwargs)
+
+    async def _invoke_unscoped(
+        self,
+        stage: str,
+        operation: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Apply the active deadline timeout to one injected operation."""
 
         self._check_deadline(stage)
         timeout = self._remaining_timeout_seconds()

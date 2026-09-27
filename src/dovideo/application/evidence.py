@@ -224,10 +224,16 @@ class EvidenceVerificationService:
         if result is None or not result.evidence:
             return normalized_critique
 
+        authoritative_items = bool(
+            context
+            and context.source_revision
+            and any(segment.source_items for segment in context.segments)
+        )
         invalid_evidence = tuple(
             evidence
             for evidence in result.evidence
             if not self.supported(context, evidence)
+            or (authoritative_items and not self.provenance_supported(context, evidence))
         )
         unsupported_claims = tuple(
             claim
