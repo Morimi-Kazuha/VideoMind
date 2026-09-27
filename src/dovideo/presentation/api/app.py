@@ -40,6 +40,10 @@ from dovideo.application import (
     TaskLifecycleEvent,
 )
 from dovideo.domain import AnalysisMode, TaskEvent
+from dovideo.application.temporal_read import (
+    temporal_window_page,
+    verified_answer_citations,
+)
 
 from .runtime import LocalR1Services, R1ServiceError, media_summary
 from .schemas import (
@@ -61,7 +65,7 @@ class ApiSettings:
         "http://127.0.0.1:5173",
         "http://localhost:5173",
     )
-    title: str = "DOVideo Python API"
+    title: str = "VideoMind API"
 
     @classmethod
     def from_environment(cls) -> "ApiSettings":
@@ -519,6 +523,30 @@ def create_app(
         await enforce_ai_interaction(user, "evidence-search")
         await selected_services.media.require_owned(id, int(user["id"]))
         return _ok(list(await selected_services.evidence_search(id, normalized_query)))
+
+    @app.get("/analysis/temporal-windows")
+    async def temporal_windows(
+        id: int = Query(...),
+        limit: int = Query(100, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+        user: dict[str, Any] = Depends(require_user),
+    ) -> JSONResponse:
+        await selected_services.media.require_owned(id, int(user["id"]))
+        context = await selected_services.checkpoint.load_context(id)
+        return _ok(temporal_window_page(context, limit=limit, offset=offset))
+
+    @app.get("/analysis/agent-citations")
+    async def agent_citations(
+        id: int = Query(...),
+        goal: str = Query(...),
+        mode: str | None = Query(None),
+        user: dict[str, Any] = Depends(require_user),
+    ) -> JSONResponse:
+        await selected_services.media.require_owned(id, int(user["id"]))
+        key = selected_services.key(id, _goal(goal, "分析目标"), _mode(mode))
+        context = await selected_services.checkpoint.load_context(id)
+        state = await selected_services.checkpoint.load_result(key)
+        return _ok(verified_answer_citations(context, state))
 
     @app.post("/analysis/agent-feedback")
     async def agent_feedback(

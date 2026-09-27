@@ -156,6 +156,18 @@ def test_analysis_dispatch_worker_sse_retrieval_eval_and_trace(client: TestClien
     assert metrics["claimEvidenceSupportRate"] == 1.0
     assert metrics["criticPassed"] is True
 
+    citations = client.get(
+        "/analysis/agent-citations",
+        params={"id": media_id, "goal": goal, "mode": "GENERAL"},
+        headers=headers,
+    )
+    assert citations.status_code == 200
+    records = citations.json()["data"]
+    assert len(records) == 1
+    assert records[0]["sourceItemIds"]
+    assert records[0]["segmentId"]
+    assert records[0]["timestampMs"] == 300000
+
     trace = client.get(
         "/analysis/agent-trace",
         params={"id": media_id, "goal": goal, "mode": "GENERAL"},
