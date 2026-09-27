@@ -1,7 +1,7 @@
 """Small, dependency-free adapter for the documented Jev System One API.
 
 The adapter is intentionally narrower than a general provider client.  Jev
-returns one bounded logical lane choice; DOVideo's application policy remains
+returns one bounded logical lane choice; VideoMind's application policy remains
 the authority that accepts, rejects, or falls back from that choice.  No
 provider/model mapping, prompt, video content, or credential crosses the
 application routing contract.

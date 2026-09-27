@@ -699,7 +699,7 @@ class _LocalExecutor:
         claim = f"目标“{context.user_goal}”对应的证据位于视频时间片段"
         content = segment.transcript.strip() or "该时间片段已被本地媒体适配器保留"
         return AnalysisResult(
-            title="DOVideo R1 本地分析结果",
+            title="VideoMind 本地分析结果",
             conclusions=(claim,),
             evidence=(
                 AnalysisEvidence(

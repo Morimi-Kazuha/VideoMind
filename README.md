@@ -1,15 +1,15 @@
-# DOVideo
+# VideoMind
 
-DOVideo is a Python-native long-video understanding system. It extracts timed
+VideoMind is a Python-native long-video understanding system. It extracts timed
 speech and frame text, retrieves relevant video evidence, and runs a bounded
 Video Agent that returns structured answers with source ranges. This repository
 adapts the public [DOVideo-AI](https://github.com/Xiaoc7r/DOVideo-AI)
 project into a FastAPI, Celery, and Vue application.
 
-## Why DOVideo
+## Why VideoMind
 
 A long video rarely fits a useful single-context prompt. Relevant facts may
-appear minutes apart in speech or on-screen text. DOVideo preserves those
+appear minutes apart in speech or on-screen text. VideoMind preserves those
 sources and their timestamps through retrieval and answer generation so that
 an Agent response can be checked against the video rather than accepted on
 model confidence alone.
@@ -34,6 +34,13 @@ media, and Qdrant indexes vectors. The CLI and local adapters provide smaller
 developer paths through the same application logic. See
 [architecture](docs/ARCHITECTURE.md) for the request lifecycle and authority
 boundaries.
+
+The Vue client presents the Media Library and Analysis Workspace in the
+Pixel Future Academy visual system. The workspace reads paged full-video
+60-second context windows separately from query-specific evidence and exposes
+verified answer-level citations where source identities are available. See
+[the temporal read model](docs/VIDEOMIND_TEMPORAL_READ_MODEL.md) for exact
+granularity, API contracts, and limitations.
 
 ## Core engineering
 
@@ -81,7 +88,7 @@ The formal X3 experiment used three heterogeneous execution lanes:
 
 Model execution used OpenRouter with a fixed `nextbit/fp8` provider pin and
 fallback disabled. Jev (`typesafe/jev-1.13`) advised routing through a
-separate OpenRouter path; DOVideo's deterministic policy retained final
+separate OpenRouter path; VideoMind's deterministic policy retained final
 authority. The frozen configuration is identified by commit `d0c8480` and
 the `golden-dataset-v2` logical digest
 `7f374396c5eb002ba158717afaffa8a65f5ee64ed79663f1f6b6047960dae8e4`.

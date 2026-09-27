@@ -5,7 +5,7 @@ const isDesignLab = window.location.pathname.replace(/\/+$/, '') === '/design-la
 
 if (isDesignLab) {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#070A12')
-  document.title = 'DOVideo · Pixel Future Academy · UI-0'
+  document.title = 'VideoMind · Pixel Future Academy · 设计实验室'
 }
 
 const { default: Root } = isDesignLab

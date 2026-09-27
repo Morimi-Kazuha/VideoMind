@@ -140,7 +140,7 @@ def _upload(address: tuple[str, int], filename: str = "clip.mp4") -> dict[str, A
 
 
 def test_web_page_is_static_and_contains_no_provider_credentials() -> None:
-    assert "DOVideo" in WEB_HTML
+    assert "VideoMind" in WEB_HTML
     assert "/api/upload" in WEB_HTML
     assert "DOVIDEO_MODEL_API_KEY" not in WEB_HTML
     assert "DOVIDEO_EMBEDDING_API_KEY" not in WEB_HTML

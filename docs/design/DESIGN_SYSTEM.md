@@ -1,6 +1,6 @@
-# DOVideo — Pixel Future Academy
+# VideoMind — Pixel Future Academy
 
-UI-0 is the visual foundation for DOVideo's Vue client. Its live, isolated showcase is `/design-lab` (`cd client && npm run dev`). The existing application at `/` is unchanged by this phase. All media, research notes, status values, and evidence shown in the lab are illustrative.
+Pixel Future Academy is VideoMind's canonical visual foundation. Its isolated showcase is `/design-lab` (`cd client && npm run dev`). The Media Library and Analysis Workspace use this system in production; all data shown in the lab remains illustrative.
 
 ## Vision and product metaphor
 
@@ -32,16 +32,16 @@ Dark is the default. Blue and cyan guide attention; most of the canvas remains q
 
 - Body and interface: Space Grotesk, Noto Sans SC, then system sans. Use normal readable sizes for responses, descriptions, forms, and long text.
 - Telemetry: Consolas/Cascadia/system monospace for timestamps, frame IDs, statuses, labels, and metadata.
-- Display: compact tracked monospace for DOVideo identity and tiny system labels. Do not use it for paragraphs.
+- Display: compact tracked monospace for VideoMind identity and tiny system labels. Do not use it for paragraphs.
 - The spacing scale is 4, 8, 12, 16, 24, 32, and 48 pixels (`--space-*`). Workstation panels use compact padding, not marketing-card spacing.
 
 ## Geometry and pixel language
 
-Panels use a thin technical border, 2–4 pixel corner radius at most, and a small cutout/notch only on selected surfaces. The repeated pixel grammar has three signatures: the D/frame/play mark, a seven-pixel cut corner on selected records, and multi-lane media blocks with a vertical frame cursor. Tiny four-pixel clusters signal AI processing. Reuse these few motifs instead of inventing a new border or sprite for each surface. Body copy, video controls, and dense evidence are rendered normally.
+Panels use a thin technical border, 2–4 pixel corner radius at most, and a small cutout/notch only on selected surfaces. The repeated pixel grammar has three signatures: the media-frame/play mark, a seven-pixel cut corner on selected records, and multi-lane media blocks with a vertical frame cursor. Tiny four-pixel clusters signal AI processing. Reuse these few motifs instead of inventing a new border or sprite for each surface. Body copy, video controls, and dense evidence are rendered normally.
 
-### DOVideo mark
+### VideoMind mark
 
-`AcademyMark.vue` draws an abstract D around a pixel play arrow in a 20×20 grid. It works in the application identity, selected project, assistant header, and empty state. Keep it as a companion to ordinary labels; do not fill every panel with marks.
+`AcademyMark.vue` draws a compact media frame around a pixel play arrow in a 20×20 grid. It works in the application identity and empty states. Keep it as a companion to ordinary labels; do not fill every panel with marks.
 
 ## Components
 
@@ -80,4 +80,4 @@ Focus is visible on interactive elements. Buttons, tabs, timeline segments, deta
 
 ## Extending the system
 
-For a later production page, first reuse the tokens and the smallest appropriate primitive, then build the page around real media and evidence content. Keep route-level data and policy in the existing application layer. Add a new primitive only when at least two concrete uses need the same behavior. Validate at desktop and one smaller viewport, with keyboard focus and reduced motion. UI-0 deliberately stops before migrating the production application.
+For production changes, reuse the tokens and the smallest appropriate primitive, then build around real media and evidence content. Keep route-level data and policy in the existing application layer. Add a new primitive only when at least two concrete uses need the same behavior. Validate at desktop and one smaller viewport, with keyboard focus and reduced motion. The live Analysis Workspace is the primary interaction reference; Design Lab remains an illustrative component showcase.

@@ -2,10 +2,10 @@
   <div class="app-stage academy-root ui1-app">
     <header class="ui1-header">
       <div class="ui1-header__inner">
-        <a class="ui1-brand" href="/" aria-label="DOVideo 媒体库">
+        <a class="ui1-brand" href="/" aria-label="VideoMind 媒体库">
           <span class="ui1-brand__mark"><AcademyMark /></span>
           <span>
-            DOVIDEO
+            VideoMind
             <small>MEDIA RESEARCH TERMINAL</small>
           </span>
         </a>
@@ -54,7 +54,7 @@
         </a>
         <div class="ui1-rail__bottom">
           <span class="pixel-cluster" aria-hidden="true"></span>
-          DOVIDEO / ACADEMY
+          VideoMind / ACADEMY
           <br />
           <small>视频研究工作台</small>
         </div>
@@ -374,7 +374,7 @@
     </div>
 
     <div v-if="!sidebar.visible" class="ui1-footer">
-      <span>DOVIDEO / MEDIA RESEARCH</span>
+      <span>VideoMind / MEDIA RESEARCH</span>
       <span>{{ systemStatusText }}</span>
     </div>
 

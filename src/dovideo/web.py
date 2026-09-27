@@ -1,4 +1,4 @@
-"""Thin local Web Demo presentation adapter for DOVideo.
+"""Thin local Web Demo presentation adapter for VideoMind.
 
 The web layer owns only browser transport, upload staging, process-local demo
 jobs, progress projection, and safe DTO mapping.  Analysis is delegated to
@@ -385,7 +385,7 @@ def make_handler(registry: DemoJobRegistry) -> type[BaseHTTPRequestHandler]:
 
     class DemoRequestHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.0"
-        server_version = "DOVideoDemo/1.0"
+        server_version = "VideoMindDemo/1.0"
 
         def log_message(self, _format: str, *args: Any) -> None:
             # Avoid default request logging of user-controlled paths in the
@@ -589,7 +589,7 @@ def run_web(
     server.daemon_threads = True
     address_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
     print(
-        f"DOVideo Web Demo: http://{address_host}:{server.server_address[1]}",
+        f"VideoMind Web Demo: http://{address_host}:{server.server_address[1]}",
         file=sys.stderr,
     )
     try:
@@ -603,11 +603,11 @@ def run_web(
 
 
 WEB_HTML = r'''<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DOVideo — Long-Video Understanding Agent</title>
+  <title>VideoMind — 视频智能分析</title>
   <style>
     :root { --ink:#14213d; --muted:#64748b; --line:#d9e2ef; --paper:#f5f7fb;
       --card:#ffffff; --blue:#2f6fed; --blue-soft:#e8f0ff; --green:#16845b;
@@ -671,35 +671,35 @@ WEB_HTML = r'''<!doctype html>
 <body>
   <div class="shell">
     <header class="masthead">
-      <div><div class="eyebrow">DOVideo</div><h1>Long-Video Understanding Agent</h1><p class="subtitle">Time-addressable evidence for a bounded Planner–Executor–Critic workflow.</p></div>
-      <div class="badge">LOCAL DEMO UI · not production SaaS</div>
+      <div><div class="eyebrow">VideoMind</div><h1>视频智能分析</h1><p class="subtitle">从时间化证据追溯视频内容。</p></div>
+      <div class="badge">本地演示 · 非生产服务</div>
     </header>
     <main class="layout">
       <section class="card input-card">
-        <h2>Analyze a video</h2>
-        <label class="drop" for="video-file"><strong id="file-label">Select a local video</strong><span>MP4, MOV, MKV, AVI, WEBM, or M4V · staged in the local demo runtime</span><input id="video-file" type="file" accept=".mp4,.mov,.mkv,.avi,.webm,.m4v,video/*"></label>
-        <div id="video-preview" class="empty-video">Video preview appears here</div>
+        <h2>分析视频</h2>
+        <label class="drop" for="video-file"><strong id="file-label">选择本地视频</strong><span>支持 MP4、MOV、MKV、AVI、WEBM、M4V · 仅在本地演示环境处理</span><input id="video-file" type="file" accept=".mp4,.mov,.mkv,.avi,.webm,.m4v,video/*"></label>
+        <div id="video-preview" class="empty-video">视频预览将在这里显示</div>
         <video id="player" controls hidden></video>
-        <label class="field-label" for="goal">Analysis goal</label>
-        <textarea id="goal" placeholder="e.g. What does the later poem say about the sea, pool, and tide?"></textarea>
-        <label class="field-label">Embedding mode</label>
+        <label class="field-label" for="goal">分析目标</label>
+        <textarea id="goal" placeholder="例如：视频后半段如何解释海洋与潮汐？"></textarea>
+        <label class="field-label">嵌入模式</label>
         <div class="mode-row"><label class="mode"><input type="radio" name="embedding" value="local" checked> Local TF-IDF</label><label class="mode"><input type="radio" name="embedding" value="remote"> Remote BGE-M3</label></div>
-        <div class="actions"><button id="analyze" type="button">Analyze video</button><span id="action-hint" class="hint">Provider credentials stay on the server.</span></div>
+        <div class="actions"><button id="analyze" type="button">开始分析</button><span id="action-hint" class="hint">模型凭据仅保留在服务端。</span></div>
         <div id="error" class="error-box hidden" role="alert"></div>
       </section>
       <section class="card">
-        <h2>Analysis progress</h2>
+        <h2>分析进度</h2>
         <div id="progress-list" class="progress-list"></div>
-        <div id="progress-note" class="meta">Waiting for a video.</div>
+        <div id="progress-note" class="meta">等待选择视频。</div>
       </section>
       <section class="card">
-        <h2>How the demo is wired</h2>
-        <p class="meta">Browser → thin Web presentation → existing composition → application services → AgentLoop → Evidence Guard.</p>
-        <p class="meta">The browser only uploads, polls, renders, and seeks. It never calls a model provider or performs retrieval.</p>
+        <h2>本地演示说明</h2>
+        <p class="meta">浏览器 → Web 层 → 应用服务 → AgentLoop → 证据校验。</p>
+        <p class="meta">浏览器只负责上传、查询状态、显示结果和视频定位；模型调用与检索在服务端执行。</p>
       </section>
-      <section id="result-card" class="card result-card hidden"><h2>Analysis result</h2><div id="result"></div></section>
+      <section id="result-card" class="card result-card hidden"><h2>分析结果</h2><div id="result"></div></section>
     </main>
-    <footer>Local process demo state is intentionally in-memory. Durable Phase 8/9 task and checkpoint infrastructure remains the authoritative production story.</footer>
+    <footer>本地演示状态仅保存在内存中；生产任务与检查点以持久化基础设施为准。</footer>
   </div>
   <script>
     const STAGES = ["MEDIA","ASR","OCR","CONTEXT","CHUNK","EMBEDDING","RETRIEVAL","PLANNER","EXECUTOR","CRITIC","EVIDENCE","DONE"];
@@ -719,35 +719,35 @@ WEB_HTML = r'''<!doctype html>
     function textNode(tag, value, className) { const element = document.createElement(tag); element.textContent = value || ""; if (className) element.className = className; return element; }
     function formatTime(ms) { const total = Math.max(0, Math.round(Number(ms || 0) / 1000)); const h = Math.floor(total / 3600); const m = Math.floor((total % 3600) / 60); const s = total % 60; return h ? `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}` : `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`; }
     function formatDuration(seconds) { return formatTime(Number(seconds || 0) * 1000); }
-    function showError(message) { errorBox.textContent = message || "Request failed"; errorBox.classList.remove("hidden"); }
+    function showError(message) { errorBox.textContent = message || "请求失败"; errorBox.classList.remove("hidden"); }
     function clearError() { errorBox.textContent = ""; errorBox.classList.add("hidden"); }
     function selectedMode() { return document.querySelector('input[name="embedding"]:checked').value; }
     function renderProgress(progress) {
       const items = (progress && progress.stages) || STAGES.map(name => ({name, status:"pending", message:""}));
       progressList.textContent = "";
       items.forEach(item => { const row = document.createElement("div"); row.className = `stage ${item.status || "pending"}`; row.appendChild(document.createElement("span")).className = "dot"; const copy = document.createElement("div"); copy.appendChild(textNode("div", item.name, "stage-name")); if (item.message) copy.appendChild(textNode("span", item.message, "stage-message")); row.appendChild(copy); progressList.appendChild(row); });
-      progressNote.textContent = progress && progress.current_stage ? `Current stage: ${progress.current_stage}` : "Waiting for analysis.";
+      progressNote.textContent = progress && progress.current_stage ? `当前阶段：${progress.current_stage}` : "等待分析。";
     }
     function renderEvidence(item) {
       const row = document.createElement("div"); row.className = "evidence";
       const time = document.createElement("div"); time.className = "time"; time.textContent = item.window_start_ms != null ? `${formatTime(item.timestamp_ms)} · ${formatTime(item.window_start_ms)}–${formatTime(item.window_end_ms)}` : formatTime(item.timestamp_ms); row.appendChild(time);
-      const copy = document.createElement("div"); copy.appendChild(textNode("div", item.source || "UNKNOWN", "evidence-source")); copy.appendChild(textNode("div", item.text || "", "evidence-text")); if (item.claim) copy.appendChild(textNode("div", `Claim: ${item.claim}`, "claim")); row.appendChild(copy);
-      const jump = document.createElement("button"); jump.type = "button"; jump.className = "jump"; jump.textContent = "Jump to evidence"; jump.addEventListener("click", () => { player.currentTime = Math.max(0, Number(item.start_ms || item.timestamp_ms || 0) / 1000); player.classList.add("selected"); player.play().catch(() => {}); player.scrollIntoView({behavior:"smooth", block:"center"}); }); row.appendChild(jump); return row;
+      const copy = document.createElement("div"); copy.appendChild(textNode("div", item.source || "未知", "evidence-source")); copy.appendChild(textNode("div", item.text || "", "evidence-text")); if (item.claim) copy.appendChild(textNode("div", `结论：${item.claim}`, "claim")); row.appendChild(copy);
+      const jump = document.createElement("button"); jump.type = "button"; jump.className = "jump"; jump.textContent = "跳转证据"; jump.addEventListener("click", () => { player.currentTime = Math.max(0, Number(item.start_ms || item.timestamp_ms || 0) / 1000); player.classList.add("selected"); player.play().catch(() => {}); player.scrollIntoView({behavior:"smooth", block:"center"}); }); row.appendChild(jump); return row;
     }
     function renderResult(result) {
-      resultBox.textContent = ""; resultBox.appendChild(textNode("h3", result.title || "Analysis result", "result-title"));
-      if ((result.conclusions || []).length) { resultBox.appendChild(textNode("h3", "Conclusions")); result.conclusions.forEach(value => resultBox.appendChild(textNode("div", value, "conclusion"))); }
-      if ((result.evidence || []).length) { const section = document.createElement("div"); section.className = "section"; section.appendChild(textNode("h3", "Evidence")); result.evidence.forEach(item => section.appendChild(renderEvidence(item))); resultBox.appendChild(section); }
-      if ((result.suggestions || []).length) { const section = document.createElement("div"); section.className = "section"; section.appendChild(textNode("h3", "Suggestions")); const list = document.createElement("ul"); result.suggestions.forEach(value => list.appendChild(textNode("li", value))); section.appendChild(list); resultBox.appendChild(section); }
-      (result.sections || []).forEach(sectionData => { const section = document.createElement("div"); section.className = "section"; section.appendChild(textNode("h3", sectionData.title || sectionData.key || "Details")); const list = document.createElement("ul"); (sectionData.items || []).forEach(value => list.appendChild(textNode("li", value))); section.appendChild(list); resultBox.appendChild(section); });
-      if (result.media) { resultBox.appendChild(textNode("div", `${result.media.filename} · ${formatDuration(result.media.duration_seconds)} · ${result.media.chunk_count} chunks · ${result.media.embedding_mode}`, "meta")); }
+      resultBox.textContent = ""; resultBox.appendChild(textNode("h3", result.title || "分析结果", "result-title"));
+      if ((result.conclusions || []).length) { resultBox.appendChild(textNode("h3", "核心结论")); result.conclusions.forEach(value => resultBox.appendChild(textNode("div", value, "conclusion"))); }
+      if ((result.evidence || []).length) { const section = document.createElement("div"); section.className = "section"; section.appendChild(textNode("h3", "视频证据")); result.evidence.forEach(item => section.appendChild(renderEvidence(item))); resultBox.appendChild(section); }
+      if ((result.suggestions || []).length) { const section = document.createElement("div"); section.className = "section"; section.appendChild(textNode("h3", "建议")); const list = document.createElement("ul"); result.suggestions.forEach(value => list.appendChild(textNode("li", value))); section.appendChild(list); resultBox.appendChild(section); }
+      (result.sections || []).forEach(sectionData => { const section = document.createElement("div"); section.className = "section"; section.appendChild(textNode("h3", sectionData.title || sectionData.key || "详情")); const list = document.createElement("ul"); (sectionData.items || []).forEach(value => list.appendChild(textNode("li", value))); section.appendChild(list); resultBox.appendChild(section); });
+      if (result.media) { resultBox.appendChild(textNode("div", `${result.media.filename} · ${formatDuration(result.media.duration_seconds)} · ${result.media.chunk_count} 个片段 · ${result.media.embedding_mode}`, "meta")); }
       resultCard.classList.remove("hidden");
     }
-    async function jsonResponse(response) { const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`); return payload; }
+    async function jsonResponse(response) { const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.error || `请求失败（${response.status}）`); return payload; }
     async function uploadFile(file) { const response = await fetch("/api/upload", {method:"POST", headers:{"X-File-Name":encodeURIComponent(file.name), "Content-Type":file.type || "application/octet-stream"}, body:file}); return jsonResponse(response); }
-    async function pollAnalysis(id) { while (true) { const payload = await jsonResponse(await fetch(`/api/analysis/${id}`, {cache:"no-store"})); renderProgress(payload.progress); if (payload.status === "completed") { renderResult(payload.result); progressNote.textContent = "Analysis complete; Evidence Guard result is ready."; return; } if (payload.status === "error") throw new Error(payload.error || "Analysis failed"); await new Promise(resolve => setTimeout(resolve, 800)); } }
+    async function pollAnalysis(id) { while (true) { const payload = await jsonResponse(await fetch(`/api/analysis/${id}`, {cache:"no-store"})); renderProgress(payload.progress); if (payload.status === "completed") { renderResult(payload.result); progressNote.textContent = "分析完成；证据核验结果已就绪。"; return; } if (payload.status === "error") throw new Error(payload.error || "分析失败"); await new Promise(resolve => setTimeout(resolve, 800)); } }
     fileInput.addEventListener("change", () => { selectedFile = fileInput.files && fileInput.files[0]; if (!selectedFile) return; clearError(); fileLabel.textContent = selectedFile.name; preview.hidden = true; player.hidden = false; player.src = URL.createObjectURL(selectedFile); player.load(); });
-    analyzeButton.addEventListener("click", async () => { clearError(); resultCard.classList.add("hidden"); resultBox.textContent = ""; if (!selectedFile) { showError("Select a video file first."); return; } if (!goalInput.value.trim()) { showError("Enter an analysis goal first."); goalInput.focus(); return; } analyzeButton.disabled = true; progressNote.textContent = "Uploading video…"; try { const upload = await uploadFile(selectedFile); player.src = upload.url; player.load(); progressNote.textContent = "Starting analysis…"; const response = await fetch("/api/analysis", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({upload_id:upload.upload_id, goal:goalInput.value.trim(), embedding_mode:selectedMode()})}); const job = await jsonResponse(response); renderProgress(job.progress); await pollAnalysis(job.analysis_id); } catch (error) { showError(error.message || "Analysis failed"); progressNote.textContent = "The demo request ended with an error."; } finally { analyzeButton.disabled = false; } });
+    analyzeButton.addEventListener("click", async () => { clearError(); resultCard.classList.add("hidden"); resultBox.textContent = ""; if (!selectedFile) { showError("请先选择视频文件。"); return; } if (!goalInput.value.trim()) { showError("请先输入分析目标。"); goalInput.focus(); return; } analyzeButton.disabled = true; progressNote.textContent = "正在上传视频…"; try { const upload = await uploadFile(selectedFile); player.src = upload.url; player.load(); progressNote.textContent = "正在启动分析…"; const response = await fetch("/api/analysis", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({upload_id:upload.upload_id, goal:goalInput.value.trim(), embedding_mode:selectedMode()})}); const job = await jsonResponse(response); renderProgress(job.progress); await pollAnalysis(job.analysis_id); } catch (error) { showError(error.message || "分析失败"); progressNote.textContent = "本地演示请求已结束，存在错误。"; } finally { analyzeButton.disabled = false; } });
     renderProgress(null);
   </script>
 </body>

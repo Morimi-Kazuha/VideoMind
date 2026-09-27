@@ -2,10 +2,10 @@
   <div class="academy-root">
     <header class="lab-header">
       <div class="lab-header__inner">
-        <a class="lab-brand" href="/" aria-label="DOVideo home">
+        <a class="lab-brand" href="/" aria-label="VideoMind 媒体库">
           <span class="lab-brand__mark"><AcademyMark /></span>
           <span>
-            DOVIDEO
+            VideoMind
             <small>ACADEMY MEDIA LAB</small>
           </span>
         </a>
@@ -250,7 +250,7 @@
           <div class="workstation__footer">
             <div>
               <span class="footer-cross">✦</span>
-              DOVIDEO / ACADEMY RESEARCH TERMINAL
+              VideoMind / ACADEMY RESEARCH TERMINAL
             </div>
             <div>
               ASR
@@ -310,7 +310,7 @@
               </div>
               <div class="type-sample type-sample--display">
                 <span>DISPLAY / IDENTITY</span>
-                <strong>DOVIDEO // A-04</strong>
+                <strong>VideoMind // A-04</strong>
                 <small>Compact display lettering; never for paragraphs</small>
               </div>
             </AcademyPanel>
@@ -609,7 +609,7 @@
       </section>
     </main>
     <footer class="lab-footer">
-      <span>DOVIDEO / VISUAL SYSTEM UI-0</span>
+      <span>VideoMind / VISUAL SYSTEM UI-0</span>
       <span>PIXEL FUTURE ACADEMY · NIGHT LAB</span>
       <a href="/">RETURN TO APPLICATION ↗</a>
     </footer>

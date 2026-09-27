@@ -37,12 +37,12 @@
       role="status"
     >
       <AcademyMark />
-      <h1>{{ media.status === 'FAILED' ? '视频处理失败' : '分析尚未就绪' }}</h1>
+      <h1>{{ media.status === "FAILED" ? "视频处理失败" : "分析尚未就绪" }}</h1>
       <p>
         {{
-          media.status === 'FAILED'
-            ? '请检查媒体状态，或重新导入视频。'
-            : '视频仍在处理。完成后即可查看原片并开始分析。'
+          media.status === "FAILED"
+            ? "请检查媒体状态，或重新导入视频。"
+            : "视频仍在处理。完成后即可查看原片并开始分析。"
         }}
       </p>
       <div>
@@ -62,6 +62,30 @@
         <p class="analysis-evidence__hint">
           搜索视频中的语音与画面文字。结果来自当前视频的真实索引。
         </p>
+        <div v-if="citations.length" class="analysis-citations">
+          <h3>本次回答引用</h3>
+          <button
+            v-for="(citation, index) in citations"
+            :key="citation.id"
+            type="button"
+            class="analysis-evidence__item"
+            :class="{
+              'is-selected': selectedKey === `citation:${citation.id}`,
+            }"
+            :aria-pressed="selectedKey === `citation:${citation.id}`"
+            @click="selectCitation(citation)"
+          >
+            <span class="analysis-evidence__top"
+              ><strong
+                >证据 {{ String(index + 1).padStart(2, "0") }} ·
+                {{ formatMediaTime(citation.timestampMs / 1000) }}</strong
+              ><small>{{ citation.source }}</small></span
+            >
+            <span class="analysis-evidence__snippet">{{
+              citation.content
+            }}</span>
+          </button>
+        </div>
         <form
           class="analysis-evidence__search"
           @submit.prevent="actions.searchEvidence"
@@ -77,7 +101,7 @@
             type="submit"
             :disabled="sidebar.evidenceLoading || !sidebar.evidenceQuery.trim()"
           >
-            {{ sidebar.evidenceLoading ? '检索中…' : '检索' }}
+            {{ sidebar.evidenceLoading ? "检索中…" : "检索" }}
           </button>
         </form>
         <p
@@ -112,17 +136,17 @@
                 {{
                   validEvidenceTime(hit)
                     ? formatMediaTime(hit.startMs / 1000)
-                    : '时间未知'
+                    : "时间未知"
                 }}
               </strong>
-              <small>{{ hit.source || '视频证据' }}</small>
+              <small>{{ hit.source || "视频证据" }}</small>
             </span>
             <span class="analysis-evidence__snippet">
               {{
                 hit.snippet ||
                 hit.transcript ||
-                hit.ocrTexts?.join(' · ') ||
-                '该时间段暂无可展示文本'
+                hit.ocrTexts?.join(" · ") ||
+                "该时间段暂无可展示文本"
               }}
             </span>
             <span v-if="hit.transcript" class="analysis-evidence__kind">
@@ -175,12 +199,12 @@
               <strong>
                 {{
                   sidebar.playbackLoading
-                    ? '正在载入原视频…'
+                    ? "正在载入原视频…"
                     : sidebar.playbackError
-                      ? '视频加载失败'
+                      ? "视频加载失败"
                       : demoMode
-                        ? '演示数据没有原视频'
-                        : '暂无可播放原片'
+                        ? "演示数据没有原视频"
+                        : "暂无可播放原片"
                 }}
               </strong>
               <p v-if="sidebar.playbackError">{{ sidebar.playbackError }}</p>
@@ -197,7 +221,7 @@
             <span>
               {{ formatMediaTime(currentTime) }}
               <span aria-hidden="true">/</span>
-              {{ duration ? formatMediaTime(duration) : '--:--' }}
+              {{ duration ? formatMediaTime(duration) : "--:--" }}
             </span>
             <span>使用播放器原生控制进行播放与定位</span>
           </div>
@@ -205,10 +229,24 @@
 
         <AnalysisTimeline
           :hits="sidebar.evidenceResults"
+          :windows="temporalWindows"
+          :citations="citations"
           :duration="duration"
           :current-time="currentTime"
           :selected-key="selectedKey"
-          @select="selectEvidence"
+          @select="selectTimelineItem"
+        />
+
+        <TemporalRecords
+          :windows="temporalWindows"
+          :total="temporalTotal"
+          :available="temporalAvailable"
+          :loading="temporalLoading"
+          :error="temporalError"
+          :selected-key="selectedKey"
+          @select="selectTemporalWindow"
+          @retry="loadTemporal(true)"
+          @more="loadTemporal(false)"
         />
 
         <section class="analysis-transcript" aria-labelledby="transcript-title">
@@ -221,7 +259,7 @@
             class="analysis-local-loading"
             role="status"
           >
-            {{ sidebar.statusMessage || '正在识别语音…' }}
+            {{ sidebar.statusMessage || "正在识别语音…" }}
           </p>
           <p
             v-else-if="sidebar.type === 'text' && sidebar.error"
@@ -275,9 +313,9 @@
       >
         <div class="analysis-section-head analysis-assistant__head">
           <h2 id="assistant-title">
-            {{ sidebar.type === 'ai' ? 'AI 助手' : '文字提取' }}
+            {{ sidebar.type === "ai" ? "AI 助手" : "文字提取" }}
           </h2>
-          <span>{{ sidebar.type === 'ai' ? 'VIDEO RESEARCH' : 'ASR' }}</span>
+          <span>{{ sidebar.type === "ai" ? "VIDEO RESEARCH" : "ASR" }}</span>
         </div>
         <template v-if="sidebar.type === 'ai'">
           <div v-if="sidebar.mode === 'compose'" class="analysis-composer">
@@ -330,7 +368,7 @@
               :disabled="!sidebar.goal.trim()"
               @click="actions.submitAgent"
             >
-              {{ sidebar.error ? '重新分析' : '开始分析' }}
+              {{ sidebar.error ? "重新分析" : "开始分析" }}
             </button>
           </div>
           <div
@@ -402,8 +440,20 @@
               还没有分析结果。选择目标后开始分析。
             </p>
             <p v-if="sidebar.content" class="analysis-answer__citation-hint">
-              回答中的时间戳可跳转视频；证据记录来自独立检索，未自动建立逐条引用关系。
+              回答中的时间戳可跳转视频；结构化引用仅包含已核验的来源，检索结果仍是独立查询。
             </p>
+            <div v-if="citations.length" class="analysis-answer__citations">
+              <strong>已核验的回答证据</strong>
+              <button
+                v-for="(citation, index) in citations"
+                :key="citation.id"
+                type="button"
+                @click="selectCitation(citation)"
+              >
+                证据 {{ String(index + 1).padStart(2, "0") }} ·
+                {{ formatMediaTime(citation.timestampMs / 1000) }}
+              </button>
+            </div>
             <details
               v-if="
                 sidebar.plan?.tasks?.length ||
@@ -445,7 +495,7 @@
                     :disabled="sidebar.rerunLoading"
                     @click="actions.rerunWithPlan"
                   >
-                    {{ sidebar.rerunLoading ? '提交中' : '按新计划重跑' }}
+                    {{ sidebar.rerunLoading ? "提交中" : "按新计划重跑" }}
                   </button>
                 </div>
                 <template v-else>
@@ -473,7 +523,7 @@
                 <strong>结果校验</strong>
                 <p>
                   结构
-                  {{ sidebar.evaluation.structuredValid ? '通过' : '待完善' }} ·
+                  {{ sidebar.evaluation.structuredValid ? "通过" : "待完善" }} ·
                   证据支持
                   {{
                     actions.formatPercent(
@@ -482,7 +532,7 @@
                   }}
                   · Critic
                   {{
-                    sidebar.evaluation.criticPassed ? '通过' : '达到轮次上限'
+                    sidebar.evaluation.criticPassed ? "通过" : "达到轮次上限"
                   }}
                 </p>
               </div>
@@ -502,7 +552,7 @@
                 :disabled="sidebar.followUpLoading || !sidebar.followUp.trim()"
                 @click="actions.submitFollowUp"
               >
-                {{ sidebar.followUpLoading ? '分析中…' : '发送追问' }}
+                {{ sidebar.followUpLoading ? "分析中…" : "发送追问" }}
               </button>
             </div>
             <div class="analysis-feedback">
@@ -549,23 +599,24 @@
       </aside>
     </div>
     <footer class="analysis-workspace__footer">
-      <span>DOVIDEO / MEDIA RESEARCH</span>
+      <span>VideoMind / MEDIA RESEARCH</span>
       <span>播放位置 {{ formatMediaTime(currentTime) }}</span>
     </footer>
   </main>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { apiRequest } from './api.js'
-import AcademyMark from './design/AcademyMark.vue'
-import AnalysisTimeline from './AnalysisTimeline.vue'
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { apiRequest } from "./api.js";
+import AcademyMark from "./design/AcademyMark.vue";
+import AnalysisTimeline from "./AnalysisTimeline.vue";
+import TemporalRecords from "./TemporalRecords.vue";
 import {
   evidenceKey,
   formatMediaTime,
   validEvidenceTime,
-} from './analysisTimeline.js'
-import './analysis-workspace.css'
+} from "./analysisTimeline.js";
+import "./analysis-workspace.css";
 
 const props = defineProps({
   sidebar: { type: Object, required: true },
@@ -574,160 +625,260 @@ const props = defineProps({
   analysisModes: { type: Array, required: true },
   goalPresets: { type: Array, required: true },
   traceStages: { type: Array, required: true },
-  renderedMarkdown: { type: String, default: '' },
-  loadingHeadline: { type: String, default: '' },
+  renderedMarkdown: { type: String, default: "" },
+  loadingHeadline: { type: String, default: "" },
   demoMode: { type: Boolean, default: false },
-})
+});
 
-const root = ref(null)
-const answerPanel = ref(null)
-const videoPlayer = ref(null)
-const currentTime = ref(0)
-const duration = ref(0)
-const selectedKey = ref('')
-const transcriptText = ref('')
-const transcriptError = ref('')
-const transcriptHint = ref('暂无独立转录结果。分析仍可使用语音和画面证据。')
-const transcriptLoading = ref(false)
-let transcriptRequest = 0
+const root = ref(null);
+const answerPanel = ref(null);
+const videoPlayer = ref(null);
+const currentTime = ref(0);
+const duration = ref(0);
+const selectedKey = ref("");
+const transcriptText = ref("");
+const transcriptError = ref("");
+const transcriptHint = ref("暂无独立转录结果。分析仍可使用语音和画面证据。");
+const transcriptLoading = ref(false);
+let transcriptRequest = 0;
+const temporalWindows = ref([]);
+const temporalTotal = ref(0);
+const temporalAvailable = ref(false);
+const temporalLoading = ref(false);
+const temporalError = ref("");
+const citations = ref([]);
+let temporalRequest = 0;
+let citationRequest = 0;
 
 const mediaStatusText = computed(
   () =>
-    ({ COMPLETED: '就绪', PROCESSING: '处理中', FAILED: '失败' })[
+    ({ COMPLETED: "就绪", PROCESSING: "处理中", FAILED: "失败" })[
       props.media?.status
-    ] || '排队中',
-)
+    ] || "排队中",
+);
 
 function updateDuration() {
   duration.value = Number.isFinite(videoPlayer.value?.duration)
     ? videoPlayer.value.duration
-    : 0
+    : 0;
 }
 function updateTime() {
-  currentTime.value = videoPlayer.value?.currentTime || 0
+  currentTime.value = videoPlayer.value?.currentTime || 0;
 }
 
 function seekVideo(seconds) {
-  if (!Number.isFinite(seconds)) return
-  const player = videoPlayer.value
+  if (!Number.isFinite(seconds)) return;
+  const player = videoPlayer.value;
   if (!player) {
     props.actions.showMessage(
       props.sidebar.playbackError
-        ? '原视频加载失败，请先重新加载'
-        : '原视频尚未就绪，暂时无法跳转',
+        ? "原视频加载失败，请先重新加载"
+        : "原视频尚未就绪，暂时无法跳转",
       true,
-    )
-    return
+    );
+    return;
   }
   if (player.readyState === 0) {
-    player.addEventListener('loadedmetadata', () => seekVideo(seconds), {
+    player.addEventListener("loadedmetadata", () => seekVideo(seconds), {
       once: true,
-    })
-    return
+    });
+    return;
   }
   const maxTime = Number.isFinite(player.duration)
     ? Math.max(0, player.duration - 0.1)
-    : seconds
-  player.currentTime = Math.min(Math.max(0, seconds), maxTime)
-  currentTime.value = player.currentTime
-  player.play().catch(() => {})
+    : seconds;
+  player.currentTime = Math.min(Math.max(0, seconds), maxTime);
+  currentTime.value = player.currentTime;
+  player.play().catch(() => {});
 }
 
 function selectEvidence(hit, key) {
-  selectedKey.value = key
-  if (validEvidenceTime(hit)) seekVideo(Number(hit.startMs) / 1000)
+  selectedKey.value = key;
+  if (validEvidenceTime(hit)) seekVideo(Number(hit.startMs) / 1000);
+}
+
+function selectTemporalWindow(window) {
+  selectedKey.value = `window:${window.segmentId || window.startMs}`;
+  seekVideo(Number(window.startMs) / 1000);
+}
+
+function selectCitation(citation) {
+  selectedKey.value = `citation:${citation.id}`;
+  seekVideo(Number(citation.timestampMs) / 1000);
+}
+
+function selectTimelineItem(marker) {
+  if (marker.hit.cited) selectCitation(marker.hit);
+  else if (marker.key.startsWith("window:")) selectTemporalWindow(marker.hit);
+  else selectEvidence(marker.hit, marker.key);
+}
+
+async function loadTemporal(reset = true) {
+  if (temporalLoading.value || props.demoMode || !props.sidebar.mediaId) return;
+  const request = ++temporalRequest;
+  const mediaId = props.sidebar.mediaId;
+  if (reset) {
+    temporalWindows.value = [];
+    temporalTotal.value = 0;
+    temporalAvailable.value = false;
+  }
+  temporalLoading.value = true;
+  temporalError.value = "";
+  try {
+    const params = new URLSearchParams({
+      id: String(mediaId),
+      limit: "200",
+      offset: String(temporalWindows.value.length),
+    });
+    const response = await apiRequest(`/analysis/temporal-windows?${params}`);
+    if (!response.ok)
+      throw new Error((await response.text()) || "时间记录读取失败");
+    const page = await response.json();
+    if (request !== temporalRequest || mediaId !== props.sidebar.mediaId)
+      return;
+    temporalAvailable.value = Boolean(page.available);
+    temporalTotal.value = Number(page.total) || 0;
+    temporalWindows.value = [
+      ...temporalWindows.value,
+      ...(Array.isArray(page.items) ? page.items : []),
+    ];
+  } catch (error) {
+    if (request === temporalRequest)
+      temporalError.value = error?.message || "时间记录读取失败";
+  } finally {
+    if (request === temporalRequest) temporalLoading.value = false;
+  }
+}
+
+async function refreshCitations() {
+  const request = ++citationRequest;
+  citations.value = [];
+  if (props.demoMode || !props.sidebar.content || props.sidebar.type !== "ai")
+    return;
+  const params = new URLSearchParams({
+    id: String(props.sidebar.mediaId),
+    goal: props.sidebar.goal,
+    mode: props.sidebar.analysisMode,
+  });
+  try {
+    const response = await apiRequest(`/analysis/agent-citations?${params}`);
+    if (!response.ok) return;
+    const records = await response.json();
+    if (request === citationRequest)
+      citations.value = Array.isArray(records) ? records : [];
+  } catch {
+    // Legacy answers stay readable when citation metadata is unavailable.
+  }
 }
 
 function handleAnswerClick(event) {
-  const link = event.target.closest('a[href^="#video-t="]')
-  if (!link) return
-  event.preventDefault()
-  const seconds = Number(link.getAttribute('href').split('=')[1])
-  seekVideo(seconds)
+  const link = event.target.closest('a[href^="#video-t="]');
+  if (!link) return;
+  event.preventDefault();
+  const seconds = Number(link.getAttribute("href").split("=")[1]);
+  seekVideo(seconds);
   const index = props.sidebar.evidenceResults.findIndex(
     (hit) =>
       validEvidenceTime(hit) &&
       Math.abs(Number(hit.startMs) / 1000 - seconds) < 0.5,
-  )
+  );
   selectedKey.value =
-    index >= 0 ? evidenceKey(props.sidebar.evidenceResults[index], index) : ''
+    index >= 0 ? evidenceKey(props.sidebar.evidenceResults[index], index) : "";
 }
 
 async function refreshTranscript() {
-  const request = ++transcriptRequest
-  transcriptError.value = ''
-  transcriptLoading.value = false
-  if (props.sidebar.type === 'text') {
-    transcriptText.value = props.sidebar.content || ''
-    return
+  const request = ++transcriptRequest;
+  transcriptError.value = "";
+  transcriptLoading.value = false;
+  if (props.sidebar.type === "text") {
+    transcriptText.value = props.sidebar.content || "";
+    return;
   }
   if (props.demoMode) {
-    transcriptText.value = props.media?.transcriptText || ''
-    return
+    transcriptText.value = props.media?.transcriptText || "";
+    return;
   }
-  transcriptLoading.value = true
+  transcriptLoading.value = true;
   try {
     const response = await apiRequest(
       `/analysis/transcription-status?id=${props.sidebar.mediaId}`,
-    )
+    );
     if (!response.ok)
-      throw new Error((await response.text()) || '转录状态读取失败')
-    const status = await response.json()
-    if (request !== transcriptRequest) return
+      throw new Error((await response.text()) || "转录状态读取失败");
+    const status = await response.json();
+    if (request !== transcriptRequest) return;
     transcriptText.value =
-      status.state === 'COMPLETED' ? status.result || '' : ''
+      status.state === "COMPLETED" ? status.result || "" : "";
     transcriptHint.value =
-      status.message || '暂无独立转录结果。分析仍可使用语音和画面证据。'
+      status.message || "暂无独立转录结果。分析仍可使用语音和画面证据。";
   } catch (error) {
     if (request === transcriptRequest)
-      transcriptError.value = error?.message || '转录状态读取失败'
+      transcriptError.value = error?.message || "转录状态读取失败";
   } finally {
-    if (request === transcriptRequest) transcriptLoading.value = false
+    if (request === transcriptRequest) transcriptLoading.value = false;
   }
 }
 
 async function scrollToLatestAnswer() {
-  await nextTick()
-  const container = answerPanel.value?.querySelector('.analysis-answer__body')
-  const headings = container?.querySelectorAll('h2, h3') || []
+  await nextTick();
+  const container = answerPanel.value?.querySelector(".analysis-answer__body");
+  const headings = container?.querySelectorAll("h2, h3") || [];
   const target = headings.length
     ? headings[headings.length - 1]
-    : container?.lastElementChild
-  target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    : container?.lastElementChild;
+  target?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function focus() {
-  root.value?.focus({ preventScroll: true })
+  root.value?.focus({ preventScroll: true });
 }
-defineExpose({ focus, scrollToLatestAnswer })
+defineExpose({ focus, scrollToLatestAnswer });
 watch(
   () => props.sidebar.mediaId,
   () => {
-    selectedKey.value = ''
-    currentTime.value = 0
-    duration.value = 0
-    transcriptText.value = ''
-    refreshTranscript()
+    selectedKey.value = "";
+    currentTime.value = 0;
+    duration.value = 0;
+    transcriptText.value = "";
+    refreshTranscript();
+    temporalRequest += 1;
+    temporalLoading.value = false;
+    temporalWindows.value = [];
+    temporalTotal.value = 0;
+    temporalAvailable.value = false;
+    loadTemporal();
   },
-)
+);
 watch(
-  () => props.sidebar.type === 'text' && props.sidebar.content,
+  () => props.sidebar.type === "text" && props.sidebar.content,
   (value) => {
-    if (value) transcriptText.value = props.sidebar.content
+    if (value) transcriptText.value = props.sidebar.content;
   },
-)
+);
 watch(
   () => props.media?.status,
   (status, previous) => {
-    if (status === 'COMPLETED' && previous && previous !== 'COMPLETED') {
+    if (status === "COMPLETED" && previous && previous !== "COMPLETED") {
       if (!props.sidebar.playbackUrl && !props.sidebar.playbackLoading)
-        props.actions.retryPlayback()
-      refreshTranscript()
+        props.actions.retryPlayback();
+      refreshTranscript();
+      loadTemporal();
     }
   },
-)
+);
+watch(
+  () => [
+    props.sidebar.mediaId,
+    props.sidebar.goal,
+    props.sidebar.analysisMode,
+    props.sidebar.content,
+  ],
+  refreshCitations,
+);
 onMounted(() => {
-  focus()
-  refreshTranscript()
-})
+  focus();
+  refreshTranscript();
+  loadTemporal();
+  refreshCitations();
+});
 </script>

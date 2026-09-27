@@ -1,4 +1,4 @@
-# DOVideo architecture and authority boundaries
+# VideoMind architecture and authority boundaries
 
 This document follows one analysis from upload to replay. The same
 application/domain behavior is composed behind FastAPI, a Celery worker, and
@@ -39,7 +39,7 @@ demo is a legacy local presentation adapter; Vue/FastAPI is the product path.
 | Model output → plan | Plan validation enforces task shape and budgets; natural-language instructions alone do not authorize execution. |
 | Retrieval → answer | Retrieval ranks likely source material. Evidence Guard independently validates the answer's cited source text and covered time range. |
 | Model output → tools | `AgentLoop` and `ToolPolicy` authorize registered, same-video, read-only evidence tools. Requests have stable IDs, bounds, and recovery records; the model has no arbitrary computer-control authority. |
-| Jev advice → execution lane | Jev can suggest FAST, BALANCED, or DEEP. DOVideo's deterministic threshold and fallback policy records the final lane and model once per Agent execution. |
+| Jev advice → execution lane | Jev can suggest FAST, BALANCED, or DEEP. VideoMind's deterministic threshold and fallback policy records the final lane and model once per Agent execution. |
 | Durable record → replay | The durable execution record is historical truth. A checkpoint is recovery state and Redis is an operational projection. Replay reads the record without provider, retrieval, tool, or Jev calls. |
 | Provider → application | OpenAI-compatible chat and embedding adapters translate requests and telemetry. The application consumes typed decisions and usage without granting providers policy authority. |
 
@@ -66,7 +66,7 @@ and the [dataset rebase record](../datasets/x3/DATASET_V2_REBASE.md).
 The X3 benchmark froze a heterogeneous three-lane policy: FAST and BALANCED
 used DeepSeek Flash with different reasoning settings; DEEP used DeepSeek
 Pro. Model execution used OpenRouter with one pinned serving provider and no
-fallback. Jev was a separate advisory call, and the DOVideo route record
+fallback. Jev was a separate advisory call, and the VideoMind route record
 remained the final authority.
 
 The completed 80-result campaign did not establish a routing benefit. All
