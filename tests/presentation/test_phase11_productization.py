@@ -54,8 +54,8 @@ def test_settings_resolve_provisioned_tools_without_network() -> None:
         project_root=Path("C:/empty-project"),
     )
 
-    assert settings.ffmpeg_executable == r"C:\media-tools\ffmpeg.exe"
-    assert settings.ffprobe_executable == r"C:\media-tools\ffprobe.exe"
+    assert settings.ffmpeg_executable == str(Path(r"C:\media-tools") / "ffmpeg.exe")
+    assert settings.ffprobe_executable == str(Path(r"C:\media-tools") / "ffprobe.exe")
     assert settings.tesseract_executable == r"C:\ocr\tesseract.exe"
     assert settings.whisper_model == "base.en"
 
