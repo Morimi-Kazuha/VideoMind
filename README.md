@@ -2,7 +2,7 @@
 
 > 面向长视频理解的 AI 视频分析工作台
 
-ideoMind 是一个面向长视频理解的多模态 AI Agent 工作台。 系统通过 FFmpeg、Whisper ASR 和 OCR 将视频转换为带来源身份和时间信息的 VideoContext，再基于分层时间窗口、Chunk、BGE-M3 Embedding 与 Qdrant 混合检索构建 Evidence。分析侧采用 Planner → Executor → Critic 的多阶段 AgentLoop，并实现受限 Tool Calling、持久化 checkpoint、执行记录和 Historical Replay；模型生成的引用不会直接被信任，而是由应用层基于来源 ID、revision、原文及时间范围做确定性 Evidence 校验，最终实现 AI Answer → Citation → Evidence → Timeline → Video 的完整可追溯链路。
+VideoMind 是一个面向长视频理解的多模态 AI Agent 工作台。 系统通过 FFmpeg、Whisper ASR 和 OCR 将视频转换为带来源身份和时间信息的 VideoContext，再基于分层时间窗口、Chunk、BGE-M3 Embedding 与 Qdrant 混合检索构建 Evidence。分析侧采用 Planner → Executor → Critic 的多阶段 AgentLoop，并实现受限 Tool Calling、持久化 checkpoint、执行记录和 Historical Replay；模型生成的引用不会直接被信任，而是由应用层基于来源 ID、revision、原文及时间范围做确定性 Evidence 校验，最终实现 AI Answer → Citation → Evidence → Timeline → Video 的完整可追溯链路。
 在模型执行层，我还实现了基于 Jev 的 FAST / BALANCED / DEEP 自适应路由：Jev 只负责提供 lane 建议，实际 provider/model/profile 由确定性策略控制，并支持低置信度、异常和不可用场景的安全回退及 durable route recovery。针对长视频 Agent 的 Prompt 膨胀和预算失控问题，又加入了阶段化 Context Projection、逐调用累计 Token Budget、Retry/Repair accounting 与模型调用遥测，将代表性长视频分析的模型用量从约 64k Token 优化到 22k–27k，同时保持 Critic 和可信 Evidence 引用。
 系统后端使用 FastAPI、Celery、RabbitMQ、MySQL、Redis、MinIO、Qdrant 构成长任务执行与恢复链路，并实现失败任务重放、AI 交互限流和 SSE 状态推送；前端基于 Vue 3 构建中文视频分析工作台。除此之外，我还建立了版本化 Golden Dataset 和 X3 路由评估体系，对固定模型档位、规则路由与 Jev 路由进行了 80 次冻结实验，并保留了未达到预注册质量门槛的负实验结果。最终项目以 864 个后端测试、16 个前端测试和 GitHub CI 完成 v0.1.0 发布。
 
