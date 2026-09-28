@@ -83,7 +83,7 @@
           <div class="ui1-section-heading">
             <span class="ui1-section-index">01</span>
             <h2 id="import-title">导入媒体</h2>
-            <span class="ui1-section-note">本地视频 / 视频链接</span>
+            <span class="ui1-section-note">本地视频文件</span>
           </div>
           <input
             type="file"
@@ -112,32 +112,6 @@
                   <span aria-hidden="true">↗</span>
                 </span>
               </label>
-              <div class="ui1-import__divider"><span>或</span></div>
-              <div class="ui1-link-import">
-                <span class="ui1-eyebrow">WEB SOURCE</span>
-                <h3>从链接导入</h3>
-                <p>支持 B 站、YouTube、抖音等视频链接。</p>
-                <label for="video-url">视频链接</label>
-                <div class="ui1-link-import__field">
-                  <input
-                    id="video-url"
-                    v-model="videoUrl"
-                    type="url"
-                    inputmode="url"
-                    autocomplete="off"
-                    spellcheck="false"
-                    placeholder="粘贴视频链接"
-                    @keyup.enter="handleUrlUpload"
-                  />
-                  <button
-                    type="button"
-                    :disabled="!videoUrl.trim()"
-                    @click="handleUrlUpload"
-                  >
-                    解析并导入
-                  </button>
-                </div>
-              </div>
             </template>
             <div v-else class="ui1-uploading" role="status" aria-live="polite">
               <span class="ui1-eyebrow">IMPORT / ACTIVE</span>
@@ -506,7 +480,6 @@ import { mediaLibraryView, mediaStatusLabel } from './mediaLibraryState.js'
 const DEMO_MODE = new URLSearchParams(window.location.search).has('demo')
 const MESSAGE_TIMEOUT_MS = 4000
 const file = ref(null)
-const videoUrl = ref('')
 const message = ref('')
 const messageIsError = ref(false)
 const uploading = ref(false)
@@ -679,7 +652,6 @@ const startUpload = async (selectedFile, extraFileCount = 0) => {
     )
   }
   file.value = selectedFile
-  videoUrl.value = ''
   await uploadFile()
 }
 
@@ -779,7 +751,6 @@ const uploadFile = async () => {
       showMsg('上传已取消，进度已保留，可点“继续上传”接着传')
       return
     }
-    console.error(error)
     showMsg(
       resumableFile.value
         ? `❌ 上传中断：${error.message}（进度已保留，可继续上传）`
@@ -815,75 +786,6 @@ const discardResumableUpload = () => {
   resumableFile.value = null
   resumableChunks.value = { done: 0, total: 0 }
   showMsg('已清除保留的上传进度，下次将从头开始')
-}
-
-const handleUrlUpload = async () => {
-  const normalizedUrl = videoUrl.value.trim()
-  if (!normalizedUrl) return
-  if (uploading.value) {
-    showMsg('已有上传任务在进行，请等当前任务结束', true)
-    return
-  }
-  if (DEMO_MODE) {
-    videoUrl.value = ''
-    showMsg('演示模式：已模拟完成链接解析')
-    return
-  }
-
-  if (!currentUser.value) {
-    showMsg('⚠️ 权限受限：请先登录系统', true)
-    openAuthModal()
-    return
-  }
-
-  let parsedUrl
-  try {
-    parsedUrl = new URL(normalizedUrl)
-  } catch {
-    parsedUrl = null
-  }
-  if (!parsedUrl || !['http:', 'https:'].includes(parsedUrl.protocol)) {
-    showMsg('⚠️ 请输入合法的 http/https 链接', true)
-    return
-  }
-
-  uploading.value = true
-  const uploadUserId = currentUser.value?.id
-  uploadProgress.value = {
-    label: '正在解析视频链接',
-    filename: parsedUrl.hostname,
-    percent: null,
-    detail: '服务端正在拉取源视频，时长取决于源站速度',
-    warning: '',
-  }
-  messageIsError.value = false
-  message.value = '正在解析链接并下载视频（低码率模式）…'
-
-  const formData = new FormData()
-  formData.append('url', normalizedUrl)
-
-  try {
-    const res = await apiRequest('/media/upload-url', {
-      method: 'POST',
-      body: formData,
-    })
-    if (!res.ok) throw new Error(await res.text())
-    const uploadedMedia = await res.json()
-    if (currentUser.value?.id !== uploadUserId) return
-
-    showMsg('✅ 链接资源已入库')
-    videoUrl.value = ''
-    await fetchList({ notify: true })
-    enterAnalysis(uploadedMedia)
-  } catch (error) {
-    console.error(error)
-    if (currentUser.value?.id !== uploadUserId) return
-    let errMsg = error.message
-    if (errMsg.includes('Unsupported URL')) errMsg = '不支持该平台链接'
-    showMsg('❌ 解析失败: ' + errMsg, true)
-  } finally {
-    uploading.value = false
-  }
 }
 
 /** 成功提示自动消失；错误提示保留到用户点掉，避免关键失败原因 4 秒后就没了。 */
@@ -925,7 +827,6 @@ const fetchList = async ({ notify = false } = {}) => {
     if (!res.ok) throw new Error((await res.text()) || '加载媒体库失败')
     list.value = await res.json()
   } catch (error) {
-    console.error(error)
     listError.value = error?.message || '媒体库加载失败'
     if (notify) showMsg('视频资料库加载失败，请稍后刷新', true)
     return null
@@ -1246,7 +1147,6 @@ const handleAuth = async () => {
       setTimeout(() => switchAuthMode({ keepMessage: true }), 900)
     }
   } catch (e) {
-    console.error(e)
     authMessage.value = e?.message || '网络连接错误'
     authError.value = true
   } finally {
@@ -1264,7 +1164,6 @@ const resetSessionState = () => {
   listError.value = ''
   listLoading.value = false
   searchQuery.value = ''
-  videoUrl.value = ''
   file.value = null
   resumableFile.value = null
   resumableChunks.value = { done: 0, total: 0 }

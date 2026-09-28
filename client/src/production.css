@@ -233,7 +233,7 @@
 }
 .ui1-import__body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px minmax(0, 0.85fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 204px;
   background: #10172a;
   border: 1px solid var(--border-normal);
@@ -276,69 +276,11 @@
   margin-top: 12px;
   font-size: 12px;
 }
-.ui1-import__divider {
-  display: grid;
-  place-items: center;
-  position: relative;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-.ui1-import__divider::before {
-  content: '';
-  height: 70%;
-  position: absolute;
-  border-left: 1px solid var(--border-normal);
-}
-.ui1-import__divider span {
-  z-index: 1;
-  padding: 8px 0;
-  background: #10172a;
-}
-.ui1-link-import {
-  padding: 22px 28px 20px 8px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-.ui1-link-import h3 {
-  margin: 7px 0 4px;
-  font-size: 15px;
-}
-.ui1-link-import p {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.ui1-link-import label {
-  margin: 16px 0 6px;
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-.ui1-link-import__field {
-  display: flex;
-  min-width: 0;
-}
-.ui1-link-import__field input,
 .ui1-search input {
   min-width: 0;
   color: var(--text-primary);
   background: #0b1120;
   border: 1px solid var(--border-normal);
-}
-.ui1-link-import__field input {
-  flex: 1;
-  padding: 10px 12px;
-  font-size: 12px;
-}
-.ui1-link-import__field button {
-  padding: 0 14px;
-  color: #07101d;
-  background: var(--academy-blue);
-  border: 1px solid var(--academy-blue);
-  font-size: 12px;
-  white-space: nowrap;
-}
-.ui1-link-import__field button:hover:not(:disabled) {
-  background: var(--academy-cyan);
 }
 .ui1-uploading {
   grid-column: 1 / -1;
@@ -677,21 +619,6 @@
   }
   .ui1-import__body {
     grid-template-columns: 1fr;
-  }
-  .ui1-import__divider {
-    height: 20px;
-  }
-  .ui1-import__divider::before {
-    height: 0;
-    width: 75%;
-    border-left: 0;
-    border-top: 1px solid var(--border-normal);
-  }
-  .ui1-import__divider span {
-    padding: 0 8px;
-  }
-  .ui1-link-import {
-    padding: 14px 20px 22px;
   }
   .ui1-row {
     grid-template-columns: 32px 1fr;

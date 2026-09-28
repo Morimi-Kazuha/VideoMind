@@ -241,7 +241,7 @@ def create_app(
 
     @app.get("/", include_in_schema=False)
     async def root() -> JSONResponse:
-        return _ok({"service": "dovideo-python", "api": "R1"})
+        return _ok({"service": "VideoMind", "api": "R1"})
 
     @app.get("/health")
     async def health() -> JSONResponse:

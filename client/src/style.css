@@ -17,11 +17,11 @@ textarea {
   font: inherit;
 }
 
+a:focus-visible,
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 textarea:focus-visible {
   outline: 2px solid #c5f946;
   outline-offset: 2px;
 }
-
-

@@ -4,6 +4,11 @@ VideoMind uses the Pixel Future Academy interface. The Media Library selects an
 owned media record; the Analysis Workspace joins its original video, full
 context windows, query-specific evidence, and AI result.
 
+The later discussion of a 100,000-token local R4 acceptance override is
+historical. The current R5 path passed representative media under the normal
+50,000-token default with pre-call admission and source-bound citations; see
+[R5 execution budget](VIDEOMIND_R5_EXECUTION_BUDGET.md).
+
 ## Data lineage and granularity
 
 Media extraction produces ASR `TranscriptSpan` and OCR `OcrObservation` values.

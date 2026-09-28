@@ -1,130 +1,75 @@
 # VideoMind
 
-VideoMind is a Python-native long-video understanding system. It extracts timed
-speech and frame text, retrieves relevant video evidence, and runs a bounded
-Video Agent that returns structured answers with source ranges. This repository
-adapts the public [DOVideo-AI](https://github.com/Xiaoc7r/DOVideo-AI)
-project into a FastAPI, Celery, and Vue application.
+> 面向长视频理解的 AI 视频分析工作台
 
-## Why VideoMind
+VideoMind 将视频播放、ASR/OCR 时间轴、证据检索与 AI 分析放在同一工作空间，让回答能够回到来源证据和视频时间点。它**支持长视频分析**：按时间窗口组织多模态内容，分块检索相关片段，并在模型调用边界控制累计预算。
 
-A long video rarely fits a useful single-context prompt. Relevant facts may
-appear minutes apart in speech or on-screen text. VideoMind preserves those
-sources and their timestamps through retrieval and answer generation so that
-an Agent response can be checked against the video rather than accepted on
-model confidence alone.
+![VideoMind 分析工作台：视频、时间轴、证据与 AI 回答](docs/assets/videomind-workspace.png)
 
-## Architecture
+**视频 ↔ 时间轴 ↔ 证据 ↔ AI** · 中文工作台 · Pixel Future Academy
+
+## 为什么是 VideoMind
+
+长视频中的事实分散在语音与画面文字中。一次性把全部转录文本交给模型既昂贵，也很难把答案与原片对应。VideoMind 保存带时间的 ASR/OCR 来源记录，先检索再分析，并把经过校验的答案级引用连接到 Evidence、时间轴和播放器。
 
 ```mermaid
 flowchart LR
-    Video --> Extract[FFmpeg + ASR / OCR]
-    Extract --> Context[Temporal VideoContext]
-    Context --> Chunks[Long-context chunks]
-    Chunks --> Retrieval[Hybrid retrieval]
-    Retrieval --> Agent[Bounded AgentLoop]
-    Agent --> Planner --> Executor --> Critic --> Guard[Evidence Guard]
-    Guard --> Result[Structured result + timestamps]
+    A[AI 回答] --> B[结构化 Citation]
+    B --> C[已验证 Evidence]
+    C --> D[ASR / OCR 时间轴]
+    D --> E[视频时间点]
 ```
 
-Vue 3 and Vite provide the client; FastAPI exposes REST and SSE. Celery and
-RabbitMQ move long-running work off the request path. MySQL stores durable
-application state, Redis supports operational state and limits, MinIO stores
-media, and Qdrant indexes vectors. The CLI and local adapters provide smaller
-developer paths through the same application logic. See
-[architecture](docs/ARCHITECTURE.md) for the request lifecycle and authority
-boundaries.
+## 核心能力
 
-The Vue client presents the Media Library and Analysis Workspace in the
-Pixel Future Academy visual system. The workspace reads paged full-video
-60-second context windows separately from query-specific evidence and exposes
-verified answer-level citations where source identities are available. See
-[the temporal read model](docs/VIDEOMIND_TEMPORAL_READ_MODEL.md) for exact
-granularity, API contracts, and limitations.
+| 能力             | 在工作台中的作用                                                                             |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| 长视频分析       | 60 秒上下文窗口、分块、分页时序记录和检索式上下文，让分析聚焦相关片段。                      |
+| 多模态时间轴     | 在视频播放位置附近查看 ASR、OCR 和引用标记；逐条记录保留来源时间。                           |
+| 可核查的 AI 证据 | 模型提出的引用要通过来源身份、原文和时间范围校验，才会成为可信的界面引用。当前为答案级引用。 |
+| 分层分析         | Planner 制定任务，Executor 生成分析，Critic 检查结果；应用层负责确定性约束。                 |
+| 预算与遥测       | 累计 token 预算在模型请求前准入，按阶段记录用量，压缩重复的 Prompt 内容。                    |
+| 中文操作界面     | 媒体库、分析工作台与 Pixel Future Academy 视觉体系。                                         |
 
-## Core engineering
+点击回答中的引用，可沿 **Citation → Evidence → 时间轴 → 视频** 返回原始片段。模型输出不能自行授予工具调用或证据可信性；只读工具和最终来源校验由应用代码控制。
 
-- **Multimodal context.** FFmpeg supplies audio segments and keyframes;
-  Whisper ASR and Tesseract OCR become timestamped source observations.
-  `VideoContextBuilder` combines them into temporal windows.
-- **Long-video retrieval.** Five-minute chunks carry summaries and source
-  ranges. Hybrid semantic and lexical retrieval proposes evidence while
-  preserving the original timed spans.
-- **Bounded AgentLoop.** Planner creates verifiable tasks, Executor produces a
-  structured draft, and Critic checks the draft within explicit round and
-  token budgets. Evidence Guard checks final claims against source text and
-  covered time ranges.
-- **Controlled tools.** A model can request only the registered, same-video,
-  read-only evidence tools. `AgentLoop` and `ToolPolicy` authorize and execute
-  each request; a model response never grants itself tool authority.
-- **Operational controls.** Task idempotency, bounded retries, checkpoints,
-  failed-task handling, and AI interaction rate limits constrain long and
-  costly work.
+## 界面
 
-## Provenance and replay
+| 媒体库                                                       | 时序记录                                                                    |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| ![VideoMind 媒体库](docs/assets/videomind-media-library.png) | ![VideoMind ASR/OCR 时间轴记录](docs/assets/videomind-temporal-records.png) |
 
-A durable execution record is the historical source of truth. A checkpoint
-supports crash recovery; Redis is an operational projection. Historical
-replay reads the durable record without calling a model, retrieval service,
-tool, or Jev again.
+主图与时序记录来自本地真实媒体验证；媒体库图使用内置演示数据。另见 [设计实验室截图](docs/assets/videomind-design-lab.png) 与 [Pixel Future Academy 规范](docs/design/DESIGN_SYSTEM.md)。
 
-During evaluation, temporary OCR file paths were found in a source-identity
-calculation. Moving the same media between workspaces could change provenance
-IDs. Stable frame identities fixed that defect; a later Whisper span change
-improved timed evidence granularity. Dataset v1 remains historical, and
-`golden-dataset-v2` binds its annotations to the corrected source revision.
-See [OCR provenance](docs/PROVENANCE_V2.md) and
-[ASR granularity](docs/ASR_GRANULARITY_V3.md).
+## 架构
 
-## Adaptive routing and evaluation
+```mermaid
+flowchart LR
+    Media[视频] --> Extract[FFmpeg / Whisper ASR / Tesseract OCR]
+    Extract --> Context[VideoContext 与时序来源]
+    Context --> Chunks[时间窗口与分块]
+    Chunks --> Index[Embedding / Qdrant]
+    Index --> Retrieval[混合检索]
+    Retrieval --> Planner
+    Planner --> Executor
+    Executor --> Critic
+    Critic --> Guard[确定性 Evidence 校验]
+    Guard --> UI[VideoMind 工作台]
+```
 
-The formal X3 experiment used three heterogeneous execution lanes:
+Vue 3/Vite 提供界面，FastAPI 提供 REST 与 SSE。Celery/RabbitMQ 执行耗时任务；MySQL 保存持久记录，Redis 处理运行态，MinIO 保存媒体，Qdrant 建立向量索引。`VideoContext` 是时序来源的权威表示；检索与各 Agent 阶段只接收所需投影，避免重复传递完整媒体上下文。详见 [架构与权责边界](docs/ARCHITECTURE.md)、[时序读取模型](docs/VIDEOMIND_TEMPORAL_READ_MODEL.md) 和 [执行预算](docs/VIDEOMIND_R5_EXECUTION_BUDGET.md)。
 
-| Lane | Frozen model behavior |
-| --- | --- |
-| FAST | DeepSeek V4.1 Flash, reasoning `none` |
-| BALANCED | DeepSeek V4.1 Flash, reasoning omitted/provider default |
-| DEEP | DeepSeek V4 Pro, reasoning `max`, 65,536 max tokens |
+## 快速开始
 
-Model execution used OpenRouter with a fixed `nextbit/fp8` provider pin and
-fallback disabled. Jev (`typesafe/jev-1.13`) advised routing through a
-separate OpenRouter path; VideoMind's deterministic policy retained final
-authority. The frozen configuration is identified by commit `d0c8480` and
-the `golden-dataset-v2` logical digest
-`7f374396c5eb002ba158717afaffa8a65f5ee64ed79663f1f6b6047960dae8e4`.
-
-The full X3-C campaign persisted **80/80** planned case-strategy results.
-**Zero** passed its preregistered quality gate. Both adaptive router arms
-ultimately chose BALANCED for all 16 cases, so this benchmark did **not**
-establish an advantage for adaptive routing. It is a bounded negative result.
-Provider-reported cost totaled **USD 1.170390452 for 73/80 cases with complete
-case telemetry**; that is a partial subtotal, not the full campaign charge.
-The [final X3 report](docs/X3_OPENROUTER_X3_E_REPORT.md) gives the outcomes,
-failure categories, measurement limits, and separate derived ablations.
-
-### What the evaluation taught us
-
-Working routing code is distinct from evidence of better outcomes. Freezing
-the gate and router before model results prevented threshold changes made to
-improve a score. Provider and regional availability affected the experiment
-design, and provenance correctness had to be established before evidence
-metrics were trustworthy. Negative results and earlier interrupted campaigns
-were preserved rather than merged into the final comparison.
-
-## Quick start
-
-Use Python 3.12 or newer. From the repository root:
+需要 Python 3.12+、Node.js 22.12+ 与 npm。开发者可以先启动无需外部服务的本地 API 与界面。创建虚拟环境后，先在当前终端激活它：POSIX shell 用 `source .venv/bin/activate`，PowerShell 用 `.\.venv\Scripts\Activate.ps1`。
 
 ```bash
 python -m venv .venv
-# Activate .venv for your shell; on Windows PowerShell: .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[test]"
-python -m pytest -q
 python -m dovideo api
 ```
 
-The API defaults to `127.0.0.1:8000`; `--host` and `--port` are available.
-The Vue client starts separately:
+在另一个终端运行：
 
 ```bash
 cd client
@@ -132,59 +77,34 @@ npm ci
 npm run dev
 ```
 
-For a real video analysis, install FFmpeg/ffprobe, Tesseract, and a supported
-Whisper runtime, then configure a structured chat provider in the process
-environment. The sanitized [.env.example](.env.example) lists local service
-and provider variable names. The CLI developer path is:
+打开 `http://127.0.0.1:5173`，后端健康检查为 `http://127.0.0.1:8000/health`。**本地默认组合用于界面与 API 探索；完整媒体处理需启动生产组合**：Docker Compose 的 MySQL、Redis、MinIO、Qdrant、RabbitMQ，独立 Celery worker，FFmpeg/ffprobe、Tesseract、Whisper，以及结构化聊天和 BGE-M3 Embedding Provider。按 [完整启动指南](docs/QUICK_START.md) 配置被忽略的本地环境文件。外部模型调用会产生供应商费用。
+
+## 五分钟演示路径
+
+1. 在媒体库导入一段有语音或画面文字的视频，等待上传完成。
+2. 打开分析工作台并提交问题；生产组合中的 worker 会处理媒体和分析任务。
+3. 查看 ASR/OCR 记录与多轨时间轴，搜索一个出现过的词。
+4. 在 AI 回答中打开引用，查看 Evidence，点击时间标记跳到对应视频位置。
+
+## 配置与开发
+
+安全示例见 [.env.example](.env.example)。`DOVIDEO_*` 是为兼容现有 Python 配置保留的内部变量；公共产品名称为 VideoMind。真实分析需要设置聊天与 Embedding 凭据，默认关闭的自动路由不影响基本分析。完整环境变量、服务启动顺序及系统依赖见 [启动指南](docs/QUICK_START.md)。
 
 ```bash
-python -m dovideo analyze /path/to/video.mp4 --goal "Summarize the evidence"
+python -m pytest -q
+cd client
+npm test
+npm run build
 ```
 
-The optional service composition uses MySQL, Redis, MinIO, Qdrant, and
-RabbitMQ. Copy `.env.example` to an ignored `.env.r2.local`, replace every
-placeholder, and choose a writable `DOVIDEO_R2_DATA_ROOT` before running:
+项目保留可复查的 [X3 模型路由评估](docs/X3_OPENROUTER_X3_E_REPORT.md)。其完整 80/80 结果未通过预注册质量门槛，因此不以该实验宣称自适应路由优于固定策略。历史评估与当前产品能力分别呈现。
 
-```bash
-docker compose --env-file .env.r2.local -f docker-compose.r2.yml up -d
-```
+## 项目状态
 
-Compose's `--env-file` configures the containers; load the needed variables
-into the backend process separately. Set `DOVIDEO_PROFILE=production` only
-when using the R2 production composition. The historical X3 campaign is not
-a quick-start task and requires prepared media and external services.
+当前为 **v0.1.0 发布候选**，适合本地运行、技术审阅和作品集展示；尚未发布托管服务。引用粒度为答案级，模型延迟与 token 消耗受上游供应商影响，完整运行依赖本地媒体工具及外部 Provider。后续可继续校准更长媒体的耗时与预算、细化引用归因及完善部署模板。
 
-## Testing and project status
+面试讲解与工程取舍见 [技术讲解指南](docs/INTERVIEW_GUIDE.md)，版本概览见 [v0.1.0 发布说明草案](docs/RELEASE_NOTES_v0.1.0.md)。
 
-The final local verification passed **839 Python tests**, the client tests,
-client build, Python compilation, and public import checks. The Python suite
-uses fakes for external model and infrastructure calls; live-provider checks
-are separate. Run the client checks with `npm test` and `npm run build` from
-`client/`.
+## 许可
 
-The engineering implementation and formal X3 evaluation are complete. The
-repository documents a local/developer system and bounded live validation;
-it is not presented as a deployed production SaaS. The dataset covers one
-media source and 16 cases, costs are partly observed, and external provider
-behavior can change.
-
-## Repository layout
-
-```text
-src/dovideo/       domain, application, infrastructure, API, and CLI
-client/            Vue 3/Vite frontend
-tests/             offline Python tests
-datasets/x3/       versioned evaluation annotations
-configs/x3c/       frozen routing and gate configurations
-docs/              architecture, provenance, and evaluation evidence
-tools/             explicit developer and evaluation utilities
-```
-
-The main stack is Python 3.12+, FastAPI, Pydantic, SQLAlchemy, Celery,
-RabbitMQ, MySQL, Redis, MinIO, Qdrant, Vue 3, FFmpeg, Whisper, and Tesseract.
-
-## License
-
-MIT. The adapted frontend retains the
-[upstream copyright and license notice](client/NOTICE.md) and the root
-[LICENSE](LICENSE).
+MIT，见 [LICENSE](LICENSE)。前端基于公开项目改编，其来源和原有版权声明见 [client/NOTICE.md](client/NOTICE.md)。

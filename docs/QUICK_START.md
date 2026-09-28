@@ -1,0 +1,93 @@
+# VideoMind 本地启动指南
+
+本文区分轻量界面探索与完整视频分析。命令均从仓库根目录执行，除非特别注明。系统要求：Python 3.12+、Node.js 22.12+、npm；完整分析还需要 Docker Compose、FFmpeg/ffprobe、Tesseract 和可用的 OpenAI Whisper Python 包及模型权重。外部聊天与 Embedding Provider 需由使用者自行配置并承担调用费用。
+
+## 1. 安装应用依赖
+
+```bash
+python -m venv .venv
+# macOS / Linux
+source .venv/bin/activate
+# Windows PowerShell：运行 .\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[test]"
+```
+
+前端在 `client/` 中执行 `npm ci`。若只查看本地 API 和界面，可跳到第 4 步，保持 `DOVIDEO_PROFILE=local`，暂不启动 Compose 或 worker。本地默认组合是开发模式；它不是下述完整媒体分析组合。
+
+## 2. 配置完整分析环境
+
+复制 [.env.example](../.env.example) 为仓库根目录下的 `.env.r2.local`。该文件已由 `.gitignore` 排除。将其中所有 `replace-me` 换成独立的本地密码或密钥，将 `DOVIDEO_PROFILE` 改为 `production`，确认 `DOVIDEO_R2_DATA_ROOT` 是可写目录。Compose 用同一文件配置 MySQL、Redis、MinIO、Qdrant、RabbitMQ；**API 与 worker 进程也必须加载这个文件**。Compose 的 `--env-file` 不会自动设置宿主机终端的进程环境。
+
+聊天模型有两种受支持配置，选一种：
+
+- OpenRouter：设置 `DOVIDEO_MODEL_TRANSPORT=openrouter`、`DOVIDEO_OPENROUTER_API_KEY`、`DOVIDEO_MODEL_PROVIDER_TAG` 和 `DOVIDEO_MODEL_MODEL`。仓库已验证的 X3 模型配置示例见 [.env.example](../.env.example)，固定供应商的实时可用性仍需在账户中确认。代码会固定供应商并禁用回退。
+- 其他 OpenAI 兼容接口：设置 `DOVIDEO_MODEL_TRANSPORT=openai-compatible`、`DOVIDEO_MODEL_BASE_URL`、`DOVIDEO_MODEL_API_KEY` 和 `DOVIDEO_MODEL_MODEL`。选择支持项目所需结构化输出的模型。
+
+完整 R4 路径还要求 `DOVIDEO_EMBEDDING_API_KEY`、`DOVIDEO_EMBEDDING_BASE_URL` 和 `DOVIDEO_EMBEDDING_MODEL=BAAI/bge-m3`。Embedding 接口应与 OpenAI Embeddings 格式兼容。聊天与 Embedding 密钥可以来自不同供应商。自动模型路由默认关闭；它是单独的可选配置，不是完成一次分析的前提。
+
+安装本机媒体工具后，用 `ffmpeg -version`、`ffprobe -version`、`tesseract --version` 确认命令可调用。在虚拟环境中运行 `python -m pip install -U openai-whisper`，再用 `python -c "import whisper"` 验证导入；PyTorch 等平台依赖按 [Whisper 官方安装说明](https://github.com/openai/whisper#setup) 安装。首次加载模型可能下载权重。可通过 `DOVIDEO_FFMPEG_DIR`、`DOVIDEO_TESSERACT_PATH`、`DOVIDEO_WHISPER_MODEL_ROOT` 指向已有本地安装。`DOVIDEO_*` 是保留的配置接口名称。
+
+## 3. 启动基础服务
+
+```bash
+docker compose --env-file .env.r2.local -f docker-compose.r2.yml config --quiet
+docker compose --env-file .env.r2.local -f docker-compose.r2.yml up -d
+docker compose --env-file .env.r2.local -f docker-compose.r2.yml ps
+```
+
+请在启动 API 和 worker 的**每个**终端导入同一份私有配置。POSIX shell 示例：
+
+```bash
+set -a
+. ./.env.r2.local
+set +a
+```
+
+PowerShell 示例，处理模板中简单的 `KEY=value` 行；复杂含引号、换行的密钥应在当前进程中单独设置：
+
+```powershell
+Get-Content .env.r2.local | ForEach-Object {
+    if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
+        [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+    }
+}
+```
+
+不要把实际配置内容打印到终端记录、截图或提交中。
+
+## 4. 启动 API、worker 与前端
+
+终端 A（已激活虚拟环境；完整分析时已导入私有配置）：
+
+```bash
+python -m dovideo api
+```
+
+终端 B（仅完整分析需要；同样已激活虚拟环境并导入配置）：
+
+```bash
+python -m celery -A dovideo.infrastructure.celery_worker:celery_app worker --loglevel=WARNING --pool=solo --concurrency=1 -Q dovideo.analysis
+```
+
+终端 C：
+
+```bash
+cd client
+npm ci
+npm run dev
+```
+
+浏览器打开 `http://127.0.0.1:5173`。运行 `curl http://127.0.0.1:8000/health` 验证 API；前端开发代理默认指向该地址。若端口不同，可设置 `VITE_DEV_PROXY_TARGET`。完整组合首次启动会建立数据库结构和 MinIO bucket；如果生产配置缺失，启动会直接报错，不会静默退回本地组合。
+
+## 5. 演示与验证
+
+注册/登录测试账户，导入**有权使用**的视频，在媒体库打开分析工作台，提交问题。等待 worker 完成后检查 ASR/OCR 记录、证据检索、AI 回答与引用跳转。参考 [README 演示路径](../README.md#五分钟演示路径)。处理时长取决于媒体、机器与供应商。
+
+```bash
+python -m pytest -q
+cd client
+npm test
+npm run build
+```
+
+测试套件使用离线替身，不需要真实 Provider 密钥。完整 R4 live acceptance 是单独的付费验证流程，不属于日常启动或 CI。
