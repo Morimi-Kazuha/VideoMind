@@ -1,6 +1,4 @@
-# VideoMind v0.1.0 — 发布说明草案
-
-> 本文是本地发布候选草案；尚未创建 Git tag 或 GitHub Release。
+# VideoMind v0.1.0 — 发布说明
 
 VideoMind 是支持长视频分析的中文 AI 视频工作台，把视频、ASR/OCR 时间轴、证据检索和 AI 回答连接到同一界面。
 
