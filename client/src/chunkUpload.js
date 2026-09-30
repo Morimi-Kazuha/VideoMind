@@ -1,4 +1,4 @@
-import { apiRequest } from './api'
+import { apiRequest, captureAuthSession } from './api.js'
 
 const CHUNK_SIZE = 5 * 1024 * 1024
 const UPLOAD_CONCURRENCY = 3
@@ -45,6 +45,7 @@ export function formatDurationText(seconds) {
 /** 选择文件时的前置校验，避免进入上传态之后才失败。 */
 export function validateVideoFile(file) {
   if (!file) return '请先选择视频文件'
+  if (!/\.(mp4|mov|mkv|avi|webm|m4v)$/i.test(file.name || '')) return '不支持的视频格式，请选择 MP4、MOV、MKV、AVI、WEBM 或 M4V'
   if (!file.size) return '该文件大小为 0，可能已损坏或仍在同步，请重新选择'
   if (file.size > MAX_UPLOAD_BYTES) {
     return `文件 ${formatBytes(file.size)}，超过 ${formatBytes(MAX_UPLOAD_BYTES)} 上限，请先压缩或分段`
@@ -52,38 +53,45 @@ export function validateVideoFile(file) {
   return ''
 }
 
-function storageKey(file) {
-  return `upload:${file.name}:${file.size}:${file.lastModified}`
+function storageKey(file, userId) {
+  const identity = `${file.name}:${file.size}:${file.lastModified}`
+  return userId == null ? `upload:${identity}` : `upload:${userId}:${identity}`
 }
 
-function readStoredUploadId(file) {
+function validUserId(userId) {
+  return Number.isSafeInteger(userId) && userId > 0
+}
+
+function readStoredUploadId(file, userId) {
   try {
-    return localStorage.getItem(storageKey(file))
+    return localStorage.getItem(storageKey(file, userId))
   } catch {
     // 隐私模式下 localStorage 可能不可用，此时退化为普通上传。
     return null
   }
 }
 
-function writeStoredUploadId(file, uploadId) {
+function writeStoredUploadId(file, uploadId, userId) {
   try {
-    localStorage.setItem(storageKey(file), uploadId)
+    localStorage.setItem(storageKey(file, userId), uploadId)
+    return true
   } catch {
     // 存不下续传凭据不影响本次上传，只是失败后无法续传。
   }
 }
 
-export function forgetUploadProgress(file) {
+export function forgetUploadProgress(file, userId) {
   if (!file) return
   try {
-    localStorage.removeItem(storageKey(file))
+    if (!validUserId(userId)) return
+    localStorage.removeItem(storageKey(file, userId))
   } catch {
     // 同上，忽略存储不可用。
   }
 }
 
-export function hasUploadProgress(file) {
-  return Boolean(file && readStoredUploadId(file))
+export function hasUploadProgress(file, userId) {
+  return Boolean(file && validUserId(userId) && (readStoredUploadId(file, userId) || readStoredUploadId(file)))
 }
 
 /**
@@ -92,19 +100,23 @@ export function hasUploadProgress(file) {
  * - 支持 AbortSignal 取消；取消后保留续传凭据，便于用户继续。
  * - onProgress 携带字节级进度、实时速度与预计剩余时间。
  */
-export async function uploadVideoInChunks(file, onProgress = () => {}, signal) {
+export async function uploadVideoInChunks(file, onProgress = () => {}, signal, userId) {
+  if (!validUserId(userId)) throw new Error('请先登录后上传')
+  const session = captureAuthSession()
+  const current = () => { throwIfAborted(signal); if (!session.isCurrent()) throw new UploadAbortedError('登录会话已变化') }
   const invalid = validateVideoFile(file)
   if (invalid) throw new Error(invalid)
   throwIfAborted(signal)
 
   const totalBytes = file.size
   const totalChunks = Math.ceil(totalBytes / CHUNK_SIZE)
-  const { uploadId, uploadedChunks } = await resolveUploadSession(file, totalChunks, signal)
+  const { uploadId, uploadedChunks, completed } = await resolveUploadSession(file, totalChunks, signal, userId, current)
+  current()
 
   const pendingChunks = []
   let uploadedBytes = 0
   for (let index = 0; index < totalChunks; index += 1) {
-    if (uploadedChunks.has(index)) uploadedBytes += chunkSize(file, index)
+    if (completed || uploadedChunks.has(index)) uploadedBytes += chunkSize(file, index)
     else pendingChunks.push(index)
   }
 
@@ -115,6 +127,7 @@ export async function uploadVideoInChunks(file, onProgress = () => {}, signal) {
   let completedChunks = resumedChunks
 
   const emit = phase => {
+    current()
     const transferred = uploadedBytes - resumedBytes
     const speed = meter.speed(transferred)
     const remainingBytes = Math.max(0, totalBytes - uploadedBytes)
@@ -184,7 +197,8 @@ export async function uploadVideoInChunks(file, onProgress = () => {}, signal) {
     throw new Error(await readErrorText(response) || '分片合并失败，可重新选择同一文件继续')
   }
   const media = await response.json()
-  forgetUploadProgress(file)
+  current()
+  forgetUploadProgress(file, userId)
   return media
 }
 
@@ -194,6 +208,7 @@ export async function uploadVideoInChunks(file, onProgress = () => {}, signal) {
  *   "uploadId does not exist or has expired" / "invalid uploadId"
  */
 function isDeadUploadSession(status, detail) {
+  if (status === 404 || status === 410) return true
   if (status !== 400) return false
   const text = (detail || '').toLowerCase()
   return text.includes('does not exist')
@@ -201,8 +216,10 @@ function isDeadUploadSession(status, detail) {
     || text.includes('invalid uploadid')
 }
 
-async function resolveUploadSession(file, totalChunks, signal) {
-  const storedUploadId = readStoredUploadId(file)
+async function resolveUploadSession(file, totalChunks, signal, userId, current) {
+  const scoped = readStoredUploadId(file, userId)
+  const legacy = !scoped && readStoredUploadId(file)
+  const storedUploadId = scoped || legacy
   if (storedUploadId) {
     let response
     try {
@@ -216,14 +233,30 @@ async function resolveUploadSession(file, totalChunks, signal) {
     }
 
     if (response.ok) {
-      const indexes = await response.json()
+      const status = await response.json()
+      current()
+      // Success is the server ownership check. Never remove a legacy record
+      // until the scoped write has succeeded, including storage quota faults.
+      if (legacy && writeStoredUploadId(file, storedUploadId, userId)) {
+        try { localStorage.removeItem(storageKey(file)) } catch { /* keep both */ }
+      }
+      const indexes = Array.isArray(status) ? status : status?.uploadedChunks
       const uploadedChunks = new Set((Array.isArray(indexes) ? indexes : [])
         .map(Number)
         .filter(index => Number.isInteger(index) && index >= 0 && index < totalChunks))
-      return { uploadId: storedUploadId, uploadedChunks }
+      return { uploadId: storedUploadId, uploadedChunks, completed: Boolean(status?.completedMediaId) }
     }
 
     const detail = await readErrorText(response)
+    current()
+    if (legacy && response.status === 403) {
+      // Another account's legacy credential must remain available to its
+      // owner. This user can still upload the file through a fresh session.
+      const uploadId = await initializeUpload(file.name, totalChunks, signal)
+      current()
+      writeStoredUploadId(file, uploadId, userId)
+      return { uploadId, uploadedChunks: new Set() }
+    }
     if (!isDeadUploadSession(response.status, detail)) {
       // 401 / 403 / 429 / 5xx：凭据本身可能仍然有效，一律保留，交由用户稍后重试。
       const error = new Error(detail
@@ -231,11 +264,13 @@ async function resolveUploadSession(file, totalChunks, signal) {
       error.status = response.status
       throw error
     }
-    forgetUploadProgress(file)
+    current()
+    if (scoped) forgetUploadProgress(file, userId)
   }
 
   const uploadId = await initializeUpload(file.name, totalChunks, signal)
-  writeStoredUploadId(file, uploadId)
+  current()
+  writeStoredUploadId(file, uploadId, userId)
   return { uploadId, uploadedChunks: new Set() }
 }
 
@@ -247,7 +282,7 @@ async function initializeUpload(filename, totalChunks, signal) {
   })
   const body = (await response.text()).trim()
   if (!response.ok) throw new Error(body || '上传初始化失败，请稍后重试')
-  return body
+  try { return JSON.parse(body).uploadId || body } catch { return body }
 }
 
 async function uploadChunkWithRetry(file, uploadId, chunkIndex, totalChunks, signal, onRetry) {
@@ -369,5 +404,3 @@ function sleep(ms, signal) {
     signal?.addEventListener('abort', onAbort, { once: true })
   })
 }
-
-

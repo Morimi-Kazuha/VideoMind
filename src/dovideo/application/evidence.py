@@ -95,6 +95,85 @@ class EvidenceVerificationService:
             return False
         return self._supported_with_provenance(context, evidence)
 
+    def supporting_source_item_ids(
+        self,
+        context: VideoContext,
+        evidence: AnalysisEvidence,
+        candidate_ids: Iterable[str],
+    ) -> tuple[str, ...] | None:
+        """Resolve a bounded quote-supporting subset of retrieval provenance.
+
+        Candidate IDs name a whole window. Only authoritative observations of
+        the requested channels covering the evidence timestamp may support it.
+        Keep the shortest complete quote span, breaking ties by candidate order;
+        never truncate a span to satisfy the evidence-reference limit.
+        """
+        if not context.source_revision or evidence.source_revision != context.source_revision:
+            return None
+        segment = next((
+            segment for segment in context.segments
+            if segment.segment_id == evidence.segment_id
+            and segment.source_revision == context.source_revision
+            and segment.start_ms <= evidence.timestamp_ms < segment.end_ms
+        ), None)
+        if segment is None:
+            return None
+        by_id = {item.source_item_id: item for item in segment.source_items}
+        if len(by_id) != len(segment.source_items):
+            return None
+        required_types = _required_source_types(evidence.source)
+        quote = normalize_evidence_text(evidence.content)
+        if not required_types or not quote:
+            return None
+        eligible: list[SourceItemIdentity] = []
+        spans: list[tuple[int, int]] = []
+        text = ""
+        for item_id in dict.fromkeys(candidate_ids):
+            item = by_id.get(item_id)
+            if (
+                item is None
+                or item.source_revision != context.source_revision
+                or item.segment_id != segment.segment_id
+                or item.source_type not in required_types
+                or not _item_covers_timestamp(item, evidence.timestamp_ms)
+            ):
+                continue
+            source_text = _source_item_text(segment, item)
+            normalized = normalize_evidence_text(source_text)
+            if not normalized:
+                continue
+            eligible.append(item)
+            spans.append((len(text), len(text) + len(normalized)))
+            text += normalized
+
+        best: tuple[str, ...] | None = None
+        offset = text.find(quote)
+        while offset >= 0:
+            supporting = tuple(
+                item for item, (start, end) in zip(eligible, spans, strict=True)
+                if start < offset + len(quote) and offset < end
+            )
+            missing_types = required_types - frozenset(item.source_type for item in supporting)
+            # For a combined citation, a second channel may independently
+            # contain the same quote. It must support the quote itself, rather
+            # than being retained merely to supply a channel label.
+            for source_type in sorted(missing_types):
+                extra = next((
+                    item for item, (start, end) in zip(eligible, spans, strict=True)
+                    if item.source_type == source_type and quote in text[start:end]
+                ), None)
+                if extra is not None:
+                    supporting = tuple(item for item in eligible if item in supporting or item == extra)
+            if (
+                1 <= len(supporting) <= MAX_EVIDENCE_SOURCE_ITEM_REFS
+                and frozenset(item.source_type for item in supporting) == required_types
+            ):
+                ids = tuple(item.source_item_id for item in supporting)
+                if best is None or len(ids) < len(best):
+                    best = ids
+            offset = text.find(quote, offset + 1)
+        return best
+
     def bind_provenance(
         self,
         context: VideoContext | None,

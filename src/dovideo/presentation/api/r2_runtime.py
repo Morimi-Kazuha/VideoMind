@@ -26,7 +26,8 @@ from dovideo.application import (
     normalize_video_filename,
 )
 from dovideo.application.errors import MediaUnauthorized
-from dovideo.domain import AnalysisMode, TaskStatus, TaskStatusState
+from dovideo.domain import AgentPlan, AnalysisMode, TaskStatus, TaskStatusState
+from dovideo.application import AnalysisRequest
 from dovideo.infrastructure import (
     AiInteractionLimiter,
     R2Infrastructure,
@@ -289,6 +290,15 @@ class ProductionR2Services:
 
     async def save_feedback(self, feedback: object) -> None:
         await self.checkpoint.save_feedback(feedback)
+
+    async def revise_analysis(self, feedback, user_id: int) -> DispatchDisposition:
+        if not hasattr(self, "dispatcher"):
+            raise R1ServiceError("production Agent worker 尚未启用", status_code=501)
+        record = await self.media.require_owned(feedback.media_id, user_id)
+        goal = feedback.corrected_goal or feedback.goal
+        plan = AgentPlan(understoodGoal=goal, tasks=feedback.corrected_tasks) if feedback.corrected_tasks else None
+        request = AnalysisRequest(record.to_ref(), goal, feedback.mode, request_id=f"revision:{uuid4().hex}")
+        return await self.dispatcher.dispatch(request, revision_plan=plan, revision_checkpoint=self.checkpoint)
 
     def feedback_for(self, media_id: int) -> tuple[object, ...]:
         del media_id

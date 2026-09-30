@@ -1,5 +1,37 @@
 const API_BASE = (import.meta.env?.VITE_API_BASE_URL || '').replace(/\/$/, '')
 const TOKEN_KEY = 'authToken'
+let sessionGeneration = 0
+let observedToken
+const sessionListeners = new Set()
+
+function syncSession(force = false) {
+  const token = localStorage.getItem(TOKEN_KEY)
+  if (force || token !== observedToken) {
+    observedToken = token
+    sessionGeneration += 1
+    for (const listener of [...sessionListeners]) listener()
+  }
+  return token
+}
+
+export function captureAuthSession() {
+  const token = syncSession()
+  const generation = sessionGeneration
+  return { token, isCurrent: () => syncSession() === token && sessionGeneration === generation }
+}
+
+export function onAuthSessionChange(listener) {
+  sessionListeners.add(listener)
+  return () => sessionListeners.delete(listener)
+}
+
+function requireCurrent(session) {
+  if (!session.isCurrent()) throw new DOMException('登录会话已变化', 'AbortError')
+}
+
+globalThis.window?.addEventListener?.('storage', event => {
+  if (event.key === TOKEN_KEY || event.key === null) syncSession(true)
+})
 
 export function hasAuthToken() {
   return Boolean(localStorage.getItem(TOKEN_KEY))
@@ -8,10 +40,12 @@ export function hasAuthToken() {
 export function setAuthToken(token) {
   if (!token) throw new Error('登录接口未返回有效令牌')
   localStorage.setItem(TOKEN_KEY, token)
+  syncSession(true)
 }
 
 export function clearAuthToken() {
   localStorage.removeItem(TOKEN_KEY)
+  syncSession(true)
 }
 
 /**
@@ -62,19 +96,27 @@ function unwrap(response, envelope) {
 
 export async function apiRequest(path, options = {}) {
   const headers = new Headers(options.headers || {})
-  const token = localStorage.getItem(TOKEN_KEY)
+  const session = captureAuthSession()
+  const token = session.token
   if (token) headers.set('Authorization', `Bearer ${token}`)
 
   let response
   try {
     response = await fetch(`${API_BASE}${path}`, { ...options, headers })
   } catch (error) {
+    requireCurrent(session)
     if (error?.name === 'AbortError') throw error
     throw new Error('无法连接后端服务，请确认后端已启动且地址配置正确', { cause: error })
   }
-  if (response.status === 401 && !path.startsWith('/user/')) {
+  requireCurrent(session)
+  let responseSession = session
+  if (response.status === 401 && token && !path.startsWith('/user/')) {
     clearAuthToken()
     window.dispatchEvent(new Event('auth-expired'))
+    // The error can finish reading in the expired session, but a subsequent
+    // login must still invalidate it (including delayed JSON body reads).
+    responseSession = captureAuthSession()
+    if (responseSession.token) throw new DOMException('登录会话已变化', 'AbortError')
   }
 
   // 非 JSON（SSE / 音频流 / 空响应）原样返回，绝不触碰 body。
@@ -85,9 +127,11 @@ export async function apiRequest(path, options = {}) {
   try {
     envelope = await response.clone().json()
   } catch {
+    requireCurrent(responseSession)
     // 声明是 JSON 却解析不了（例如空 body），退回原始响应交给调用方处理。
     return response
   }
+  requireCurrent(responseSession)
   if (!isEnvelope(envelope)) return response
 
   return unwrap(response, envelope)

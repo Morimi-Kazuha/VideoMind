@@ -37,6 +37,16 @@ class AnalysisStatusQuery:
 
         key = TaskKey(media_id=media_id, goal=goal, mode=_resolve_mode(mode))
 
+        # A newly queued revision owns the current logical status while its
+        # predecessor remains readable until a worker actually applies it.
+        load_lifecycle = getattr(self._checkpoint, "load_lifecycle", None)
+        lifecycle = await load_lifecycle(key) if callable(load_lifecycle) else None
+        if lifecycle is not None and (lifecycle.request_id or "").startswith("revision:"):
+            if not lifecycle.terminal:
+                if await self._activity.is_active(key):
+                    return lifecycle.status
+                return TaskStatus.of(TaskStatusState.FAILED, "修订任务已中断，可以重新提交")
+
         # A completed checkpoint wins even if the active marker has not yet
         # expired.  This is the first branch in the Java implementation.
         result = await self._checkpoint.load_result(key)

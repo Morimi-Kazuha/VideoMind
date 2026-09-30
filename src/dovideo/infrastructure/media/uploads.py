@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dovideo.application.errors import MediaPayloadTooLarge
 import hashlib
 import mimetypes
 import os
@@ -468,12 +469,12 @@ async def _read_limited(
     if isinstance(source, bytes):
         payload = source
         if len(payload) > max_bytes:
-            raise InvalidMediaInput("chunk size cannot exceed 5 MiB")
+            raise MediaPayloadTooLarge("chunk size cannot exceed 5 MiB")
         return payload
     if isinstance(source, bytearray):
         payload = bytes(source)
         if len(payload) > max_bytes:
-            raise InvalidMediaInput("chunk size cannot exceed 5 MiB")
+            raise MediaPayloadTooLarge("chunk size cannot exceed 5 MiB")
         return payload
     if isinstance(source, (str, os.PathLike)):
         stream = Path(os.fspath(source)).open("rb")
@@ -493,7 +494,7 @@ async def _read_limited(
                 raise InvalidMediaInput("chunk input must yield bytes")
             payload.extend(bytes(piece))
             if len(payload) > max_bytes:
-                raise InvalidMediaInput("chunk size cannot exceed 5 MiB")
+                raise MediaPayloadTooLarge("chunk size cannot exceed 5 MiB")
     finally:
         if close:
             await asyncio.to_thread(stream.close)

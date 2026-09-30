@@ -326,6 +326,30 @@ class _MemoryCheckpoint(
 ):
     def __init__(self, owner: "LocalR1Services") -> None:
         self.owner = owner
+        self.revisions = {}
+
+    async def stage_revision(self, media_id, goal, plan, mode, *, request_id=None):
+        self.revisions[TaskKey(media_id, goal, mode)] = (plan, False, request_id)
+
+    async def cancel_staged_revision(self, media_id, goal, mode):
+        self.revisions.pop(TaskKey(media_id, goal, mode), None)
+
+    async def begin_staged_revision(self, media_id, goal, mode, *, request_id=None):
+        key = TaskKey(media_id, goal, mode)
+        pending = self.revisions.get(key)
+        if pending is None or (pending[2] is not None and pending[2] != request_id):
+            return False
+        if pending[1]:
+            return True
+        for values in (self.owner.results, self.owner.plans, self.owner.drafts, self.owner.critic_states):
+            values.pop(key, None)
+        if pending[0] is not None:
+            self.owner.plans[key] = pending[0]
+        self.revisions[key] = (pending[0], True, pending[2])
+        return True
+
+    async def load_lifecycle(self, key):
+        return await self.owner.lifecycle.load_lifecycle(key)
 
     async def load_context(self, media_id: int) -> VideoContext | None:
         return self.owner.contexts.get(media_id)
@@ -445,10 +469,12 @@ class _LocalChunkUploadStore:
 
     def __init__(self, media: _LocalMediaStore) -> None:
         self.media = media
+        self.merging = set()
         self.values: dict[str, _UploadState] = {}
         self.markers: dict[str, CompletedUploadMarker] = {}
 
     async def init(self, user_id: int, filename: str, total_chunks: int) -> str:
+        self._prune_expired()
         if not 1 <= total_chunks <= MAX_TOTAL_CHUNKS:
             raise R1ServiceError(f"分片数量必须在 1 到 {MAX_TOTAL_CHUNKS} 之间")
         upload_id = str(uuid4())
@@ -464,15 +490,20 @@ class _LocalChunkUploadStore:
         self.values[upload_id] = _UploadState(session)
         return upload_id
 
+    def _prune_expired(self) -> None:
+        now = datetime.now(timezone.utc)
+        for upload_id, state in tuple(self.values.items()):
+            if upload_id not in self.merging and state.session.is_expired(now):
+                self.values.pop(upload_id, None)
+                self.markers.pop(upload_id, None)
+
     def _owned(self, upload_id: str, user_id: int) -> _UploadState:
+        self._prune_expired()
         state = self.values.get(upload_id)
         if state is None:
             raise R1ServiceError("上传会话不存在或已过期", status_code=404)
         if state.session.user_id != user_id:
             raise R1ServiceError("无权访问该上传会话", status_code=403)
-        if state.session.is_expired(datetime.now(timezone.utc)):
-            self.values.pop(upload_id, None)
-            raise R1ServiceError("上传会话不存在或已过期", status_code=404)
         return state
 
     async def status(self, upload_id: str, user_id: int) -> UploadStatus:
@@ -498,6 +529,10 @@ class _LocalChunkUploadStore:
             raise R1ServiceError("分片序号无效")
         if len(payload) > MAX_CHUNK_BYTES:
             raise R1ServiceError("单个分片不能超过 5 MB", status_code=413)
+        if state.completed_media_id is not None or upload_id in self.merging:
+            raise R1ServiceError("上传会话已完成或正在合并，请查询进度", status_code=409)
+        if not payload:
+            raise R1ServiceError("上传分片不能为空", status_code=400)
         state.chunks[chunk_index] = payload
         return await self.status(upload_id, user_id)
 
@@ -506,35 +541,42 @@ class _LocalChunkUploadStore:
         if state.completed_media_id is not None:
             record = await self.media.require_owned(state.completed_media_id, user_id)
             return record, await self.status(upload_id, user_id)
+        if upload_id in self.merging:
+            raise R1ServiceError("上传会话正在合并", status_code=409)
         expected = set(range(state.session.total_chunks))
         if set(state.chunks) != expected:
             raise R1ServiceError("上传分片尚未全部完成", status_code=409)
-        payload = b"".join(state.chunks[index] for index in range(state.session.total_chunks))
-        record = await self.media.ingest(
-            user_id,
-            state.session.filename,
-            payload,
-            "video/" + Path(state.session.filename).suffix.lstrip(".").lower(),
-        )
-        state.completed_media_id = record.media_id
-        state.session = UploadSession(
-            upload_id=state.session.upload_id,
-            filename=state.session.filename,
-            total_chunks=state.session.total_chunks,
-            user_id=state.session.user_id,
-            created_at=state.session.created_at,
-            expires_at=state.session.expires_at,
-            state=UploadSessionState.COMPLETED,
-        )
-        self.markers[upload_id] = CompletedUploadMarker(
-            upload_id=upload_id,
-            user_id=user_id,
-            media_id=record.media_id or 0,
-            expires_at=datetime.now(timezone.utc) + MEDIA_SESSION_TTL,
-            filename=record.filename,
-            total_chunks=state.session.total_chunks,
-            created_at=state.session.created_at,
-        )
+        self.merging.add(upload_id)
+        try:
+            payload = b"".join(state.chunks[index] for index in range(state.session.total_chunks))
+            record = await self.media.ingest(
+                user_id,
+                state.session.filename,
+                payload,
+                "video/" + Path(state.session.filename).suffix.lstrip(".").lower(),
+            )
+            state.completed_media_id = record.media_id
+            state.session = UploadSession(
+                upload_id=state.session.upload_id,
+                filename=state.session.filename,
+                total_chunks=state.session.total_chunks,
+                user_id=state.session.user_id,
+                created_at=state.session.created_at,
+                expires_at=datetime.now(timezone.utc) + MEDIA_SESSION_TTL,
+                state=UploadSessionState.COMPLETED,
+            )
+            self.markers[upload_id] = CompletedUploadMarker(
+                upload_id=upload_id,
+                user_id=user_id,
+                media_id=record.media_id or 0,
+                expires_at=datetime.now(timezone.utc) + MEDIA_SESSION_TTL,
+                filename=record.filename,
+                total_chunks=state.session.total_chunks,
+                created_at=state.session.created_at,
+            )
+            state.chunks.clear()
+        finally:
+            self.merging.discard(upload_id)
         return record, await self.status(upload_id, user_id)
 
 
@@ -619,6 +661,7 @@ class _EventPublisher(TaskEventPublisherPort):
             event=event,
             attempt=attempt,
             retryable=event.stage is TaskStage.RETRYING,
+            request_id=None if lifecycle is None else lifecycle.request_id,
         )
         self.owner.trace.record(key, event)
         queues = tuple(self.owner.subscribers.get(key, ()))
@@ -770,6 +813,7 @@ class LocalR1Services:
         self.drafts: dict[TaskKey, AgentState] = {}
         self.critic_states: dict[TaskKey, AgentState] = {}
         self.results: dict[TaskKey, AgentState] = {}
+        self.transcripts: dict[int, str] = {}
         self.feedback: dict[int, list[Any]] = defaultdict(list)
         self.evaluator = AgentEvaluationService()
         self.lifecycle = _LifecycleStore()
@@ -900,7 +944,7 @@ class LocalR1Services:
     ) -> DispatchDisposition:
         record = await self.media.require_owned(media_id, user_id)
         await self._prepare_pipeline(media_id, goal)
-        request = AnalysisRequest(record.to_ref(), goal, mode)
+        request = AnalysisRequest(record.to_ref(), goal, mode, request_id=uuid4().hex)
         if await self.checkpoint.load_result(request.task_key) is not None:
             return DispatchDisposition.DUPLICATE
         disposition = await self.dispatcher.dispatch(request)
@@ -987,6 +1031,19 @@ class LocalR1Services:
     async def save_feedback(self, feedback: Any) -> None:
         self.feedback[feedback.media_id].append(feedback)
 
+    async def revise_analysis(self, feedback, user_id: int) -> DispatchDisposition:
+        record = await self.media.require_owned(feedback.media_id, user_id)
+        goal = feedback.corrected_goal or feedback.goal
+        plan = AgentPlan(understoodGoal=goal, tasks=feedback.corrected_tasks) if feedback.corrected_tasks else None
+        request = AnalysisRequest(record.to_ref(), goal, feedback.mode, request_id=f"revision:{uuid4().hex}")
+        disposition = await self.dispatcher.dispatch(request, revision_plan=plan, revision_checkpoint=self.checkpoint)
+        if disposition is DispatchDisposition.ACCEPTED:
+            self.trace.start(request.task_key)
+            task = asyncio.create_task(self._run_analysis(request))
+            self.tasks.add(task)
+            task.add_done_callback(self.tasks.discard)
+        return disposition
+
     def feedback_for(self, media_id: int) -> tuple[Any, ...]:
         return tuple(self.feedback.get(media_id, ()))
 
@@ -1012,7 +1069,7 @@ class LocalR1Services:
             raise R1ServiceError("文字提取任务正在处理中", status_code=409)
         key = TaskKey(media_id, "__transcription__", AnalysisMode.GENERAL)
         await self.active.reserve(key, ttl_seconds=60 * 60)
-        queued = TaskLifecycle.new(key).queued("文字提取任务已排队")
+        queued = TaskLifecycle.new(key, request_id=uuid4().hex).queued("文字提取任务已排队")
         await self.lifecycle.save_lifecycle(queued)
         await self.publisher.publish(key, queued.event)
         task = asyncio.create_task(self._run_transcription(key), name=f"dovideo-r1-transcription-{media_id}")
@@ -1035,31 +1092,49 @@ class LocalR1Services:
             transcript = context.transcript_text()
             completed = started.complete(transcript)
             await self.lifecycle.save_lifecycle(completed)
+            self.transcripts[key.media_id] = transcript
             await self.publisher.publish(key, completed.event)
-        except R1ServiceError as error:
+        except Exception as error:
             lifecycle = await self.lifecycle.load_lifecycle(key)
             if lifecycle is not None and not lifecycle.terminal:
-                failed = lifecycle.fail(error.message, stage=TaskStage.FAILED)
+                message = error.message if isinstance(error, R1ServiceError) else "文字提取失败，可以重新提交"
+                failed = lifecycle.fail(message, stage=TaskStage.FAILED)
                 await self.lifecycle.save_lifecycle(failed)
-                await self.publisher.publish(key, failed.event)
+                status = TaskStatus(state=TaskStatusState.FAILED, message=message, result=self.transcripts.get(key.media_id))
+                await self.publisher.publish(key, TaskEvent.of(status, failed.stage))
         finally:
             await self.active.release(key)
 
     async def transcription_status(self, media_id: int, user_id: int) -> TaskStatus:
         await self.media.require_owned(media_id, user_id)
-        return self.delivery.current(TaskKey(media_id, "__transcription__", AnalysisMode.GENERAL))
+        key = TaskKey(media_id, "__transcription__", AnalysisMode.GENERAL)
+        lifecycle = await self.lifecycle.load_lifecycle(key)
+        if await self.active.is_active(key):
+            if lifecycle is None or lifecycle.terminal:
+                return TaskStatus.of(TaskStatusState.QUEUED, "文字提取已排队")
+            return lifecycle.status
+        if lifecycle is not None:
+            if not lifecycle.terminal:
+                return TaskStatus(state=TaskStatusState.FAILED, message="文字提取任务已中断，可以重新提交", result=self.transcripts.get(media_id))
+            if lifecycle.state is TaskStatusState.FAILED:
+                return TaskStatus(state=TaskStatusState.FAILED, message=lifecycle.status.message, result=self.transcripts.get(media_id))
+            return lifecycle.status
+        return TaskStatus.of(TaskStatusState.NOT_STARTED, "尚未提交文字提取任务")
 
     async def subscribe(self, key: TaskKey) -> AsyncIterator[TaskLifecycleEvent | None]:
         queue: asyncio.Queue[TaskLifecycleEvent] = asyncio.Queue()
         self.subscribers[key].add(queue)
-        snapshot = self.delivery.snapshot(key)
-        initial = TaskLifecycleEvent(
-            key=key,
-            event=TaskEvent.of(snapshot.status, snapshot.stage),
-            attempt=snapshot.attempt,
-            retryable=snapshot.retryable,
-        )
         try:
+            lifecycle = await self.lifecycle.load_lifecycle(key)
+            status = (await self.transcription_status(key.media_id, (await self.media.get(key.media_id)).user_id)
+                      if key.goal == "__transcription__" else await self.status_query.current(key.media_id, key.goal, key.mode))
+            initial = TaskLifecycleEvent(
+                key=key,
+                event=TaskEvent.of(status, None if lifecycle is None else lifecycle.stage),
+                attempt=0 if lifecycle is None else lifecycle.attempt,
+                retryable=False if lifecycle is None else lifecycle.retryable,
+                request_id=None if lifecycle is None else lifecycle.request_id,
+            )
             yield initial
             if initial.terminal:
                 return
@@ -1069,6 +1144,8 @@ class LocalR1Services:
                 except asyncio.TimeoutError:
                     yield None
                     continue
+                if event.request_id != initial.request_id:
+                    return
                 yield event
                 if event.terminal:
                     return
@@ -1082,6 +1159,10 @@ class LocalR1Services:
     async def delete_media(self, media_id: int, user_id: int) -> None:
         await self.media.delete_owned(media_id, user_id)
         self.contexts.pop(media_id, None)
+        self.transcripts.pop(media_id, None)
+        for key in tuple(self.checkpoint.revisions):
+            if key.media_id == media_id:
+                self.checkpoint.revisions.pop(key, None)
         self.observations.pop(media_id, None)
         self.chunks.pop(media_id, None)
         self.retrieval.pop(media_id, None)

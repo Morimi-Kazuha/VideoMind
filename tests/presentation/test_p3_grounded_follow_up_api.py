@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+import pytest
 
 from dovideo.domain import (
     GroundedFollowUpAnswer,
@@ -12,6 +13,8 @@ from dovideo.domain import (
     VideoContext,
     VideoEvidenceHit,
     VideoSegment,
+    SourceItemIdentity,
+    content_digest,
 )
 from dovideo.presentation.api.app import create_app
 from dovideo.presentation.api.r4_runtime import ProductionR4Services
@@ -246,4 +249,38 @@ def test_production_follow_up_rejects_cross_owner_missing_media_and_auto(
     assert "O(n)" not in cross_owner.text + missing_media.text + auto_mode.text
     assert long_context.calls == []
     assert chat.calls == []
+    assert services.checkpoint.writes == []
+
+
+@pytest.mark.parametrize("valid_refs", [True, False])
+def test_r6_production_follow_up_large_candidate_uses_grounding_http_semantics(monkeypatch, valid_refs):
+    app, services, long_context, chat, _ = _production_app(monkeypatch)
+    texts = tuple(f"irrelevant observation {index}" for index in range(11)) + (_retrieved_hit().transcript,)
+    items = tuple(SourceItemIdentity(
+        source_item_id=f"media-42-item-{index}", source_revision="media-42-revision",
+        segment_id="media-42-segment", source_type="ASR", ordinal=index,
+        timestamp_ms=0, end_ms=10000, content_digest=content_digest(text),
+    ) for index, text in enumerate(texts))
+    segment = VideoSegment(
+        start_ms=0, end_ms=10000, transcript="\n".join(texts),
+        source_revision="media-42-revision", segment_id="media-42-segment", source_items=items,
+    )
+    services.checkpoint.context = VideoContext(
+        source="minio://media/video-42.mp4", source_revision=segment.source_revision, segments=(segment,),
+    )
+    hit = _retrieved_hit().model_copy(update={
+        "source_revision": segment.source_revision, "segment_id": segment.segment_id,
+        "source_item_ids": segment.source_item_ids if valid_refs else ("media-99-item",),
+    })
+    async def search(*args, **kwargs):
+        return (hit,)
+    long_context.search_evidence = search
+    with TestClient(app) as client:
+        response = client.post(
+            "/analysis/follow-up", params={"id": 42, "question": "问题", "mode": "GENERAL"},
+            headers={"Authorization": "Bearer 7"},
+        )
+    assert response.status_code == (200 if valid_refs else 422)
+    assert response.json()["code"] == (0 if valid_refs else 422)
+    assert len(chat.calls) == 1
     assert services.checkpoint.writes == []

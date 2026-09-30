@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import asyncio
 
 import pytest
 
@@ -21,9 +22,34 @@ from dovideo.domain import (
     VideoContext,
     VideoEvidenceHit,
     VideoSegment,
+    SourceItemIdentity,
+    TemporalObservation,
+    MAX_EVIDENCE_SOURCE_ITEM_REFS,
+    PROVENANCE_VERSION,
+    content_digest,
+    source_item_id_for,
 )
+from dovideo.application.evidence import EvidenceVerificationService
 
 _UNSET = object()
+
+
+@pytest.mark.asyncio
+async def test_r6_follow_up_deadline_cancels_stalled_checkpoint_without_trusted_writes():
+    class Stalled(_Checkpoint):
+        cancelled = False
+        async def load_context(self, media_id):
+            try:
+                await asyncio.Future()
+            finally:
+                self.cancelled = True
+    checkpoint = Stalled()
+    service = GroundedFollowUpService(checkpoint, None, None, max_wall_seconds=0.001)
+    with pytest.raises(FollowUpFailure) as error:
+        await service.answer(42, 'question', 'goal', AnalysisMode.GENERAL)
+    assert error.value.category == 'timeout'
+    assert checkpoint.cancelled
+    assert checkpoint.writes == []
 
 
 def _context() -> VideoContext:
@@ -168,6 +194,7 @@ class _Model:
         profile,
         prior_analysis: Mapping[str, object] | None,
         sources: Sequence[VideoEvidenceHit],
+        observations: Sequence[TemporalObservation] = (),
     ):
         self.calls.append(
             {
@@ -176,6 +203,7 @@ class _Model:
                 "profile": profile,
                 "prior": prior_analysis,
                 "sources": tuple(sources),
+                "observations": tuple(observations),
             }
         )
         if isinstance(self.response, BaseException):
@@ -202,6 +230,52 @@ def _service(checkpoint=None, retrieval=None, model=None, observer=None):
         observer=observer,
     )
     return service, checkpoint, retrieval, model
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('boundary', ['retrieval', 'model'])
+async def test_r6_total_deadline_cancels_pending_downstream_boundary(monkeypatch, boundary):
+    # Reschedule the real asyncio timeout when the boundary is reached; no sleep
+    # or machine-speed assumption decides the order of this race.
+    real_timeout = asyncio.timeout
+    timeouts = []
+    def controlled_timeout(delay):
+        handle = real_timeout(delay)
+        timeouts.append(handle)
+        return handle
+    monkeypatch.setattr(asyncio, 'timeout', controlled_timeout)
+    cancelled = []
+    async def stalled(*args, **kwargs):
+        timeouts[0].reschedule(asyncio.get_running_loop().time())
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.append(boundary)
+    checkpoint, retrieval, model = _Checkpoint(), _Retrieval(), _Model()
+    if boundary == 'retrieval': retrieval.search_evidence = stalled
+    else: model.answer = stalled
+    service = GroundedFollowUpService(checkpoint, retrieval, model)
+    with pytest.raises(FollowUpFailure) as error:
+        await service.answer(42, 'question', 'goal', AnalysisMode.GENERAL)
+    assert error.value.category == 'timeout'
+    assert cancelled == [boundary]
+    assert checkpoint.writes == []
+    if boundary == 'retrieval': assert model.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('boundary', ['checkpoint', 'retrieval', 'model'])
+async def test_r6_native_deadline_error_keeps_timeout_classification(boundary):
+    async def timed_out(*args, **kwargs): raise TimeoutError('private timeout')
+    checkpoint, retrieval, model = _Checkpoint(), _Retrieval(), _Model()
+    if boundary == 'checkpoint': checkpoint.load_context = timed_out
+    elif boundary == 'retrieval': retrieval.search_evidence = timed_out
+    else: model.answer = timed_out
+    with pytest.raises(FollowUpFailure) as error:
+        await GroundedFollowUpService(checkpoint, retrieval, model).answer(42, 'question', 'goal', AnalysisMode.GENERAL)
+    assert error.value.category == 'timeout'
+    assert 'private' not in error.value.safe_message
+    assert checkpoint.writes == []
 
 
 @pytest.mark.parametrize("mode", tuple(AnalysisMode))
@@ -416,3 +490,142 @@ async def test_retrieval_failure_is_not_silently_converted_to_lexical_success() 
     assert "private" not in error.value.safe_message
     assert model.calls == []
     assert checkpoint.writes == []
+
+
+def _provenance_fixture(count, *, whole_quote=False, source="ASR"):
+    revision, segment_id = "media-42-revision", "media-42-segment"
+    texts = tuple(f"observation{index:02d}" for index in range(count))
+    frame = "frame-42" if source == "OCR" else None
+    items = tuple(SourceItemIdentity(
+        source_item_id=source_item_id_for(
+            revision, segment_id, source, index, 1200, 9000 if source == "ASR" else None,
+            text, frame,
+        ),
+        source_revision=revision, segment_id=segment_id, source_type=source,
+        ordinal=index, timestamp_ms=1200, end_ms=9000 if source == "ASR" else None,
+        content_digest=content_digest(text),
+        frame_ref_digest=content_digest(frame) if frame else "",
+        provenance_version=PROVENANCE_VERSION,
+    ) for index, text in enumerate(texts))
+    segment = VideoSegment(
+        start_ms=0, end_ms=10000, transcript="\n".join(texts) if source == "ASR" else "",
+        ocr_texts=texts if source == "OCR" else (), evidence_frames=(frame,) if frame else (),
+        source_revision=revision, segment_id=segment_id, source_items=items,
+        provenance_version=PROVENANCE_VERSION,
+    )
+    context = VideoContext(
+        source="minio://media/video-42.mp4", source_revision=revision,
+        provenance_version=PROVENANCE_VERSION, segments=(segment,),
+        observations=tuple(TemporalObservation(source_item=item, text=text, frame_ref=frame)
+                           for item, text in zip(items, texts, strict=True)),
+    )
+    hit = VideoEvidenceHit(
+        start_ms=0, end_ms=10000, transcript=segment.transcript, ocr_texts=segment.ocr_texts,
+        source=source, snippet=texts[-1], source_revision=revision, segment_id=segment_id,
+        source_item_ids=segment.source_item_ids,
+    )
+    quote = " ".join(texts) if whole_quote else texts[-1]
+    response = _answer(source=source, content=quote, claim=quote, answer=quote)
+    return context, hit, response
+
+
+class _RecordingVerifier(EvidenceVerificationService):
+    def __init__(self):
+        self.checked = []
+
+    def supported(self, context, evidence):
+        self.checked.append(evidence)
+        return super().supported(context, evidence)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [12, 9, 8, 3])
+async def test_r6_follow_up_resolves_quote_support_before_domain_reference_bound(count):
+    context, hit, response = _provenance_fixture(count, whole_quote=count <= 8)
+    checkpoint = _Checkpoint(context=context)
+    verifier = _RecordingVerifier()
+    service = GroundedFollowUpService(checkpoint, _Retrieval((hit,)), _Model(response), verifier=verifier)
+    result = await service.answer(42, "question", "goal", AnalysisMode.GENERAL)
+    evidence = verifier.checked[0]
+    assert response.answer in result
+    assert evidence.source_item_ids == (hit.source_item_ids if count <= 8 else hit.source_item_ids[-1:])
+    assert 1 <= len(evidence.source_item_ids) <= MAX_EVIDENCE_SOURCE_ITEM_REFS
+    assert set(evidence.source_item_ids) <= set(hit.source_item_ids)
+    assert evidence.source_revision == context.source_revision
+    assert evidence.segment_id == hit.segment_id
+    assert evidence.timestamp_ms == 1200
+    assert evidence.source_provenance_version == context.provenance_version
+    assert verifier.provenance_supported(context, evidence)
+    assert checkpoint.writes == []
+
+
+@pytest.mark.asyncio
+async def test_r6_duplicate_candidate_refs_are_stably_deduplicated():
+    context, hit, response = _provenance_fixture(3, whole_quote=True)
+    hit = hit.model_copy(update={"source_item_ids": tuple(item for item in hit.source_item_ids for _ in range(4))})
+    verifier = _RecordingVerifier()
+    service = GroundedFollowUpService(_Checkpoint(context=context), _Retrieval((hit,)), _Model(response), verifier=verifier)
+    for _ in range(2):
+        await service.answer(42, "question", "goal", AnalysisMode.GENERAL)
+    assert all(e.source_item_ids == context.segments[0].source_item_ids for e in verifier.checked)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["foreign_media", "revision", "segment", "timestamp", "digest", "empty", "over_bound"])
+async def test_r6_invalid_or_unbounded_support_rejects_without_fake_provenance(fault):
+    context, hit, response = _provenance_fixture(9, whole_quote=fault == "over_bound")
+    if fault == "foreign_media":
+        hit = hit.model_copy(update={"source_item_ids": ("media-99-item",)})
+    elif fault == "revision":
+        hit = hit.model_copy(update={"source_revision": "old-revision"})
+    elif fault == "segment":
+        hit = hit.model_copy(update={"segment_id": "other-segment"})
+    elif fault == "empty":
+        hit = hit.model_copy(update={"source_item_ids": ()})
+    elif fault in {"timestamp", "digest"}:
+        segment = context.segments[0]
+        changes = {"timestamp_ms": 2000} if fault == "timestamp" else {"content_digest": content_digest("unrelated")}
+        segment = segment.model_copy(update={"source_items": tuple(item.model_copy(update=changes) for item in segment.source_items)})
+        context = context.model_copy(update={"segments": (segment,)})
+    observer = _Observer()
+    checkpoint = _Checkpoint(context=context)
+    service, _, _, _ = _service(checkpoint, _Retrieval((hit,)), _Model(response), observer)
+    with pytest.raises(FollowUpFailure) as error:
+        await service.answer(42, "question", "goal", AnalysisMode.GENERAL)
+    assert error.value.category == "evidence_rejected"
+    assert "evidence_verification_failed" in [event for event, _ in observer.events]
+    assert "follow_up_succeeded" not in [event for event, _ in observer.events]
+    assert checkpoint.writes == []
+
+
+@pytest.mark.asyncio
+async def test_r6_ocr_quote_preserves_original_frame_and_source_identity():
+    context, hit, response = _provenance_fixture(2, source="OCR")
+    before = context.model_dump_json()
+    verifier = _RecordingVerifier()
+    service = GroundedFollowUpService(_Checkpoint(context=context), _Retrieval((hit,)), _Model(response), verifier=verifier)
+    await service.answer(42, "question", "goal", AnalysisMode.GENERAL)
+    assert verifier.checked[0].source_item_ids == (context.observations[-1].source_item.source_item_id,)
+    assert context.observations[-1].frame_ref == "frame-42"
+    assert context.model_dump_json() == before
+
+
+@pytest.mark.asyncio
+async def test_r6_combined_quote_requires_supporting_refs_from_both_channels():
+    context, hit, response = _provenance_fixture(3)
+    segment = context.segments[0]
+    quote = response.evidence[0].content
+    ocr = SourceItemIdentity(
+        source_item_id="media-42-ocr", source_revision=context.source_revision,
+        segment_id=segment.segment_id, source_type="OCR", ordinal=0,
+        timestamp_ms=1200, content_digest=content_digest(quote),
+    )
+    segment = segment.model_copy(update={"source_items": (*segment.source_items, ocr), "ocr_texts": (quote,)})
+    context = context.model_copy(update={"segments": (segment,)})
+    hit = hit.model_copy(update={"source_item_ids": segment.source_item_ids, "ocr_texts": (quote,)})
+    response = _answer(source="ASR+OCR", content=quote, claim=quote, answer=quote)
+    verifier = _RecordingVerifier()
+    service = GroundedFollowUpService(_Checkpoint(context=context), _Retrieval((hit,)), _Model(response), verifier=verifier)
+    await service.answer(42, "question", "goal", AnalysisMode.GENERAL)
+    assert verifier.checked[0].source_item_ids == (segment.source_items[2].source_item_id, ocr.source_item_id)
+    assert verifier.provenance_supported(context, verifier.checked[0])

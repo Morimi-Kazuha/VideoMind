@@ -20,13 +20,17 @@ from dovideo.domain import (
     GroundedFollowUpAnswer,
     ModeProfile,
     VideoEvidenceHit,
+    TemporalObservation,
 )
+from dovideo.application.evidence import normalize_evidence_text
 
 from .errors import ProviderError
 from .model import ChatCompletionPort, SYSTEM_POLICY
+from dovideo.application.execution_budget import AgentExecutionBudget
 
 
 MAX_FOLLOW_UP_RESPONSE_CHARS = 12_000
+MAX_FOLLOW_UP_OBSERVATIONS = 16
 
 _MODE_GUIDANCE = {
     AnalysisMode.GENERAL: (
@@ -60,13 +64,14 @@ class GroundedFollowUpModelAdapter:
         profile: ModeProfile,
         prior_analysis: Mapping[str, Any] | None,
         sources: Sequence[VideoEvidenceHit],
+        observations: Sequence[TemporalObservation] = (),
     ) -> GroundedFollowUpAnswer:
         if not isinstance(profile, ModeProfile) or profile.mode not in _MODE_GUIDANCE:
             raise FollowUpModelFailure("unexpected")
         if len(sources) > MAX_FOLLOW_UP_CANDIDATES:
             raise FollowUpModelFailure("unexpected")
 
-        candidates = tuple(_source_payload(index, item) for index, item in enumerate(sources))
+        candidates = tuple(_source_payload(index, item, observations) for index, item in enumerate(sources))
         request = {
             "question": question[:500],
             "originalGoal": original_goal[:500],
@@ -88,7 +93,13 @@ class GroundedFollowUpModelAdapter:
             "candidate's ASR/OCR excerpt, candidateIndex must identify that candidate, "
             "timestampMs must be inside its half-open [startMs,endMs) interval, and source "
             "must be exactly ASR, OCR, or ASR+OCR (the named channels must contain the quote). "
-            "Do not invent timestamps, evidence, or source text. Do not include a claim that "
+            "Do not invent timestamps, evidence, or source text. "
+            "When sourceObservations are supplied, choose each quote from an observation's "
+            "excerpt and use its exact timestampMs (OCR) or a timestamp inside its "
+            "[timestampMs,endMs) ASR span, also inside the candidate interval. A segment "
+            "start is not the timestamp of every observation. Do not join disjoint ASR "
+            "observations into one quote with an unsupported timestamp. "
+            "Do not include a claim that "
             "cannot be supported by the supplied source excerpts. Return exactly one JSON "
             "object with exactly these top-level fields: answer (nonblank string), evidence "
             "(one to five objects). Each evidence object has exactly candidateIndex "
@@ -97,13 +108,16 @@ class GroundedFollowUpModelAdapter:
             + json.dumps(request, ensure_ascii=False, separators=(",", ":"))
         )
         try:
-            raw = await self._chat.complete(
-                (
-                    {"role": "system", "content": SYSTEM_POLICY},
-                    {"role": "user", "content": prompt},
-                ),
-                stage="FOLLOW_UP",
-            )
+            AgentExecutionBudget.check("FOLLOW_UP")
+            with AgentExecutionBudget.open(30_000):
+                async with asyncio.timeout(AgentExecutionBudget.remaining_seconds()):
+                    raw = await self._chat.complete(
+                        (
+                            {"role": "system", "content": SYSTEM_POLICY},
+                            {"role": "user", "content": prompt},
+                        ),
+                        stage="FOLLOW_UP",
+                    )
         except asyncio.CancelledError:
             raise
         except TimeoutError as error:
@@ -153,10 +167,14 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _source_payload(index: int, hit: VideoEvidenceHit) -> dict[str, Any]:
+def _source_payload(
+    index: int,
+    hit: VideoEvidenceHit,
+    observations: Sequence[TemporalObservation] = (),
+) -> dict[str, Any]:
     if not isinstance(hit, VideoEvidenceHit):
         raise FollowUpModelFailure("unexpected")
-    return {
+    payload = {
         "candidateIndex": index,
         "startMs": hit.start_ms,
         "endMs": hit.end_ms,
@@ -167,6 +185,38 @@ def _source_payload(index: int, hit: VideoEvidenceHit) -> dict[str, Any]:
             for value in hit.ocr_texts[:MAX_FOLLOW_UP_OCR_EXCERPTS]
         ),
     }
+    source_observations = []
+    remaining_chars = MAX_FOLLOW_UP_SOURCE_CHARS
+    candidate_ids = frozenset(hit.source_item_ids)
+    for observation in observations:
+        item = observation.source_item
+        if (
+            item.source_item_id not in candidate_ids
+            or item.source_revision != hit.source_revision
+            or item.segment_id != hit.segment_id
+        ):
+            continue
+        source_text = payload["asrExcerpt"] if item.source_type == "ASR" else " ".join(payload["ocrExcerpts"])
+        text = observation.text[:remaining_chars]
+        if not text or normalize_evidence_text(text) not in normalize_evidence_text(source_text):
+            continue
+        if item.source_type == "OCR":
+            if not hit.start_ms <= item.timestamp_ms < hit.end_ms:
+                continue
+        elif max(hit.start_ms, item.timestamp_ms) >= min(hit.end_ms, item.end_ms or item.timestamp_ms):
+            continue
+        source_observations.append({
+            "source": item.source_type,
+            "timestampMs": item.timestamp_ms,
+            "endMs": item.end_ms,
+            "excerpt": text,
+        })
+        remaining_chars -= len(text)
+        if not remaining_chars or len(source_observations) >= MAX_FOLLOW_UP_OBSERVATIONS:
+            break
+    if source_observations:
+        payload["sourceObservations"] = tuple(source_observations)
+    return payload
 
 
 def _bounded_prior(prior: Mapping[str, Any] | None) -> dict[str, Any] | None:

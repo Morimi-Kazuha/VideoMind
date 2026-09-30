@@ -48,6 +48,27 @@ def make_service(tmp_path: Path, *, max_chunk_bytes: int = 5 * 1024 * 1024):
 
 
 @pytest.mark.asyncio
+async def test_r6_lost_complete_response_status_retry_and_late_chunk(tmp_path: Path) -> None:
+    service, _, chunks, _, records, _, _ = make_service(tmp_path)
+    upload_id = await service.initialize('lost.mp4', 1, 11)
+    await service.upload_chunk(upload_id, 0, 1, b'video', 11)
+    # The server commits; the caller loses the returned value before receiving it.
+    await service.complete(upload_id, 11)
+    status = await service.status(upload_id, 11)
+    first_id = status.completed_media_id
+    assert first_id is not None
+    recovered = await service.complete(upload_id, 11)
+    assert recovered.media_id == first_id
+    assert len(records.records) == 1
+    with pytest.raises(UploadConflict):
+        await service.upload_chunk(upload_id, 0, 1, b'late', 11)
+    with pytest.raises(MediaUnauthorized):
+        await service.complete(upload_id, 12)
+    assert (await service.status(upload_id, 11)).completed_media_id == first_id
+    assert not chunks.objects
+
+
+@pytest.mark.asyncio
 async def test_initialize_status_and_out_of_order_duplicate_chunks(tmp_path: Path) -> None:
     service, clock, chunks, objects, records, sessions, _ = make_service(tmp_path)
     session = await service.initialize_session(r"C:\folder\movie.MP4", 3, 11)

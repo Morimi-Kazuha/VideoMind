@@ -48,7 +48,7 @@ class TaskDispatchService:
         self._transport = transport
         self._active_ttl_seconds = active_ttl_seconds
 
-    async def dispatch(self, request: AnalysisRequest) -> DispatchDisposition:
+    async def dispatch(self, request: AnalysisRequest, *, revision_plan=None, revision_checkpoint=None) -> DispatchDisposition:
         """Return Java-shaped ACCEPTED/RATE_LIMITED/DUPLICATE/FAILED."""
 
         if not isinstance(request, AnalysisRequest):
@@ -56,7 +56,7 @@ class TaskDispatchService:
         key = request.task_key
         reserved = False
         try:
-            if self._completion is not None and await self._completion.is_completed(key):
+            if revision_checkpoint is None and self._completion is not None and await self._completion.is_completed(key):
                 return DispatchDisposition.DUPLICATE
             reserved = await self._active.reserve(
                 key,
@@ -68,6 +68,11 @@ class TaskDispatchService:
                 await self._release(key)
                 reserved = False
                 return DispatchDisposition.RATE_LIMITED
+
+            if revision_checkpoint is not None:
+                await revision_checkpoint.stage_revision(
+                    key.media_id, key.goal, revision_plan, key.mode, request_id=request.request_id,
+                )
 
             queued = TaskLifecycle.new(key, request_id=request.request_id).queued()
             if self._lifecycle is not None:
@@ -97,12 +102,24 @@ class TaskDispatchService:
             return DispatchDisposition.ACCEPTED
         except asyncio.CancelledError:
             if reserved:
+                if revision_checkpoint is not None:
+                    await self._cancel_revision(revision_checkpoint, key)
                 await self._release(key)
             raise
         except Exception:
             if reserved:
+                if revision_checkpoint is not None:
+                    await self._cancel_revision(revision_checkpoint, key)
                 await self._release(key)
             return DispatchDisposition.FAILED
+
+    async def _cancel_revision(self, checkpoint, key) -> None:
+        try:
+            await checkpoint.cancel_staged_revision(key.media_id, key.goal, key.mode)
+        except Exception:
+            # A pending revision is never applied without the matching active
+            # lifecycle request. Keep releasing the reservation on cache loss.
+            pass
 
     async def _publish_best_effort(self, key, event: TaskEvent) -> None:
         if self._events is None:

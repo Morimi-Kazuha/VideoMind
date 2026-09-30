@@ -29,6 +29,14 @@ class InvalidMediaInput(MediaApplicationError, ValueError):
     """The caller supplied malformed or unsupported media input."""
 
 
+class UnsupportedVideoFormat(InvalidMediaInput):
+    """The filename extension is outside the supported media formats."""
+
+
+class MediaPayloadTooLarge(InvalidMediaInput):
+    """A bounded upload exceeded its allowed payload size."""
+
+
 class MediaUnauthorized(MediaApplicationError, PermissionError):
     """The caller does not own the media or upload session."""
 

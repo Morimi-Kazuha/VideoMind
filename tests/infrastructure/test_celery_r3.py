@@ -245,3 +245,14 @@ def test_registered_task_translates_worker_retry_without_own_attempt_policy() ->
 
     with pytest.raises((Retry, RuntimeError)):
         task.run(CeleryAnalysisEnvelope.from_request(_request()).as_message())
+
+
+def test_registered_task_acknowledges_stale_delivery_without_retry() -> None:
+    runtime = _TaskRuntime("STALE")
+    app = create_celery_app(_settings())
+    task = register_analysis_task(app, runtime_factory=lambda: runtime)
+
+    result = task.run(CeleryAnalysisEnvelope.from_request(_request()).as_message())
+
+    assert result["disposition"] == "STALE"
+    assert runtime.calls == [_request()]

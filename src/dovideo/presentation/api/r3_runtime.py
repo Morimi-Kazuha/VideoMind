@@ -6,6 +6,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from typing import Any
+from uuid import uuid4
 
 from dovideo.application import (
     AgentCheckpointService,
@@ -135,7 +136,7 @@ class ProductionR3Services(ProductionR2Services):
         mode: AnalysisMode,
     ) -> DispatchDisposition:
         record = await self.media.require_owned(media_id, user_id)
-        request = AnalysisRequest(record.to_ref(), goal, mode)
+        request = AnalysisRequest(record.to_ref(), goal, mode, request_id=uuid4().hex)
         if await self.checkpoint.load_result(request.task_key) is not None:
             return DispatchDisposition.DUPLICATE
         disposition = await self.dispatcher.dispatch(request)
@@ -155,35 +156,9 @@ class ProductionR3Services(ProductionR2Services):
         return await self.status_query.current(media_id, goal, mode)
 
     async def subscribe(self, key: TaskKey) -> AsyncIterator[Any | None]:
-        lifecycle = await self.lifecycle.load_lifecycle(key)
-        status = await self.status_query.current(key.media_id, key.goal, key.mode)
-        attempt = 0 if lifecycle is None else lifecycle.attempt
-        from dovideo.application.task_lifecycle import TaskLifecycleEvent
-        from dovideo.domain import TaskEvent
-
-        initial = TaskLifecycleEvent(
-            key=key,
-            event=TaskEvent.of(status, None if lifecycle is None else lifecycle.stage),
-            attempt=attempt,
-            retryable=False if lifecycle is None else lifecycle.retryable,
-        )
-        yield initial
-        if initial.terminal:
-            return
-        seen = 0
-        heartbeat_started = time.monotonic()
-        while True:
-            values = await self.events.read(key)
-            for value in values[seen:]:
-                seen += 1
-                yield value
-                if value.terminal:
-                    return
-            if time.monotonic() - heartbeat_started >= 15.0:
-                heartbeat_started = time.monotonic()
-                yield None
-            await asyncio.sleep(0.5)
-
+        from dovideo.application.durable_task_events import durable_task_events
+        async for event in durable_task_events(key, self.lifecycle, self.status_query, self.events):
+            yield event
 
 def create_production_services() -> ProductionR3Services:
     return ProductionR3Services(create_r2_infrastructure())

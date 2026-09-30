@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { apiRequest } from './api.js'
+import { apiRequest, captureAuthSession } from './api.js'
 import {
   DEMO_EVALUATION,
   DEMO_ITEM,
@@ -8,6 +8,7 @@ import {
   DEMO_TRACE,
 } from './demoData.js'
 import { renderMarkdown } from './markdown.js'
+import { uiPhaseForStage } from './uiStage.js'
 
 const DEFAULT_GOAL =
   '理解视频核心内容，提炼关键结论，并给出带时间戳的证据和可执行建议'
@@ -107,14 +108,39 @@ export function useAnalysisWorkspace({
 }) {
   const sidebar = ref(createSidebarState())
   let evidenceRequestVersion = 0
-  const traceStages = computed(() =>
-    Object.entries(sidebar.value.trace?.stageDurationMs || {}).map(
-      ([stage, duration]) => [
-        STAGE_LABELS[stage] || stage,
-        formatDuration(duration),
-      ],
-    ),
-  )
+  let workspaceGeneration = 0
+  let metadataGeneration = 0
+  let playbackRequest = 0
+  const invalidateWorkspace = () => {
+    workspaceGeneration += 1
+    evidenceRequestVersion += 1
+    metadataGeneration += 1
+    sidebar.value.generation = workspaceGeneration
+    sidebar.value.followUpLoading = false
+    sidebar.value.feedbackLoading = false
+    sidebar.value.evidenceLoading = false
+    sidebar.value.rerunLoading = false
+  }
+  const captureWorkspace = () => {
+    const generation = workspaceGeneration
+    const session = captureAuthSession()
+    const state = sidebar.value
+    const mediaId = state.mediaId
+    const goal = state.goal
+    const mode = state.analysisMode
+    return () => generation === workspaceGeneration && session.isCurrent()
+      && state === sidebar.value && sidebar.value.visible
+      && mediaId === sidebar.value.mediaId && goal === sidebar.value.goal
+      && mode === sidebar.value.analysisMode
+  }
+  const traceStages = computed(() => {
+    const durations = {}
+    for (const [stage, duration] of Object.entries(sidebar.value.trace?.stageDurationMs || {})) {
+      const phase = uiPhaseForStage(stage)
+      if (phase) durations[phase] = (durations[phase] || 0) + Number(duration || 0)
+    }
+    return Object.entries(durations).map(([phase, duration]) => [STAGE_LABELS[phase], formatDuration(duration)])
+  })
   const renderedMarkdown = computed(() => renderMarkdown(sidebar.value.content))
   const isCurrentWorkspace = (id, type, goal = null, analysisMode = null) =>
     sidebar.value.mediaId === id &&
@@ -123,6 +149,7 @@ export function useAnalysisWorkspace({
     (analysisMode === null || sidebar.value.analysisMode === analysisMode)
 
   const openSidebar = (type, title) => {
+    invalidateWorkspace()
     sidebar.value.visible = true
     sidebar.value.type = type
     sidebar.value.title = title
@@ -135,6 +162,7 @@ export function useAnalysisWorkspace({
   }
 
   const closeSidebar = () => {
+    invalidateWorkspace()
     if (sidebar.value.type === 'ai' && sidebar.value.mediaId) {
       // goal 与 mode 一起持久化:二者共同决定任务身份,重开时必须成对恢复,
       // 否则会用错模式去查状态,导致"上次的非通用分析结果查不到"。
@@ -146,24 +174,32 @@ export function useAnalysisWorkspace({
   }
 
   const loadPlayback = async (id) => {
+    // Playback belongs to the media view, so changing an analysis goal or
+    // revision does not strand its loading flag. A new playback request,
+    // media view or auth session still owns its own result and cleanup.
+    const request = ++playbackRequest
+    const session = captureAuthSession()
+    const state = sidebar.value
+    const current = () => request === playbackRequest && session.isCurrent()
+      && state === sidebar.value && state.visible && state.mediaId === id
     sidebar.value.playbackLoading = true
     sidebar.value.playbackError = ''
     try {
       const response = await apiRequest(`/media/playback?id=${id}`)
       const url = await response.text()
       if (!response.ok) throw new Error(url || '视频加载失败')
-      if (sidebar.value.mediaId === id) {
+      if (current()) {
         sidebar.value.playbackUrl = url
         sidebar.value.playbackError = ''
       }
     } catch (error) {
       console.warn('Video preview unavailable', error)
-      if (sidebar.value.mediaId === id) {
+      if (current()) {
         sidebar.value.playbackUrl = ''
         sidebar.value.playbackError = error.message || '原视频暂时无法加载'
       }
     } finally {
-      if (sidebar.value.mediaId === id) sidebar.value.playbackLoading = false
+      if (current()) sidebar.value.playbackLoading = false
     }
   }
 
@@ -173,6 +209,8 @@ export function useAnalysisWorkspace({
     includeEvaluation,
     analysisMode = sidebar.value.analysisMode || 'GENERAL',
   ) => {
+    const current = captureWorkspace()
+    const request = ++metadataGeneration
     const params = new URLSearchParams({
       id: String(id),
       goal,
@@ -186,19 +224,22 @@ export function useAnalysisWorkspace({
       requests.push(apiRequest(`/analysis/agent-evaluation?${params}`))
 
     const settled = await Promise.allSettled(requests)
-    if (!isCurrentWorkspace(id, 'ai', goal, analysisMode)) return
+    if (!current() || request !== metadataGeneration) return
     const [plan, trace, evaluation] = await Promise.all(
       settled.map(readSettledJson),
     )
+    if (!current() || request !== metadataGeneration) return
     if (plan && !sidebar.value.editingPlan) sidebar.value.plan = plan
     if (trace) sidebar.value.trace = trace
     if (includeEvaluation && evaluation) sidebar.value.evaluation = evaluation
   }
 
   const startTaskStream = (id, type, goal = '', analysisMode = 'GENERAL') => {
+    const current = captureWorkspace()
+    const session = captureAuthSession()
     const resolvedMode = analysisMode || 'GENERAL'
     const scope = type === 'ai' ? analysisScope(goal, resolvedMode) : ''
-    const isCurrentTask = () =>
+    const isCurrentTask = () => current() &&
       isCurrentWorkspace(
         id,
         type,
@@ -206,10 +247,13 @@ export function useAnalysisWorkspace({
         type === 'ai' ? resolvedMode : null,
       )
     const taskLabel = type === 'ai' ? 'AI 分析' : '文字提取'
-    const finish = async (result, failed = false) => {
+    const background = () => session.isCurrent() && (!sidebar.value.visible
+      || !isCurrentWorkspace(id, type, type === 'ai' ? goal : null, type === 'ai' ? resolvedMode : null))
+    const finish = (result, failed = false, retained = '') => {
+      if (!current() && !background()) return
       const watching = sidebar.value.visible && isCurrentTask()
       if (watching) {
-        sidebar.value.content = failed ? '' : result
+        sidebar.value.content = failed ? retained : result
         sidebar.value.loading = false
         sidebar.value.statusMessage = ''
         sidebar.value.streamOffline = false
@@ -217,7 +261,7 @@ export function useAnalysisWorkspace({
         sidebar.value.error = failed ? result : ''
         if (failed && type === 'ai') sidebar.value.mode = 'compose'
         if (type === 'ai' && !failed)
-          await refreshAgentMeta(id, goal, true, resolvedMode)
+          void refreshAgentMeta(id, goal, true, resolvedMode).catch(() => {})
       }
       // 用户可能已经关掉面板去看别的视频，带上文件名才知道是哪个任务结束了。
       const filename = watching ? '' : findMediaItem(id)?.filename || ''
@@ -247,6 +291,7 @@ export function useAnalysisWorkspace({
       scope,
       path,
       async (status) => {
+        if (!current() && !background()) return
         if (isCurrentTask()) {
           // 收到任何事件都说明连接是通的，先把“重连中”提示撤掉。
           sidebar.value.streamOffline = false
@@ -258,14 +303,15 @@ export function useAnalysisWorkspace({
             sidebar.value.statusMessage = status.message
           }
         }
-        if (type === 'ai' && status.stage && isCurrentTask()) {
-          await refreshAgentMeta(id, goal, false, resolvedMode)
+        if (type === 'ai' && status.stage && isCurrentTask() && !['COMPLETED', 'FAILED'].includes(status.state)) {
+          void refreshAgentMeta(id, goal, false, resolvedMode).catch(() => {})
         }
+        if (!current() && !background()) return
         if (status.state === 'COMPLETED') {
-          await refreshMediaList()
-          await finish(status.result || (type === 'ai' ? '分析完成' : ''))
+          void Promise.resolve(refreshMediaList()).catch(() => {})
+          finish(status.result || (type === 'ai' ? '分析完成' : ''))
         } else if (status.state === 'FAILED') {
-          await finish(status.message || '任务执行失败', true)
+          finish(status.message || '任务执行失败', true, type === 'text' ? status.result || '' : '')
         }
       },
       (error, attempt, terminal = false) => {
@@ -304,6 +350,7 @@ export function useAnalysisWorkspace({
       sidebar.value.mediaId = id
       sidebar.value.playbackUrl = ''
       loadPlayback(id)
+      startTaskStream(id, 'text')
       sidebar.value.statusMessage = '文字提取正在后台继续，进度会自动同步'
       return
     }
@@ -312,38 +359,47 @@ export function useAnalysisWorkspace({
     sidebar.value.mediaId = id
     sidebar.value.playbackUrl = ''
     loadPlayback(id)
+    const current = captureWorkspace()
     sidebar.value.statusMessage = '提取任务已提交，正在识别语音'
     try {
-      const current = await apiRequest(
+      const statusResponse = await apiRequest(
         `/analysis/transcription-status?id=${id}`,
       )
-      if (!current.ok) throw new Error(await current.text())
-      const currentStatus = await current.json()
+      if (!statusResponse.ok) throw new Error(await statusResponse.text())
+      const currentStatus = await statusResponse.json()
+      if (!current()) return
       if (currentStatus.state === 'COMPLETED') {
-        if (isCurrentWorkspace(id, 'text')) {
+        if (current()) {
           sidebar.value.content = currentStatus.result || ''
           sidebar.value.statusMessage = ''
           sidebar.value.loading = false
         }
         return
       }
+      if (currentStatus.state === 'FAILED' && currentStatus.result) {
+        sidebar.value.content = currentStatus.result
+        sidebar.value.error = currentStatus.message || '本次提取失败，保留上次文字'
+        sidebar.value.loading = false
+        sidebar.value.statusMessage = ''
+        return
+      }
       if (
         currentStatus.state === 'QUEUED' ||
         currentStatus.state === 'PROCESSING'
       ) {
-        if (isCurrentWorkspace(id, 'text') && currentStatus.message) {
+        if (current()) {
           sidebar.value.statusMessage = currentStatus.message
         }
-        startTaskStream(id, 'text')
+        if (current()) startTaskStream(id, 'text')
         return
       }
       const response = await apiRequest(`/analysis/transcribe?id=${id}`, {
         method: 'POST',
       })
       if (!response.ok) throw new Error(await response.text())
-      startTaskStream(id, 'text')
+      if (current()) startTaskStream(id, 'text')
     } catch (error) {
-      if (isCurrentWorkspace(id, 'text')) {
+      if (current()) {
         sidebar.value.content = ''
         sidebar.value.statusMessage = ''
         sidebar.value.error = error.message || '文字提取失败，请稍后重试'
@@ -353,11 +409,13 @@ export function useAnalysisWorkspace({
   }
 
   const analyze = async (id, goal, mode = 'GENERAL') => {
+    const current = captureWorkspace()
     const resolvedMode = mode || 'GENERAL'
     const scope = analysisScope(goal, resolvedMode)
     if (taskStreams.has(id, 'ai', scope)) {
       sidebar.value.mode = 'result'
       sidebar.value.loading = true
+      startTaskStream(id, 'ai', goal, resolvedMode)
       sidebar.value.statusMessage = '这个目标已有分析在进行，正在接管进度'
       return
     }
@@ -378,13 +436,14 @@ export function useAnalysisWorkspace({
         method: 'POST',
       })
       const message = await response.text()
+      if (!current()) return
       if (response.status === 409) {
-        startTaskStream(id, 'ai', goal, resolvedMode)
+        if (current()) startTaskStream(id, 'ai', goal, resolvedMode)
         refreshAgentMeta(id, goal, false, resolvedMode)
         return
       }
       if (!response.ok) {
-        if (isCurrentWorkspace(id, 'ai', goal, resolvedMode)) {
+        if (current()) {
           showMessage(message, true)
           sidebar.value.loading = false
           sidebar.value.statusMessage = ''
@@ -393,10 +452,10 @@ export function useAnalysisWorkspace({
         }
         return
       }
-      startTaskStream(id, 'ai', goal, resolvedMode)
+      if (current()) startTaskStream(id, 'ai', goal, resolvedMode)
       refreshAgentMeta(id, goal, false, resolvedMode)
     } catch (error) {
-      if (isCurrentWorkspace(id, 'ai', goal, resolvedMode)) {
+      if (current()) {
         sidebar.value.mode = 'compose'
         sidebar.value.error = error.message || String(error)
         sidebar.value.loading = false
@@ -406,12 +465,14 @@ export function useAnalysisWorkspace({
   }
 
   const openAgent = async (item) => {
+    invalidateWorkspace()
     evidenceRequestVersion += 1
     const goal = loadGoalDraft(item.id)
     // 恢复上次使用的模式,与 goal 一起构成任务身份;缺省为通用模式。
     const analysisMode = loadModeDraft(item.id)
     sidebar.value = {
       ...createSidebarState(),
+      generation: workspaceGeneration,
       visible: true,
       title: `Video Agent · ${item.filename}`,
       mediaId: item.id,
@@ -419,6 +480,7 @@ export function useAnalysisWorkspace({
       analysisMode,
     }
     if (demoMode) return
+    const current = captureWorkspace()
 
     loadPlayback(item.id)
     try {
@@ -434,7 +496,7 @@ export function useAnalysisWorkspace({
       }
       const status = await response.json()
       if (
-        sidebar.value.mediaId !== item.id ||
+        !current() || sidebar.value.mediaId !== item.id ||
         sidebar.value.goal !== goal ||
         sidebar.value.analysisMode !== analysisMode
       )
@@ -458,7 +520,7 @@ export function useAnalysisWorkspace({
     } catch (error) {
       console.warn('Previous analysis unavailable', error)
       if (
-        sidebar.value.mediaId === item.id &&
+        current() && sidebar.value.mediaId === item.id &&
         sidebar.value.goal === goal &&
         sidebar.value.analysisMode === analysisMode
       ) {
@@ -494,7 +556,9 @@ export function useAnalysisWorkspace({
     if (!goal || sidebar.value.loading) return
     const mediaId = sidebar.value.mediaId
     // 后端、SSE scope 与异步回调必须使用同一份归一化目标，否则前后空格会让当前任务判定失配。
+    invalidateWorkspace()
     sidebar.value.goal = goal
+    const current = captureWorkspace()
     sidebar.value.error = ''
     saveGoalDraft(mediaId, goal)
     if (demoMode) {
@@ -502,7 +566,7 @@ export function useAnalysisWorkspace({
       sidebar.value.loading = true
       sidebar.value.plan = DEMO_PLAN
       sidebar.value.trace = DEMO_TRACE
-      setTimeout(showDemoResult, 450)
+      setTimeout(() => { if (current()) showDemoResult() }, 450)
       return
     }
     let mode = sidebar.value.analysisMode || 'GENERAL'
@@ -521,7 +585,7 @@ export function useAnalysisWorkspace({
       }
       // 路由是异步的,用户可能已切到别的视频或改了目标;仅当仍停留在同一任务时才落定并继续。
       if (
-        sidebar.value.mediaId !== mediaId ||
+        !current() || sidebar.value.mediaId !== mediaId ||
         sidebar.value.goal.trim() !== goal
       )
         return
@@ -538,10 +602,11 @@ export function useAnalysisWorkspace({
     }
     // 记住这次实际使用的具体模式,重开面板时据此恢复,保证能查回本次分析结果。
     saveModeDraft(mediaId, mode)
-    analyze(mediaId, goal, mode)
+    return analyze(mediaId, goal, mode)
   }
 
   const startNewAnalysis = () => {
+    invalidateWorkspace()
     sidebar.value.mode = 'compose'
     sidebar.value.loading = false
     sidebar.value.error = ''
@@ -567,6 +632,7 @@ export function useAnalysisWorkspace({
   }
 
   const rerunWithPlan = async () => {
+    if (sidebar.value.rerunLoading) return
     const tasks = sidebar.value.planDraft
       .map((task) => task.trim())
       .filter(Boolean)
@@ -574,11 +640,13 @@ export function useAnalysisWorkspace({
       showMessage('计划需保留 1 至 5 个有效任务', true)
       return
     }
+    invalidateWorkspace()
+    const current = captureWorkspace()
     if (demoMode) {
       sidebar.value.plan = { ...DEMO_PLAN, tasks }
       cancelPlanEdit()
       sidebar.value.loading = true
-      setTimeout(showDemoResult, 450)
+      setTimeout(() => { if (current()) showDemoResult() }, 450)
       return
     }
 
@@ -602,8 +670,9 @@ export function useAnalysisWorkspace({
         },
       )
       const message = await response.text()
+      if (!current()) return
       if (!response.ok) throw new Error(message || '重新提交失败')
-      if (isCurrentWorkspace(mediaId, 'ai', goal, analysisMode)) {
+      if (current()) {
         sidebar.value.plan = { ...sidebar.value.plan, tasks }
         cancelPlanEdit()
         sidebar.value.content = ''
@@ -612,13 +681,13 @@ export function useAnalysisWorkspace({
         sidebar.value.streamOffline = false
         sidebar.value.streamRetry = 0
       }
-      startTaskStream(mediaId, 'ai', goal, analysisMode)
+      if (current()) startTaskStream(mediaId, 'ai', goal, analysisMode)
     } catch (error) {
-      if (isCurrentWorkspace(mediaId, 'ai', goal, analysisMode)) {
+      if (current()) {
         showMessage(error.message || '重新提交失败', true)
       }
     } finally {
-      if (isCurrentWorkspace(mediaId, 'ai', goal, analysisMode))
+      if (current())
         sidebar.value.rerunLoading = false
     }
   }
@@ -633,6 +702,7 @@ export function useAnalysisWorkspace({
       return
     }
 
+    const current = captureWorkspace()
     const mediaId = sidebar.value.mediaId
     const goal = sidebar.value.goal
     const analysisMode = sidebar.value.analysisMode || 'GENERAL'
@@ -649,18 +719,18 @@ export function useAnalysisWorkspace({
       })
       const answer = await response.text()
       if (!response.ok) throw new Error(answer || '追问失败')
-      if (isCurrentWorkspace(mediaId, 'ai', goal, analysisMode)) {
+      if (current()) {
         sidebar.value.content += `\n\n## 追问\n${question}\n\n${answer}`
         sidebar.value.followUp = ''
         // 答案追加在长文末尾，主动带用户滚过去，否则会以为“点了没反应”。
         onAnswerAppended()
       }
     } catch (error) {
-      if (isCurrentWorkspace(mediaId, 'ai', goal, analysisMode)) {
+      if (current()) {
         showMessage(`❌ ${error.message}`, true)
       }
     } finally {
-      if (isCurrentWorkspace(mediaId, 'ai', goal, analysisMode))
+      if (current())
         sidebar.value.followUpLoading = false
     }
   }
@@ -669,6 +739,7 @@ export function useAnalysisWorkspace({
     const query = sidebar.value.evidenceQuery.trim()
     if (!query || sidebar.value.evidenceLoading) return
     const requestVersion = ++evidenceRequestVersion
+    const current = captureWorkspace()
     const mediaId = sidebar.value.mediaId
     sidebar.value.evidenceLoading = true
     sidebar.value.evidenceError = ''
@@ -686,7 +757,7 @@ export function useAnalysisWorkspace({
             ocrTexts: ['前序遍历：根节点、左子树、右子树'],
           },
         ]
-        if (requestVersion === evidenceRequestVersion) {
+        if (current() && requestVersion === evidenceRequestVersion) {
           sidebar.value.evidenceResults = demoResults
         }
         return
@@ -702,7 +773,7 @@ export function useAnalysisWorkspace({
       }
       const results = await response.json()
       if (
-        requestVersion !== evidenceRequestVersion ||
+        !current() || requestVersion !== evidenceRequestVersion ||
         sidebar.value.mediaId !== mediaId
       )
         return
@@ -712,7 +783,7 @@ export function useAnalysisWorkspace({
       }
     } catch (error) {
       if (
-        requestVersion !== evidenceRequestVersion ||
+        !current() || requestVersion !== evidenceRequestVersion ||
         sidebar.value.mediaId !== mediaId
       )
         return
@@ -720,7 +791,7 @@ export function useAnalysisWorkspace({
       sidebar.value.evidenceError = error.message || '视频证据检索失败'
     } finally {
       if (
-        requestVersion === evidenceRequestVersion &&
+        current() && requestVersion === evidenceRequestVersion &&
         sidebar.value.mediaId === mediaId
       ) {
         sidebar.value.evidenceLoading = false
@@ -736,6 +807,7 @@ export function useAnalysisWorkspace({
       showMessage('演示反馈已记录')
       return
     }
+    const current = captureWorkspace()
     const mediaId = sidebar.value.mediaId
     const goal = sidebar.value.goal
     const analysisMode = sidebar.value.analysisMode || 'GENERAL'
@@ -747,16 +819,16 @@ export function useAnalysisWorkspace({
         body: JSON.stringify({ mediaId, goal, mode: analysisMode, rating }),
       })
       if (!response.ok) throw new Error(await response.text())
-      if (isCurrentWorkspace(mediaId, 'ai', goal, analysisMode)) {
+      if (current()) {
         sidebar.value.feedback = rating
         showMessage('反馈已记录')
       }
     } catch (error) {
-      if (isCurrentWorkspace(mediaId, 'ai', goal, analysisMode)) {
+      if (current()) {
         showMessage(`❌ ${error.message}`, true)
       }
     } finally {
-      if (isCurrentWorkspace(mediaId, 'ai', goal, analysisMode))
+      if (current())
         sidebar.value.feedbackLoading = false
     }
   }
@@ -775,8 +847,9 @@ export function useAnalysisWorkspace({
   }
 
   const resetWorkspace = () => {
+    invalidateWorkspace()
     evidenceRequestVersion += 1
-    sidebar.value = createSidebarState()
+    sidebar.value = { ...createSidebarState(), generation: workspaceGeneration }
   }
 
   const discardMediaWorkspace = (mediaId) => {

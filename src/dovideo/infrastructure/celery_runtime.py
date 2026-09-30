@@ -305,6 +305,7 @@ class R3RedisTaskEventPublisher(TaskEventPublisherPort):
             },
             "event": event.model_dump(mode="json", by_alias=True),
             "attempt": attempt,
+            "requestId": None if lifecycle is None else lifecycle.request_id,
             "retryable": event.stage is TaskStage.RETRYING,
         }
         encoded = json.dumps(
@@ -353,6 +354,7 @@ class R3RedisTaskEventPublisher(TaskEventPublisherPort):
                         event=event,
                         attempt=int(value.get("attempt", 0)),
                         retryable=bool(value.get("retryable", False)),
+                        request_id=value.get("requestId"),
                     )
                 )
             except Exception:
@@ -373,6 +375,9 @@ class R3StatusCheckpoint:
     async def load_stage(self, key: TaskKey) -> TaskStage | None:
         current = await self.lifecycle.load_lifecycle(key)
         return None if current is None else current.stage
+
+    async def load_lifecycle(self, key: TaskKey):
+        return await self.lifecycle.load_lifecycle(key)
 
 
 @dataclass(slots=True)

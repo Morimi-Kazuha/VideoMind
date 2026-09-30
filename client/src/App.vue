@@ -89,7 +89,7 @@
             type="file"
             id="file-input"
             @change="handleFileChange"
-            accept="video/*"
+            accept=".mp4,.mov,.mkv,.avi,.webm,.m4v"
             hidden
           />
           <div
@@ -458,7 +458,7 @@
 
 <script setup>
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
-import { apiRequest, clearAuthToken, hasAuthToken, setAuthToken } from './api'
+import { apiRequest, captureAuthSession, clearAuthToken, hasAuthToken, setAuthToken } from './api'
 import {
   forgetUploadProgress,
   formatBytes,
@@ -493,11 +493,13 @@ const uploadProgress = ref({
 const uploadAbort = ref(null)
 const resumableFile = ref(null)
 const resumableChunks = ref({ done: 0, total: 0 })
+let mediaListGeneration = 0
 const list = ref([])
 const listLoading = ref(false)
 const listError = ref('')
 const searchQuery = ref('')
 const analysisWorkspace = ref(null)
+let authOperationGeneration = 0
 const selectedMedia = ref(null)
 const authPanel = ref(null)
 const deletingId = ref(null)
@@ -700,7 +702,7 @@ const applyUploadProgress = (progress) => {
 }
 
 const rememberResumableUpload = (target) => {
-  if (!target || !hasUploadProgress(target)) {
+  if (!target || !hasUploadProgress(target, currentUser.value?.id)) {
     resumableFile.value = null
     return
   }
@@ -713,7 +715,7 @@ const rememberResumableUpload = (target) => {
 
 const uploadFile = async () => {
   const target = file.value
-  if (!target) return
+  if (!target || uploading.value) return
   if (DEMO_MODE) {
     showMsg('演示模式：已模拟完成分片上传')
     return
@@ -725,8 +727,10 @@ const uploadFile = async () => {
   resumableFile.value = null
   lastUploadProgress = {}
   const uploadUserId = currentUser.value?.id
+  const session = captureAuthSession()
+  const current = () => session.isCurrent() && currentUser.value?.id === uploadUserId && uploadAbort.value === controller
   uploadProgress.value = {
-    label: hasUploadProgress(target) ? '正在核对已上传分片' : '准备分片上传',
+    label: hasUploadProgress(target, currentUser.value?.id) ? '正在核对已上传分片' : '准备分片上传',
     filename: target.name,
     percent: 0,
     detail: `0 B / ${formatBytes(target.size)}`,
@@ -736,16 +740,17 @@ const uploadFile = async () => {
   try {
     const uploadedMedia = await uploadVideoInChunks(
       target,
-      applyUploadProgress,
+      progress => { if (current()) applyUploadProgress(progress) },
       controller.signal,
+      uploadUserId,
     )
-    if (currentUser.value?.id !== uploadUserId) return
+    if (!current()) return
     resumableFile.value = null
     showMsg(`✅ ${target.name} 上传完成`)
     await fetchList({ notify: true })
-    enterAnalysis(uploadedMedia)
+    if (current()) enterAnalysis(uploadedMedia)
   } catch (error) {
-    if (currentUser.value?.id !== uploadUserId) return
+    if (!current()) return
     rememberResumableUpload(target)
     if (error?.aborted) {
       showMsg('上传已取消，进度已保留，可点“继续上传”接着传')
@@ -758,6 +763,7 @@ const uploadFile = async () => {
       true,
     )
   } finally {
+    if (!current()) return
     uploading.value = false
     uploadAbort.value = null
     file.value = null
@@ -782,7 +788,7 @@ const resumeUpload = async () => {
 }
 
 const discardResumableUpload = () => {
-  forgetUploadProgress(resumableFile.value)
+  forgetUploadProgress(resumableFile.value, currentUser.value?.id)
   resumableFile.value = null
   resumableChunks.value = { done: 0, total: 0 }
   showMsg('已清除保留的上传进度，下次将从头开始')
@@ -811,6 +817,10 @@ const dismissMessage = () => {
 }
 
 const fetchList = async ({ notify = false } = {}) => {
+  const request = ++mediaListGeneration
+  const session = captureAuthSession()
+  const userId = currentUser.value?.id
+  const current = () => request === mediaListGeneration && session.isCurrent() && currentUser.value?.id === userId
   if (DEMO_MODE) return list.value
   if (!currentUser.value) {
     list.value = []
@@ -825,19 +835,21 @@ const fetchList = async ({ notify = false } = {}) => {
     const res = await apiRequest(`/media/list?_t=${Date.now()}`)
     if (res.status === 401) return null
     if (!res.ok) throw new Error((await res.text()) || '加载媒体库失败')
-    list.value = await res.json()
+    const items = await res.json()
+    if (!current()) return null
+    list.value = items
   } catch (error) {
+    if (!current()) return null
     listError.value = error?.message || '媒体库加载失败'
     if (notify) showMsg('视频资料库加载失败，请稍后刷新', true)
     return null
   } finally {
-    listLoading.value = false
+    if (current()) listLoading.value = false
   }
   return list.value
 }
 
 const isSupportedVideo = (selectedFile) => {
-  if (selectedFile.type?.startsWith('video/')) return true
   const extension = selectedFile.name?.split('.').pop()?.toLowerCase()
   return VIDEO_EXTENSIONS.has(extension)
 }
@@ -1000,12 +1012,19 @@ const deleteItem = async (item) => {
     ? '\n\n注意：该视频还有任务正在后台执行，删除后这次的结果会丢失。'
     : ''
   if (!confirm(`确认要永久删除 "${item.filename}" 吗？${warning}`)) return
+  const session = captureAuthSession()
+  const current = () => session.isCurrent() && deletingId.value === item.id
+  mediaListGeneration += 1
+  listLoading.value = false
   deletingId.value = item.id
   try {
     const res = await apiRequest(`/media/delete?id=${item.id}`, {
       method: 'DELETE',
     })
     const text = await res.text()
+    if (!current()) return
+    mediaListGeneration += 1
+    listLoading.value = false
     if (res.ok) {
       showMsg(`已删除 ${item.filename}`)
       list.value = list.value.filter((i) => i.id !== item.id)
@@ -1014,9 +1033,9 @@ const deleteItem = async (item) => {
       showMsg('❌ ' + text, true)
     }
   } catch (e) {
-    showMsg('❌ 删除请求失败', true)
+    if (current()) showMsg('❌ 删除请求失败', true)
   } finally {
-    deletingId.value = null
+    if (current()) deletingId.value = null
   }
 }
 
@@ -1033,6 +1052,7 @@ const downloadAudio = async (item) => {
     return
   }
   let fileName = item.filename || 'audio.mp3'
+  const session = captureAuthSession()
   fileName = fileName.replace(/\.[^/.]+$/, '') + '.mp3'
   try {
     showMsg('正在转码并下载...')
@@ -1041,6 +1061,7 @@ const downloadAudio = async (item) => {
     // 这里读出来向上抛，避免把“视频不存在 / 无权访问 / 转码失败”统一显示成同一句话。
     if (!res.ok) throw new Error((await res.text()) || '请稍后重试')
     const blob = await res.blob()
+    if (!session.isCurrent()) return
     const downloadUrl = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = downloadUrl
@@ -1051,6 +1072,7 @@ const downloadAudio = async (item) => {
     window.URL.revokeObjectURL(downloadUrl)
     showMsg('✅ 下载完成')
   } catch (e) {
+    if (!session.isCurrent()) return
     showMsg('音频下载失败：' + (e?.message || '请稍后重试'), true)
   }
 }
@@ -1068,6 +1090,8 @@ const openAuthModal = () => {
   authForm.value = { username: '', password: '', nickname: '' }
 }
 const closeAuthModal = () => {
+  authOperationGeneration += 1
+  authLoading.value = false
   showAuthModal.value = false
   restoreFocus(focusBeforeAuth)
   focusBeforeAuth = null
@@ -1105,16 +1129,23 @@ const trapAuthFocus = (event) => {
 }
 
 const switchAuthMode = ({ keepMessage = false } = {}) => {
+  authOperationGeneration += 1
+  authLoading.value = false
   authMode.value = authMode.value === 'login' ? 'register' : 'login'
   if (!keepMessage) authMessage.value = ''
 }
 const handleAuth = async () => {
+  if (authLoading.value) return
   if (!authForm.value.username || !authForm.value.password) {
     authMessage.value = '请输入完整的账号和密码'
     authError.value = true
     return
   }
   authLoading.value = true
+  const operation = ++authOperationGeneration
+  const session = captureAuthSession()
+  const current = () => operation === authOperationGeneration && session.isCurrent()
+  const requestedMode = authMode.value
   authMessage.value = ''
   const endpoint = authMode.value === 'login' ? '/user/login' : '/user/register'
   try {
@@ -1123,18 +1154,23 @@ const handleAuth = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(authForm.value),
     })
+    if (!current()) return
     if (!res.ok) {
-      authMessage.value = (await res.text()) || `请求失败（HTTP ${res.status}）`
+      const detail = await res.text()
+      if (!current()) return
+      authMessage.value = detail || `请求失败（HTTP ${res.status}）`
       authError.value = true
       return
     }
     const data = await res.json().catch(() => null)
+    if (!current()) return
     if (!data?.userInfo) {
       authMessage.value = '服务端返回异常，请稍后重试'
       authError.value = true
       return
     }
-    if (authMode.value === 'login') {
+    if (requestedMode === 'login') {
+      resetSessionState()
       currentUser.value = data.userInfo
       localStorage.setItem('user', JSON.stringify(data.userInfo))
       setAuthToken(data.token)
@@ -1144,21 +1180,26 @@ const handleAuth = async () => {
     } else {
       authMessage.value = '注册成功，账号密码已保留，直接点“立即登录”即可'
       authError.value = false
-      setTimeout(() => switchAuthMode({ keepMessage: true }), 900)
+      setTimeout(() => { if (current()) switchAuthMode({ keepMessage: true }) }, 900)
     }
   } catch (e) {
+    if (!current()) return
     authMessage.value = e?.message || '网络连接错误'
     authError.value = true
   } finally {
-    authLoading.value = false
+    if (operation === authOperationGeneration) authLoading.value = false
   }
 }
 /** 退出与登录失效走同一套清理，避免两处漏掉不同的字段。 */
-const resetSessionState = () => {
+const resetSessionState = ({ clearStoredUser = true } = {}) => {
+  authOperationGeneration += 1
+  authLoading.value = false
+  mediaListGeneration += 1
   uploadAbort.value?.abort()
   uploadAbort.value = null
   taskStreams.stopAll()
   resetWorkspace()
+  deletingId.value = null
   currentUser.value = null
   list.value = []
   listError.value = ''
@@ -1168,7 +1209,7 @@ const resetSessionState = () => {
   resumableFile.value = null
   resumableChunks.value = { done: 0, total: 0 }
   uploading.value = false
-  localStorage.removeItem('user')
+  if (clearStoredUser) localStorage.removeItem('user')
 }
 
 const logout = () => {
@@ -1184,6 +1225,17 @@ const handleAuthExpired = () => {
   resetSessionState()
   showMsg('登录状态已失效，请重新登录', true)
   openAuthModal()
+}
+
+const handleStorage = event => {
+  if (event.key !== 'authToken' && event.key !== null) return
+  // Another tab has already written the new user/token pair. Clear this
+  // tab's operations without deleting that tab's shared user metadata.
+  resetSessionState({ clearStoredUser: false })
+  if (hasAuthToken()) {
+    try { currentUser.value = JSON.parse(localStorage.getItem('user')) } catch { /* invalid metadata */ }
+  }
+  fetchList()
 }
 
 const handleOnline = () => {
@@ -1250,6 +1302,7 @@ watch(
 
 onMounted(() => {
   window.addEventListener('auth-expired', handleAuthExpired)
+  window.addEventListener('storage', handleStorage)
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('online', handleOnline)
   window.addEventListener('offline', handleOffline)
@@ -1311,6 +1364,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   window.removeEventListener('auth-expired', handleAuthExpired)
+  window.removeEventListener('storage', handleStorage)
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('online', handleOnline)
   window.removeEventListener('offline', handleOffline)

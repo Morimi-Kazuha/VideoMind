@@ -40,6 +40,11 @@ from dovideo.application import (
     TaskLifecycleEvent,
 )
 from dovideo.domain import AnalysisMode, TaskEvent
+from dovideo.application.errors import (
+    InvalidMediaInput, MediaUnauthorized, UploadNotFoundOrExpired, UploadConflict,
+    MediaStorageFailure, MediaRecordFailure, UnsupportedVideoFormat, MediaPayloadTooLarge,
+)
+from dovideo.application.media import normalize_video_filename
 from dovideo.application.temporal_read import (
     temporal_observation_page,
     temporal_window_page,
@@ -128,6 +133,29 @@ def create_app(
     @app.exception_handler(R1ServiceError)
     async def r1_error_handler(_request: Request, exc: R1ServiceError) -> JSONResponse:
         return _error(exc.message, exc.status_code, exc.code, headers=exc.headers)
+
+    @app.exception_handler(InvalidMediaInput)
+    async def input_error(_request: Request, exc: InvalidMediaInput) -> JSONResponse:
+        status = 415 if isinstance(exc, UnsupportedVideoFormat) else 413 if isinstance(exc, MediaPayloadTooLarge) else 400
+        message = {415: "不支持的视频格式，请选择 MP4、MOV、MKV、AVI、WEBM 或 M4V", 413: "上传超过大小限制"}.get(status, "上传参数无效")
+        return _error(message, status, status)
+
+    @app.exception_handler(MediaUnauthorized)
+    async def owner_error(_request: Request, _exc: MediaUnauthorized) -> JSONResponse:
+        return _error("无权访问该媒体或上传会话", 403, 403)
+
+    @app.exception_handler(UploadNotFoundOrExpired)
+    async def expired_upload(_request: Request, _exc: UploadNotFoundOrExpired) -> JSONResponse:
+        return _error("上传会话不存在或已过期", 404, 404)
+
+    @app.exception_handler(UploadConflict)
+    async def conflict_upload(_request: Request, _exc: UploadConflict) -> JSONResponse:
+        return _error("上传会话正在合并、已完成或分片不完整，请查询进度后重试", 409, 409)
+
+    @app.exception_handler(MediaStorageFailure)
+    @app.exception_handler(MediaRecordFailure)
+    async def storage_error(_request: Request, _exc: Exception) -> JSONResponse:
+        return _error("上传存储暂不可用，续传进度已保留", 503, 503)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(_request: Request, _exc: RequestValidationError) -> JSONResponse:
@@ -347,6 +375,7 @@ def create_app(
         total_chunks: int = Query(..., alias="totalChunks"),
         user: dict[str, Any] = Depends(require_user),
     ) -> JSONResponse:
+        normalize_video_filename(filename)
         upload_id = await selected_services.uploads.init(
             int(user["id"]), filename, total_chunks
         )
@@ -393,6 +422,7 @@ def create_app(
         file: UploadFile = File(...),
         user: dict[str, Any] = Depends(require_user),
     ) -> JSONResponse:
+        normalize_video_filename(file.filename or "upload.mp4")
         record = await selected_services.ingest(
             int(user["id"]),
             file.filename or "upload.mp4",
@@ -582,10 +612,7 @@ def create_app(
         resolved_mode = _mode(mode if mode is not None else payload.mode)
         normalized = payload.normalized(mode=resolved_mode)
         await selected_services.save_feedback(normalized)
-        revised_goal = normalized.corrected_goal or normalized.goal
-        disposition = await selected_services.submit_analysis(
-            payload.media_id, int(user["id"]), revised_goal, resolved_mode
-        )
+        disposition = await selected_services.revise_analysis(normalized, int(user["id"]))
         return _submission(disposition)
 
     @app.get("/analysis/agent-feedback")

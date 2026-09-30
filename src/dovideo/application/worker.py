@@ -47,6 +47,7 @@ MAX_CAUSE_DEPTH = 16
 class WorkerDisposition(str, Enum):
     """Queue-neutral result of one delivery attempt."""
 
+    STALE = "STALE"
     COMPLETED = "COMPLETED"
     RETRY = "RETRY"
     DEAD_LETTERED = "DEAD_LETTERED"
@@ -149,10 +150,16 @@ class TaskWorker:
             )
 
         current = TaskLifecycle.new(key, max_attempts=self._max_attempts)
+        started: TaskLifecycle | None = None
         outcome: WorkerOutcome | None = None
         pending_dead_letter = False
         try:
             current = await self._load_lifecycle(key)
+            if current.request_id is not None and request.request_id != current.request_id:
+                # A delayed delivery of the predecessor cannot apply or finish
+                # the new revision. It must also leave its reservation intact.
+                outcome = WorkerOutcome(WorkerDisposition.STALE, current)
+                return outcome
             pending = await self._load_pending_dead_letter(key)
             if pending is not None:
                 # A terminal analysis failure whose transport handoff is
@@ -163,13 +170,29 @@ class TaskWorker:
                 outcome = await self._retry_pending_dead_letter(key, current, pending)
                 pending_dead_letter = False
                 return outcome
+            begin_revision = getattr(self._results, "begin_staged_revision", None)
+            if (current.request_id or "").startswith("revision:") and callable(begin_revision):
+                if current.state is TaskStatusState.FAILED:
+                    outcome = WorkerOutcome(WorkerDisposition.DEAD_LETTERED, current)
+                    return outcome
+                if not current.terminal:
+                    # Applying a durable staged plan is worker work too. A
+                    # storage failure here must follow the bounded retry path.
+                    started = current.begin_attempt()
+                    await self._lifecycle.save_lifecycle(started)
+                    await self._publish(key, started.status, started.stage)
+                    applied = await begin_revision(
+                        key.media_id, key.goal, key.mode, request_id=current.request_id,
+                    )
+                    if not applied:
+                        raise RuntimeError("matching staged revision is unavailable")
             marker_completed = (
                 self._completion is not None
                 and await self._completion.is_completed(key)
             )
             saved = await self._results.load_result(key)
             if saved is not None and saved.result is not None:
-                outcome = await self._recover_completed(key, current, saved)
+                outcome = await self._recover_completed(key, started or current, saved)
                 return outcome
             if marker_completed and self._completion is not None:
                 await self._completion.clear_completed(key)
@@ -183,17 +206,22 @@ class TaskWorker:
                 outcome = WorkerOutcome(disposition, current)
                 return outcome
 
-            started = current.begin_attempt()
-            await self._lifecycle.save_lifecycle(started)
-            await self._publish(
-                key,
-                TaskStatus.of(TaskStatus.State.PROCESSING, "视频分析任务开始执行"),
-                TaskStage.CONSUMING,
-            )
+            if started is None:
+                started = current.begin_attempt()
+                await self._lifecycle.save_lifecycle(started)
+                await self._publish(
+                    key,
+                    TaskStatus.of(TaskStatus.State.PROCESSING, "视频分析任务开始执行"),
+                    TaskStage.CONSUMING,
+                )
 
             context = await self._context.load_context(request.media.media_id)
             if context is None:
                 raise ValueError("analysis context is unavailable")
+            # A media checkpoint is shared by goals; bind an immutable copy
+            # to this request so local/revision executions use the TaskKey goal.
+            if context.user_goal != key.goal:
+                context = context.model_copy(update={"user_goal": key.goal})
             if self._execution_records is not None:
                 source_revision = context.source_revision.strip()
                 if not source_revision:
@@ -220,6 +248,11 @@ class TaskWorker:
                     )
                 execution = await self._execution_records.start_or_resume(
                     key,
+                    force_new=(
+                        (current.request_id or "").startswith("revision:")
+                        and existing_execution is not None
+                        and existing_execution.request_id != current.request_id
+                    ),
                     # AgentLoop binds the historical header to
                     # ``VideoContext.source``.  The context checkpoint is
                     # built from this same authorized media source; the
@@ -251,7 +284,7 @@ class TaskWorker:
         except BaseException as error:
             if isinstance(error, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
                 raise
-            if "started" not in locals():
+            if started is None:
                 raise
             if not self._is_permanent(error) and started.can_retry:
                 retrying = started.retry()
@@ -349,7 +382,7 @@ class TaskWorker:
             return outcome
         finally:
             if (
-                (outcome is None or outcome.disposition is not WorkerDisposition.RETRY)
+                (outcome is None or outcome.disposition not in (WorkerDisposition.RETRY, WorkerDisposition.LOCKED, WorkerDisposition.STALE))
                 and not pending_dead_letter
             ):
                 await self._release_active(key)

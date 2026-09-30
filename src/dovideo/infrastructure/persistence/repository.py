@@ -304,7 +304,7 @@ class CheckpointRepository:
                 redis_key,
                 field,
                 record.payload,
-                record.stage,
+                None,
                 media_id=media_id,
                 checkpoint_name=checkpoint_name,
             )
@@ -344,7 +344,7 @@ class CheckpointRepository:
                 redis_key,
                 field,
                 record.payload,
-                record.stage,
+                None,
                 media_id=media_id,
                 checkpoint_name=checkpoint_name,
             )
@@ -373,13 +373,9 @@ class CheckpointRepository:
         if record is None:
             return None
         stage = self._parse_stage(record.stage)
-        if redis_key is not None:
-            self._cache_write_stage(
-                redis_key,
-                record.stage,
-                media_id=media_id,
-                checkpoint_name=checkpoint_name,
-            )
+        # A read-through snapshot may already be older than a concurrent
+        # lifecycle write. Only explicit lifecycle writers warm this field;
+        # hydration never writes it back, even if it was absent at read time.
         return stage
 
     @staticmethod

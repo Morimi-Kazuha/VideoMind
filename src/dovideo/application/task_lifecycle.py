@@ -79,6 +79,7 @@ class TaskLifecycleEvent:
     event: TaskEvent
     attempt: int = 0
     retryable: bool = False
+    request_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.key, TaskKey):
@@ -199,6 +200,7 @@ class TaskLifecycle:
             event=self.event,
             attempt=self.attempt,
             retryable=self.retryable,
+            request_id=self.request_id,
         )
 
     def _with(

@@ -80,7 +80,8 @@ def test_cache_miss_reads_durable_and_warms_cache() -> None:
     db.upsert(1, "plan", TaskStage.PLAN_COMPLETED, payload)
     assert repo.read(1, "plan", "key", "plan", AgentPlan).tasks == ("from-db",)
     assert cache.get_hash("key", "plan") == payload
-    assert cache.get_hash("key", "stage") == TaskStage.PLAN_COMPLETED.value
+    # Payload hydration never owns the separate lifecycle stage field.
+    assert cache.get_hash("key", "stage") is None
 
 
 def test_malformed_cached_payload_is_evicted_then_falls_back() -> None:
@@ -97,7 +98,27 @@ def test_malformed_cached_stage_is_evicted_then_falls_back() -> None:
     db.upsert(3, "stage", TaskStage.CRITIC_PASSED, None)
     cache.set_hash("key", "stage", "old-stage")
     assert repo.read_stage(3, "stage", "key") is TaskStage.CRITIC_PASSED
-    assert cache.get_hash("key", "stage") == TaskStage.CRITIC_PASSED.value
+    assert cache.get_hash("key", "stage") is None
+
+
+def test_cold_stage_read_cannot_overwrite_a_concurrent_newer_stage() -> None:
+    class InterleavedStore(SqliteCheckpointStore):
+        after_read = None
+
+        def read(self, media_id, checkpoint_name):
+            snapshot = super().read(media_id, checkpoint_name)
+            if self.after_read is not None:
+                callback, self.after_read = self.after_read, None
+                callback()
+            return snapshot
+
+    repo, db, cache = _repo(db=InterleavedStore())
+    db.upsert(3, "stage", TaskStage.PLAN_COMPLETED, None)
+    db.after_read = lambda: repo.write_stage(3, "stage", "key", TaskStage.CRITIC_STARTED)
+
+    assert repo.read_stage(3, "stage", "key") is TaskStage.PLAN_COMPLETED
+    assert cache.get_hash("key", "stage") == TaskStage.CRITIC_STARTED.value
+    assert repo.read_stage(3, "stage", "key") is TaskStage.CRITIC_STARTED
 
 
 def test_cache_read_and_write_outage_does_not_break_durable_flow() -> None:

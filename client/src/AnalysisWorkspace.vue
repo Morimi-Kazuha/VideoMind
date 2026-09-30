@@ -615,8 +615,8 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { apiRequest } from "./api.js";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { apiRequest, captureAuthSession } from "./api.js";
 import AcademyMark from "./design/AcademyMark.vue";
 import AnalysisTimeline from "./AnalysisTimeline.vue";
 import TemporalRecords from "./TemporalRecords.vue";
@@ -693,7 +693,14 @@ function seekVideo(seconds) {
     return;
   }
   if (player.readyState === 0) {
-    player.addEventListener("loadedmetadata", () => seekVideo(seconds), {
+    const sidebar = props.sidebar;
+    const generation = sidebar.generation;
+    const session = captureAuthSession();
+    player.addEventListener("loadedmetadata", () => {
+      if (session.isCurrent() && props.sidebar === sidebar &&
+          sidebar.generation === generation && sidebar.visible &&
+          videoPlayer.value === player) seekVideo(seconds);
+    }, {
       once: true,
     });
     return;
@@ -736,8 +743,18 @@ function selectTimelineItem(marker) {
   else selectEvidence(marker.hit, marker.key);
 }
 
+let workspaceMounted = true;
+function captureOperation() {
+  const session = captureAuthSession();
+  const generation = props.sidebar.generation;
+  const mediaId = props.sidebar.mediaId;
+  return () => workspaceMounted && session.isCurrent() && generation === props.sidebar.generation && mediaId === props.sidebar.mediaId;
+}
+onUnmounted(() => { workspaceMounted = false; });
+
 async function loadTemporal(reset = true) {
   if (temporalLoading.value || props.demoMode || !props.sidebar.mediaId) return;
+  const current = captureOperation();
   const request = ++temporalRequest;
   const mediaId = props.sidebar.mediaId;
   if (reset) {
@@ -757,7 +774,7 @@ async function loadTemporal(reset = true) {
     if (!response.ok)
       throw new Error((await response.text()) || "时间记录读取失败");
     const page = await response.json();
-    if (request !== temporalRequest || mediaId !== props.sidebar.mediaId)
+    if (!current() || request !== temporalRequest || mediaId !== props.sidebar.mediaId)
       return;
     temporalAvailable.value = Boolean(page.available);
     temporalTotal.value = Number(page.total) || 0;
@@ -766,16 +783,17 @@ async function loadTemporal(reset = true) {
       ...(Array.isArray(page.items) ? page.items : []),
     ];
   } catch (error) {
-    if (request === temporalRequest)
+    if (current() && request === temporalRequest)
       temporalError.value = error?.message || "时间记录读取失败";
   } finally {
-    if (request === temporalRequest) temporalLoading.value = false;
+    if (current() && request === temporalRequest) temporalLoading.value = false;
   }
 }
 
 async function loadObservations(reset = true) {
   if (observationLoading.value || props.demoMode || !props.sidebar.mediaId)
     return;
+  const current = captureOperation();
   const request = ++observationRequest;
   const mediaId = props.sidebar.mediaId;
   if (reset) {
@@ -796,7 +814,7 @@ async function loadObservations(reset = true) {
     if (!response.ok)
       throw new Error((await response.text()) || "逐条来源记录读取失败");
     const page = await response.json();
-    if (request !== observationRequest || mediaId !== props.sidebar.mediaId)
+    if (!current() || request !== observationRequest || mediaId !== props.sidebar.mediaId)
       return;
     observationTotal.value = Number(page.total) || 0;
     temporalObservations.value = [
@@ -804,14 +822,15 @@ async function loadObservations(reset = true) {
       ...(Array.isArray(page.items) ? page.items : []),
     ];
   } catch (error) {
-    if (request === observationRequest)
+    if (current() && request === observationRequest)
       observationError.value = error?.message || "逐条来源记录读取失败";
   } finally {
-    if (request === observationRequest) observationLoading.value = false;
+    if (current() && request === observationRequest) observationLoading.value = false;
   }
 }
 
 async function refreshCitations() {
+  const current = captureOperation();
   const request = ++citationRequest;
   citations.value = [];
   if (props.demoMode || !props.sidebar.content || props.sidebar.type !== "ai")
@@ -825,7 +844,7 @@ async function refreshCitations() {
     const response = await apiRequest(`/analysis/agent-citations?${params}`);
     if (!response.ok) return;
     const records = await response.json();
-    if (request === citationRequest)
+    if (current() && request === citationRequest)
       citations.value = Array.isArray(records) ? records : [];
   } catch {
     // Legacy answers stay readable when citation metadata is unavailable.
@@ -848,6 +867,7 @@ function handleAnswerClick(event) {
 }
 
 async function refreshTranscript() {
+  const current = captureOperation();
   const request = ++transcriptRequest;
   transcriptError.value = "";
   transcriptLoading.value = false;
@@ -867,16 +887,16 @@ async function refreshTranscript() {
     if (!response.ok)
       throw new Error((await response.text()) || "转录状态读取失败");
     const status = await response.json();
-    if (request !== transcriptRequest) return;
+    if (!current() || request !== transcriptRequest) return;
     transcriptText.value =
-      status.state === "COMPLETED" ? status.result || "" : "";
+      ["COMPLETED", "FAILED"].includes(status.state) ? status.result || "" : "";
     transcriptHint.value =
       status.message || "暂无独立转录结果。分析仍可使用语音和画面证据。";
   } catch (error) {
-    if (request === transcriptRequest)
+    if (current() && request === transcriptRequest)
       transcriptError.value = error?.message || "转录状态读取失败";
   } finally {
-    if (request === transcriptRequest) transcriptLoading.value = false;
+    if (current() && request === transcriptRequest) transcriptLoading.value = false;
   }
 }
 
@@ -895,7 +915,7 @@ function focus() {
 }
 defineExpose({ focus, scrollToLatestAnswer });
 watch(
-  () => props.sidebar.mediaId,
+  () => [props.sidebar.mediaId, props.sidebar.generation],
   () => {
     selectedKey.value = "";
     currentTime.value = 0;
@@ -937,6 +957,7 @@ watch(
 watch(
   () => [
     props.sidebar.mediaId,
+    props.sidebar.generation,
     props.sidebar.goal,
     props.sidebar.analysisMode,
     props.sidebar.content,

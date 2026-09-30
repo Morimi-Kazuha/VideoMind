@@ -13,7 +13,7 @@ from enum import Enum
 from pathlib import Path
 from uuid import UUID
 
-from .errors import InvalidMediaInput
+from .errors import InvalidMediaInput, UnsupportedVideoFormat
 
 MEDIA_SESSION_TTL = timedelta(hours=24)
 MAX_CHUNK_BYTES = 5 * 1024 * 1024
@@ -51,7 +51,7 @@ def normalize_video_filename(filename: str) -> str:
         raise InvalidMediaInput("video filename is invalid or too long")
     suffix = _filename_suffix(normalized).casefold()
     if suffix not in VIDEO_SUFFIXES:
-        raise InvalidMediaInput(
+        raise UnsupportedVideoFormat(
             "only MP4, MOV, MKV, AVI, WEBM, and M4V videos are supported"
         )
     return normalized

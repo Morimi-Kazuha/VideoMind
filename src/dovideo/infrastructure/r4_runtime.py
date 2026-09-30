@@ -1383,8 +1383,15 @@ class R4RequestContextCheckpoint(ContextCheckpointPort):
         self.pipeline = pipeline
 
     async def load_context(self, media_id: int) -> VideoContext | None:
-        context = await self.delegate.load_context(media_id)
         request = _CURRENT_R4_REQUEST.get()
+        if request is not None and request.media.media_id == media_id:
+            # This port runs only after TaskWorker acquired the task lock and
+            # accepted the current request identity. Keep retry usage, but
+            # never charge a revision for its predecessor's provider calls.
+            self.pipeline.telemetry.store.start_for_request(
+                request.task_key, request.request_id,
+            )
+        context = await self.delegate.load_context(media_id)
         if context is None and request is not None and request.media.media_id == media_id:
             context = await self.pipeline.build_context(request)
             await self.delegate.save_context(media_id, context)

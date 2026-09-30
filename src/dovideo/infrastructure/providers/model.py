@@ -31,6 +31,7 @@ from dovideo.domain import (
 )
 from dovideo.application.tool_contracts import ExecutorTurn, ToolResult
 from dovideo.application.errors import BudgetExceededError
+from dovideo.application.execution_budget import AgentExecutionBudget
 
 from .config import ModelRequestSettings, ProviderConfig
 from .errors import (
@@ -248,6 +249,8 @@ class OpenAICompatibleChatClient:
             "response_format": {"type": "json_object"},
         }
         payload.update(self.request_settings.request_fields())
+        if stage == "FOLLOW_UP":
+            payload["max_tokens"] = min(int(payload.get("max_tokens", 4096)), 4096)
         if self.config.transport == "openrouter":
             payload["provider"] = {
                 "only": list(self.config.provider_only),
@@ -257,7 +260,9 @@ class OpenAICompatibleChatClient:
                 "zdr": self.config.provider_zdr,
             }
         last_error: ProviderTransientError | None = None
-        for attempt in range(self.config.max_attempts):
+        max_attempts = self.config.max_attempts
+        for attempt in range(max_attempts):
+            AgentExecutionBudget.check(stage)
             admission = self._admit_model_call(normalized, stage, attempt + 1)
             sent = False
             response_status: int | None = None
@@ -270,7 +275,9 @@ class OpenAICompatibleChatClient:
                     self.config.chat_url,
                     headers=self._headers(),
                     payload=payload,
-                    timeout=self.config.timeout_seconds,
+                    timeout=(min(self.config.timeout_seconds, AgentExecutionBudget.remaining_seconds())
+                             if AgentExecutionBudget.remaining_seconds() is not None
+                             else self.config.timeout_seconds),
                 )
                 status, body = response_parts(response)
                 response_status = status
@@ -303,14 +310,14 @@ class OpenAICompatibleChatClient:
                 raise
             except ProviderTransientError as exc:
                 last_error = exc
-                if attempt + 1 >= self.config.max_attempts:
+                if attempt + 1 >= max_attempts:
                     raise
                 await self._sleep_before_retry(attempt)
             except OSError as exc:
                 last_error = ProviderTransientError(
                     f"{stage} provider transport failed"
                 )
-                if attempt + 1 >= self.config.max_attempts:
+                if attempt + 1 >= max_attempts:
                     raise last_error from exc
                 await self._sleep_before_retry(attempt)
             except ProviderError:

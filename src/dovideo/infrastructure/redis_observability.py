@@ -171,7 +171,7 @@ class RedisTraceStore:
     def _index_key(self, media_id: int) -> str:
         return f"{self.index_prefix}:{int(media_id)}"
 
-    def start(self, key: TaskKey) -> str:
+    def start(self, key: TaskKey, *, request_id: str | None = None) -> str:
         trace_id = str(uuid4())
         payload = {
             "traceId": trace_id,
@@ -183,6 +183,8 @@ class RedisTraceStore:
             "values": {},
             "estimatedCost": 0.0,
         }
+        if request_id is not None:
+            payload["requestId"] = request_id
         redis_key = self._trace_key(trace_id)
         self._write_document(redis_key, payload)
         self.client.set(self._latest_key(key), trace_id, ex=self.ttl_seconds)
@@ -190,6 +192,17 @@ class RedisTraceStore:
         self.client.sadd(index_key, trace_id)
         self.client.expire(index_key, self.ttl_seconds)
         return trace_id
+
+    def start_for_request(self, key: TaskKey, request_id: str) -> str:
+        """Start independent usage, preserving retries of the same request.
+
+        The worker calls this after accepting the delivery under its task lock.
+        Stale or duplicate terminal deliveries never reach this boundary.
+        """
+        current = self.latest(key)
+        if current.get("requestId") == request_id:
+            return str(current["traceId"])
+        return self.start(key, request_id=request_id)
 
     def record(self, key: TaskKey, event: TaskEvent) -> None:
         trace_id = self._decode(self.client.get(self._latest_key(key)))

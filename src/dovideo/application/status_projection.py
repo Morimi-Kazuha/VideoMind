@@ -126,7 +126,7 @@ class TaskStatusProjection:
             TaskStatusState.COMPLETED,
             TaskStatusState.FAILED,
         )
-        if not incoming_terminal and event.attempt < previous.attempt:
+        if event.attempt < previous.attempt:
             return previous.status
 
         if not incoming_terminal and event.attempt == previous.attempt:

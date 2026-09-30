@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import time
+import logging
 from collections.abc import AsyncIterator
+from contextlib import nullcontext
 from typing import Any
+from uuid import uuid4
 
 from dovideo.application import (
     AgentCheckpointService,
@@ -189,15 +192,12 @@ class ProductionR4Services(ProductionR2Services):
         request_id: str | None = None,
     ) -> DispatchDisposition:
         record = await self.media.require_owned(media_id, user_id)
-        request = AnalysisRequest(record.to_ref(), goal, mode, request_id=request_id)
+        request = AnalysisRequest(record.to_ref(), goal, mode, request_id=request_id or uuid4().hex)
         if await self.checkpoint.load_result(request.task_key) is not None:
             return DispatchDisposition.DUPLICATE
         disposition = await self.dispatcher.dispatch(request)
-        if disposition is DispatchDisposition.ACCEPTED:
-            try:
-                self.trace.start(request.task_key)
-            except Exception:
-                pass
+        # The accepted worker owns request-scoped trace initialization under
+        # its task lock. Starting here after enqueue can reset a running trace.
         return disposition
 
     async def list_failed_tasks(self, *, limit: int = 50, offset: int = 0):
@@ -218,33 +218,9 @@ class ProductionR4Services(ProductionR2Services):
         return await self.status_query.current(media_id, goal, mode)
 
     async def subscribe(self, key: TaskKey) -> AsyncIterator[Any | None]:
-        lifecycle = await self.lifecycle.load_lifecycle(key)
-        status = await self.status_query.current(key.media_id, key.goal, key.mode)
-        attempt = 0 if lifecycle is None else lifecycle.attempt
-        from dovideo.application.task_lifecycle import TaskLifecycleEvent
-
-        initial = TaskLifecycleEvent(
-            key=key,
-            event=TaskEvent.of(status, None if lifecycle is None else lifecycle.stage),
-            attempt=attempt,
-            retryable=False if lifecycle is None else lifecycle.retryable,
-        )
-        yield initial
-        if initial.terminal:
-            return
-        seen = 0
-        heartbeat_started = time.monotonic()
-        while True:
-            values = await self.events.read(key)
-            for value in values[seen:]:
-                seen += 1
-                yield value
-                if value.terminal:
-                    return
-            if time.monotonic() - heartbeat_started >= 15.0:
-                heartbeat_started = time.monotonic()
-                yield None
-            await asyncio.sleep(0.5)
+        from dovideo.application.durable_task_events import durable_task_events
+        async for event in durable_task_events(key, self.lifecycle, self.status_query, self.events):
+            yield event
 
     async def follow_up(
         self,
@@ -272,8 +248,17 @@ class ProductionR4Services(ProductionR2Services):
             "unexpected": 503,
         }
         try:
-            with self.providers.telemetry.isolated_metrics():
-                return await service.answer(media_id, question, goal, mode)
+            capture = getattr(self.providers.telemetry, "capture_chat_usage", None)
+            with self.providers.telemetry.isolated_metrics(), (capture() if callable(capture) else nullcontext([])) as usage:
+                try:
+                    return await service.answer(media_id, question, goal, mode)
+                finally:
+                    reported_tokens = [item["totalTokens"] for item in usage if item.get("totalTokens") is not None]
+                    logging.getLogger("dovideo.follow_up").info(
+                        "follow_up_usage media_id=%d mode=%s usage_records=%d reported_total_tokens=%s",
+                        media_id, mode.value, len(usage),
+                        sum(reported_tokens) if reported_tokens else None,
+                    )
         except FollowUpFailure as error:
             status_code = statuses.get(error.category, 503)
             raise R1ServiceError(

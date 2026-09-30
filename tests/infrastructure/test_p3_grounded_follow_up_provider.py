@@ -5,7 +5,7 @@ import json
 import pytest
 
 from dovideo.application import FollowUpModelFailure, mode_profile_for
-from dovideo.domain import AnalysisMode, VideoEvidenceHit
+from dovideo.domain import AnalysisMode, VideoEvidenceHit, SourceItemIdentity, TemporalObservation, content_digest
 from dovideo.infrastructure.providers import (
     GroundedFollowUpModelAdapter,
     OpenAICompatibleChatClient,
@@ -13,6 +13,18 @@ from dovideo.infrastructure.providers import (
     ProviderHttpResponse,
     ProviderTransientError,
 )
+from dovideo.application.execution_budget import AgentExecutionBudget
+
+
+@pytest.mark.asyncio
+async def test_r6_follow_up_provider_receives_remaining_deadline_and_output_limit():
+    from dovideo.infrastructure.providers.config import ModelRequestSettings
+    http = _FakeHttp([ProviderHttpResponse(200, {'choices': [{'message': {'content': _response_content()}}], 'usage': {'total_tokens': 15}})])
+    chat = OpenAICompatibleChatClient(_config(timeout_seconds=120), client=http, request_settings=ModelRequestSettings(max_tokens=16000))
+    with AgentExecutionBudget.open(2000):
+        await chat.complete(({'role': 'user', 'content': 'question'},), stage='FOLLOW_UP')
+    assert 0 < http.calls[0]['timeout'] <= 2
+    assert http.calls[0]['json']['max_tokens'] == 4096
 
 
 def _response_content() -> str:
@@ -127,6 +139,40 @@ async def test_adapter_builds_bounded_mode_aware_prompt_and_decodes_response(mod
     assert "为什么是线性复杂度？" in prompt
     assert '"startMs":0,"endMs":10000' in prompt
     assert len(prompt) < 8_000
+
+
+@pytest.mark.asyncio
+async def test_r6_follow_up_prompt_exposes_bounded_authoritative_observation_times():
+    texts = tuple(f"observation{index:02d}" for index in range(20))
+    observations = tuple(TemporalObservation(
+        source_item=SourceItemIdentity(
+            source_item_id=f"media-42-item-{index}", source_revision="revision-42",
+            segment_id="segment-42", source_type="ASR", ordinal=index,
+            timestamp_ms=1200 + index * 200, end_ms=1400 + index * 200,
+            content_digest=content_digest(text),
+        ), text=text,
+    ) for index, text in enumerate(texts))
+    foreign = observations[0].model_copy(update={"source_item": observations[0].source_item.model_copy(update={"source_item_id": "media-99-item"})})
+    old = observations[1].model_copy(update={"source_item": observations[1].source_item.model_copy(update={"source_revision": "old-revision"})})
+    hit = _candidate().model_copy(update={
+        "source_revision": "revision-42", "segment_id": "segment-42",
+        "source_item_ids": tuple(o.source_item.source_item_id for o in observations),
+        "transcript": "\n".join(texts),
+    })
+    chat = _FakeChat(_response_content())
+    await GroundedFollowUpModelAdapter(chat).answer(
+        "question", original_goal="goal", profile=mode_profile_for(AnalysisMode.GENERAL),
+        prior_analysis=None, sources=(hit,), observations=(foreign, old, *observations),
+    )
+    prompt = chat.calls[0]["messages"][1]["content"]
+    payload = json.loads(prompt.split("Input as JSON:\n", 1)[1])
+    mapped = payload["retrievedSourceCandidates"][0]["sourceObservations"]
+    assert len(mapped) == 16
+    assert mapped[0] == {"source": "ASR", "timestampMs": 1200, "endMs": 1400, "excerpt": texts[0]}
+    assert [item["excerpt"] for item in mapped] == list(texts[:16])
+    assert sum(len(item["excerpt"]) for item in mapped) <= 400
+    assert "segment start is not" in prompt.lower()
+    assert len(chat.calls) == 1
 
 
 @pytest.mark.parametrize(

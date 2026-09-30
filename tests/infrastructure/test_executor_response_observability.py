@@ -413,3 +413,69 @@ def test_x2b_execution_projection_is_additive_and_payload_free() -> None:
     assert "ToolResult body" not in serialized
     assert "prompt" not in serialized
     assert "transcript" not in serialized
+
+@pytest.mark.asyncio
+async def test_revision_budget_starts_fresh_and_retry_keeps_sent_usage() -> None:
+    from types import SimpleNamespace
+    from dovideo.application import AnalysisRequest, MediaRef
+    from dovideo.domain import AgentBudgetConfig
+    from dovideo.infrastructure.r4_runtime import (
+        R4RequestContextCheckpoint, bind_r4_request, reset_r4_request,
+    )
+
+    store = RedisTraceStore(_MemoryRedis())
+    telemetry = R4AgentTelemetry(store, budget_config=AgentBudgetConfig())
+    v1 = AnalysisRequest(MediaRef(99, 'memory://99'), 'goal', request_id='v1')
+    v2 = AnalysisRequest(v1.media, 'goal', request_id='revision:v2')
+    key = v1.task_key
+    v1_trace = store.start_for_request(key, v1.request_id)
+    store.add_usage_for_key(key, estimated_tokens=17594)
+
+    class Checkpoint:
+        async def load_context(self, media_id):
+            return VideoContext(source='memory://99', user_goal='goal')
+
+    boundary = R4RequestContextCheckpoint(Checkpoint(), SimpleNamespace(telemetry=telemetry))
+    bound = telemetry.bind(key)
+    request_token = bind_r4_request(v2)
+    try:
+        await boundary.load_context(99)
+        v2_trace = store.latest(key)['traceId']
+        assert v2_trace != v1_trace
+        admission = telemetry.admit_model_call(stage='CRITIC', model='test',
+            messages=[{'role': 'user', 'content': 'x' * 12260}], attempt=1,
+            max_output_tokens=None)
+        assert admission['cumulativeBefore'] == 0
+        assert admission['allowed'] is True
+        store.add_usage_for_key(key, estimated_tokens=6130)
+        await boundary.load_context(99)
+        assert store.latest(key)['traceId'] == v2_trace
+        assert store.current_usage_for_key(key).estimated_tokens == 6130
+        historical = store._document(store.client.hgetall(store._trace_key(v1_trace)))
+        assert historical['estimatedTokens'] == 17594
+    finally:
+        reset_r4_request(request_token)
+        telemetry.reset(bound)
+
+
+@pytest.mark.asyncio
+async def test_foreign_context_load_cannot_reset_current_request_budget() -> None:
+    from types import SimpleNamespace
+    from dovideo.application import AnalysisRequest, MediaRef
+    from dovideo.infrastructure.r4_runtime import (
+        R4RequestContextCheckpoint, bind_r4_request, reset_r4_request,
+    )
+    store = RedisTraceStore(_MemoryRedis())
+    request = AnalysisRequest(MediaRef(99, 'memory://99'), 'goal', request_id='current')
+    trace_id = store.start_for_request(request.task_key, request.request_id)
+    store.add_usage_for_key(request.task_key, estimated_tokens=1234)
+    class Checkpoint:
+        async def load_context(self, media_id): return None
+    boundary = R4RequestContextCheckpoint(Checkpoint(), SimpleNamespace(telemetry=R4AgentTelemetry(store)))
+    token = bind_r4_request(request)
+    try:
+        assert await boundary.load_context(100) is None
+        assert store.latest(request.task_key)['traceId'] == trace_id
+        assert store.current_usage_for_key(request.task_key).estimated_tokens == 1234
+    finally:
+        reset_r4_request(token)

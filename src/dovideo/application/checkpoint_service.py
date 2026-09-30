@@ -48,6 +48,7 @@ class RevisionCheckpoint(DomainModel):
 
     plan: AgentPlan | None = None
     applied: bool = False
+    request_id: str | None = None
 
 
 class AgentCheckpointService(
@@ -551,6 +552,8 @@ class AgentCheckpointService(
         goal: str,
         plan: AgentPlan | Any | None = None,
         mode: AnalysisMode | str | None = None,
+        *,
+        request_id: str | None = None,
     ) -> None:
         """Durably stage a corrected plan without changing active state."""
 
@@ -569,7 +572,7 @@ class AgentCheckpointService(
             revision_key,
             "revision",
             TaskStage.REVISION_PENDING,
-            RevisionCheckpoint(plan=resolved_plan, applied=False),
+            RevisionCheckpoint(plan=resolved_plan, applied=False, request_id=request_id),
         )
         await self._remember_goal_key(media_id, revision_key)
 
@@ -578,6 +581,8 @@ class AgentCheckpointService(
         media_id: int,
         goal: str,
         mode: AnalysisMode | str | None = None,
+        *,
+        request_id: str | None = None,
     ) -> bool:
         """Apply a staged revision idempotently and safely retry partial work."""
 
@@ -595,6 +600,8 @@ class AgentCheckpointService(
             return False
         if not isinstance(revision, RevisionCheckpoint):
             revision = RevisionCheckpoint.model_validate(revision)
+        if revision.request_id is not None and revision.request_id != request_id:
+            return False
         if revision.applied:
             return True
 
@@ -616,7 +623,7 @@ class AgentCheckpointService(
             revision_key,
             "revision",
             TaskStage.REVISION_APPLIED,
-            RevisionCheckpoint(plan=revision.plan, applied=True),
+            RevisionCheckpoint(plan=revision.plan, applied=True, request_id=revision.request_id),
         )
         await self._remember_goal_key(media_id, revision_key)
         return True

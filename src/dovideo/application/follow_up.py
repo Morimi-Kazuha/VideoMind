@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import math
 import time
 from collections.abc import Mapping, Sequence
@@ -18,12 +19,14 @@ from dovideo.domain import (
     VideoChunk,
     VideoContext,
     VideoEvidenceHit,
+    TemporalObservation,
 )
 
 from .evidence import EvidenceVerificationService, normalize_evidence_text
 from .mode_profiles import mode_profile_for
 from .ports.checkpoint import ContextCheckpointPort
 from .value_objects import TaskKey
+from .execution_budget import AgentExecutionBudget
 
 
 MAX_FOLLOW_UP_CANDIDATES = 8
@@ -38,6 +41,8 @@ _ALLOWED_METRICS = {
     "asr_candidates",
     "ocr_candidates",
     "latency_ms",
+    "candidate_source_refs",
+    "verified_source_refs",
 }
 
 
@@ -88,6 +93,7 @@ class FollowUpModelPort(Protocol):
         profile: ModeProfile,
         prior_analysis: Mapping[str, Any] | None,
         sources: Sequence[VideoEvidenceHit],
+        observations: Sequence[TemporalObservation] = (),
     ) -> GroundedFollowUpAnswer:
         ...
 
@@ -118,14 +124,29 @@ class GroundedFollowUpService:
         *,
         verifier: EvidenceVerificationService | None = None,
         observer: FollowUpObserver | Any | None = None,
+        max_wall_seconds: float = 60.0,
     ) -> None:
         self._checkpoint = checkpoint
         self._retrieval = retrieval
         self._model = model
         self._verifier = verifier or EvidenceVerificationService()
         self._observer = observer
+        if not math.isfinite(max_wall_seconds) or max_wall_seconds <= 0:
+            raise ValueError("follow-up deadline must be finite and positive")
+        self._max_wall_seconds = max_wall_seconds
 
     async def answer(
+        self, media_id: int, question: str, original_goal: str | None, mode: AnalysisMode,
+    ) -> str:
+        self._validate_request(media_id, question, original_goal, mode)
+        with AgentExecutionBudget.open(self._max_wall_seconds * 1000):
+            try:
+                async with asyncio.timeout(AgentExecutionBudget.remaining_seconds()):
+                    return await self._answer(media_id, question, original_goal, mode)
+            except TimeoutError:
+                raise FollowUpFailure("timeout", "追问超过执行时限，请缩小问题后重试") from None
+
+    async def _answer(
         self,
         media_id: int,
         question: str,
@@ -141,6 +162,8 @@ class GroundedFollowUpService:
         try:
             context = await self._checkpoint.load_context(media_id)
             chunks = await self._checkpoint.load_chunks(media_id)
+        except TimeoutError:
+            raise
         except Exception:
             self._record(
                 "context_recovery_failed",
@@ -213,6 +236,8 @@ class GroundedFollowUpService:
                     chunks=durable_chunks,
                 )
             )
+        except TimeoutError:
+            raise
         except Exception:
             raise self._failure(
                 media_id,
@@ -261,6 +286,7 @@ class GroundedFollowUpService:
                 profile=profile,
                 prior_analysis=prior_analysis,
                 sources=tuple(item.prompt_hit for item in candidates),
+                observations=context.observations,
             )
         except FollowUpModelFailure as error:
             self._record(
@@ -282,6 +308,8 @@ class GroundedFollowUpService:
                 safe_message,
                 started,
             ) from None
+        except TimeoutError:
+            raise
         except Exception:
             self._record(
                 "provider_call_failed",
@@ -338,6 +366,14 @@ class GroundedFollowUpService:
                 ocr_candidates=ocr_count,
             ) from None
 
+        for item, citation in zip(response.evidence, verified, strict=True):
+            self._record(
+                "citation_verified",
+                media_id=media_id,
+                mode=mode,
+                candidate_source_refs=len(candidates[item.candidate_index].source_hit.source_item_ids),
+                verified_source_refs=len(citation.evidence.source_item_ids),
+            )
         self._record(
             "evidence_verification_succeeded",
             media_id=media_id,
@@ -345,6 +381,11 @@ class GroundedFollowUpService:
             retrieval_candidates=len(candidates),
             asr_candidates=asr_count,
             ocr_candidates=ocr_count,
+            candidate_source_refs=sum(
+                len(candidates[item.candidate_index].source_hit.source_item_ids)
+                for item in response.evidence
+            ),
+            verified_source_refs=sum(len(item.evidence.source_item_ids) for item in verified),
         )
         rendered = _render_answer(response.answer, verified)
         self._record(
@@ -468,8 +509,26 @@ class GroundedFollowUpService:
                 claim=item.claim,
                 source_revision=hit.source_revision,
                 segment_id=hit.segment_id,
-                source_item_ids=hit.source_item_ids,
             )
+            if (
+                hit.source_revision or hit.segment_id or hit.source_item_ids
+                or context.source_revision
+            ):
+                source_item_ids = self._verifier.supporting_source_item_ids(
+                    context, evidence, candidate.source_hit.source_item_ids,
+                )
+                if source_item_ids is None:
+                    return None
+                evidence = AnalysisEvidence(
+                    timestamp_ms=item.timestamp_ms,
+                    source=item.source,
+                    content=item.content,
+                    claim=item.claim,
+                    source_revision=hit.source_revision,
+                    segment_id=hit.segment_id,
+                    source_item_ids=source_item_ids,
+                    source_provenance_version=context.provenance_version,
+                )
             if (
                 not self._verifier.timestamp_covered(context, evidence)
                 or not self._verifier.supported(context, evidence)
@@ -487,6 +546,7 @@ class GroundedFollowUpService:
                     source=item.source,
                     claim=item.claim,
                     content=item.content,
+                    evidence=evidence,
                 )
             )
         return tuple(verified) if verified else None
@@ -594,6 +654,7 @@ class _VerifiedCitation:
     source: str
     claim: str
     content: str
+    evidence: AnalysisEvidence
 
 
 def _source_text_for(source: str, hit: VideoEvidenceHit) -> str:
