@@ -48,6 +48,9 @@ class MinioObjectStorage(ObjectStoragePort):
         except Exception as exc:
             raise MinioStorageError("MinIO bucket initialization failed") from exc
 
+    def source_for(self, object_name: str) -> str:
+        return f"minio://{self.bucket}/{_validate_object_name(object_name)}"
+
     async def put_object(
         self,
         chunks: AsyncIterable[bytes],
@@ -61,7 +64,7 @@ class MinioObjectStorage(ObjectStoragePort):
             path = await self._materialize(chunks)
             size = path.stat().st_size
             await self._put_path(path, name, size, content_type)
-            return f"minio://{self.bucket}/{name}"
+            return self.source_for(name)
         except asyncio.CancelledError:
             raise
         except MinioStorageError:

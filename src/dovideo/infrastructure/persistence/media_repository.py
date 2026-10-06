@@ -289,6 +289,18 @@ class SqliteMediaRecordRepository(MediaRecordPort, MediaMetadataPort):
     async def get(self, media_id: int) -> MediaRecord | None:
         return await asyncio.to_thread(self._get_sync, media_id)
 
+    async def get_by_source(self, source: str) -> MediaRecord | None:
+        def read() -> MediaRecord | None:
+            with self._lock:
+                rows = self.connection.execute(
+                    "SELECT * FROM media_files WHERE file_path = ? LIMIT 2", (source,)
+                ).fetchall()
+                if len(rows) > 1:
+                    raise MediaReadError("duplicate upload media sources")
+                return None if not rows else _media_from_row(rows[0])
+
+        return await asyncio.to_thread(read)
+
     async def delete(self, media_id: int) -> None:
         await asyncio.to_thread(self._delete_sync, media_id)
 
@@ -469,6 +481,16 @@ class MySqlMediaRecordRepository(MediaRecordPort, MediaMetadataPort):
 
     async def get(self, media_id: int) -> MediaRecord | None:
         return await asyncio.to_thread(self._get_sync, media_id)
+
+    async def get_by_source(self, source: str) -> MediaRecord | None:
+        def read_row(cursor: Any) -> MediaRecord | None:
+            cursor.execute(self._SELECT.replace("id = %s", "file_path = %s LIMIT 2"), (source,))
+            rows = cursor.fetchall()
+            if len(rows) > 1:
+                raise MediaReadError("duplicate upload media sources")
+            return None if not rows else _media_from_row(rows[0])
+
+        return await asyncio.to_thread(self._execute, read_row, write=False)
 
     async def delete(self, media_id: int) -> None:
         await asyncio.to_thread(self._delete_sync, media_id)

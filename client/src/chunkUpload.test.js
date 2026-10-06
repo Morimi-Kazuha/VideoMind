@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { uploadVideoInChunks, hasUploadProgress, validateVideoFile } from './chunkUpload.js'
+import { uploadVideoInChunks, hasUploadProgress, validateVideoFile, MAX_UPLOAD_BYTES } from './chunkUpload.js'
 import { setAuthToken } from './api.js'
 
 const file = () => Object.assign(new Blob(['video']), { name: 'clip.mp4', lastModified: 7 })
@@ -121,3 +121,144 @@ test('invalid user identities cannot read or create shared resumable credentials
   assert.equal(storage.get(legacy), 'A')
   assert.equal(storage.size, 1)
 })
+
+function immediateBackoff(t) {
+  const delays = []
+  t.mock.method(globalThis, 'setTimeout', (callback, delay) => {
+    delays.push(delay)
+    queueMicrotask(callback)
+    return 1
+  })
+  return delays
+}
+
+for (const status of ['network', 408, 429, 500, 503]) {
+  test(`recoverable chunk failure ${status} stops at four attempts and preserves credential`, async t => {
+    const storage = storageEnvironment()
+    const delays = immediateBackoff(t)
+    let attempts = 0
+    globalThis.fetch = async url => {
+      if (String(url).includes('init-upload')) return response({ uploadId: 'retry' })
+      assert.ok(String(url).includes('upload-chunk'))
+      attempts++
+      if (status === 'network') throw new TypeError('response lost')
+      return response(null, status, 'transient')
+    }
+    await assert.rejects(uploadVideoInChunks(file(), () => {}, undefined, 1), /分片 1\/1 上传失败/)
+    assert.equal(attempts, 4)
+    assert.equal(delays.length, 3)
+    delays.forEach((delay, index) => {
+      const base = 800 * 2 ** index
+      assert.ok(delay >= base * 0.75 && delay <= base * 1.25)
+    })
+    assert.equal(storage.get(scoped(1)), 'retry')
+  })
+}
+
+for (const status of [400, 401, 403, 404, 409, 413, 415]) {
+  test(`permanent chunk HTTP ${status} is attempted only once`, async t => {
+    storageEnvironment()
+    const delays = immediateBackoff(t)
+    let attempts = 0
+    globalThis.fetch = async url => {
+      if (String(url).includes('init-upload')) return response({ uploadId: 'permanent' })
+      attempts++
+      return response(null, status, 'permanent')
+    }
+    await assert.rejects(uploadVideoInChunks(file(), () => {}, undefined, 1))
+    assert.equal(attempts, 1)
+    assert.deepEqual(delays, [])
+  })
+}
+
+test('lost chunk response retries the same identity and progress counts one confirmed chunk', async t => {
+  storageEnvironment()
+  immediateBackoff(t)
+  const confirmed = new Set()
+  const identities = []
+  const progress = []
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes('init-upload')) return response({ uploadId: 'lost-chunk' })
+    if (String(url).includes('complete-upload')) return response({ id: 39 })
+    const identity = `${options.body.get('uploadId')}:${options.body.get('chunkIndex')}`
+    identities.push(identity)
+    confirmed.add(identity)
+    if (identities.length === 1) throw new TypeError('HTTP response lost after persistence')
+    return response({})
+  }
+  assert.equal((await uploadVideoInChunks(file(), value => progress.push(value), undefined, 1)).id, 39)
+  assert.deepEqual(identities, ['lost-chunk:0', 'lost-chunk:0'])
+  assert.equal(confirmed.size, 1)
+  assert.equal(progress.at(-1).completedChunks, 1)
+  assert.equal(progress.at(-1).uploadedBytes, 5)
+})
+
+test('five MiB logical bounds and at most three simultaneous requests skip server-confirmed parts', async () => {
+  const chunkBytes = 5 * 1024 * 1024
+  const large = { name: 'clip.mp4', size: chunkBytes * 5 + 7, lastModified: 7,
+    slice(start, end) { bounds.push([start, end]); return new Blob(['chunk']) } }
+  const key = `upload:1:${large.name}:${large.size}:7`
+  storageEnvironment([[key, 'resume']])
+  const bounds = [], indexes = [], pending = []
+  let active = 0, maximum = 0
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes('upload-status')) return response({ uploadedChunks: [0, 2] })
+    if (String(url).includes('complete-upload')) return response({ id: 39 })
+    assert.ok(String(url).includes('upload-chunk'))
+    indexes.push(Number(options.body.get('chunkIndex')))
+    maximum = Math.max(maximum, ++active)
+    await new Promise(resolve => pending.push(resolve))
+    active--
+    return response({})
+  }
+  const upload = uploadVideoInChunks(large, () => {}, undefined, 1)
+  while (pending.length < 3) await new Promise(resolve => setImmediate(resolve))
+  assert.equal(active, 3)
+  assert.deepEqual(indexes, [1, 3, 4])
+  pending.splice(0).forEach(resolve => resolve())
+  while (pending.length < 1) await new Promise(resolve => setImmediate(resolve))
+  pending.shift()()
+  assert.equal((await upload).id, 39)
+  assert.equal(maximum, 3)
+  assert.deepEqual(indexes, [1, 3, 4, 5])
+  assert.deepEqual(bounds, [[chunkBytes, 2 * chunkBytes], [3 * chunkBytes, 4 * chunkBytes],
+    [4 * chunkBytes, 5 * chunkBytes], [5 * chunkBytes, large.size]])
+  assert.match(validateVideoFile({ name: 'clip.mp4', size: MAX_UPLOAD_BYTES + 1 }), /上限/)
+})
+
+test('cancellation during retry backoff preserves upload ID and sends no complete', async () => {
+  const storage = storageEnvironment()
+  const controller = new AbortController()
+  let attempts = 0
+  globalThis.fetch = async url => {
+    if (String(url).includes('init-upload')) return response({ uploadId: 'cancelled' })
+    assert.ok(String(url).includes('upload-chunk'))
+    attempts++
+    return response(null, 503, 'temporary')
+  }
+  await assert.rejects(uploadVideoInChunks(file(), progress => {
+    if (progress.retryingCount) controller.abort()
+  }, controller.signal, 1), error => error.aborted === true)
+  assert.equal(attempts, 1)
+  assert.equal(storage.get(scoped(1)), 'cancelled')
+})
+
+for (const status of [404, 410]) {
+  test(`explicit dead session HTTP ${status} creates a fresh attempt`, async () => {
+    const storage = storageEnvironment([[scoped(1), 'expired']])
+    let init = 0, chunks = 0
+    globalThis.fetch = async url => {
+      if (String(url).includes('upload-status')) return response(null, status, 'expired')
+      if (String(url).includes('init-upload')) {
+        assert.equal(storage.has(scoped(1)), false)
+        init++
+        return response({ uploadId: 'fresh' })
+      }
+      if (String(url).includes('upload-chunk')) chunks++
+      return response({ id: 39 })
+    }
+    assert.equal((await uploadVideoInChunks(file(), () => {}, undefined, 1)).id, 39)
+    assert.equal(init, 1)
+    assert.equal(chunks, 1)
+  })
+}

@@ -5,6 +5,59 @@ application/domain behavior is composed behind FastAPI, a Celery worker, and
 the smaller CLI path. Adapters provide I/O; they do not define separate Agent
 or evidence policy.
 
+## Resumable upload
+
+The browser sends 5 MiB logical chunks with concurrency 3 (at most 410 chunks).
+It keeps only a user-scoped UUID upload credential locally; server-confirmed
+indexes determine resume progress. Network errors, HTTP 408/429/5xx have at most
+four attempts with exponential backoff and jitter. Permanent 4xx are not retried.
+
+Production uses Redis `upload:session:{uuid}` metadata and
+`upload:parts:{uuid}` Set, both renewed to approximately 24 hours. MinIO stores
+`chunk-uploads/{uuid}/part-{index}` bytes. Each chunk is persisted first, then a
+guarded Redis Lua operation records its index and renews both keys atomically.
+The operation refuses expired or completed sessions and cannot resurrect them.
+An uncertain Redis confirmation leaves the object available for deterministic
+re-upload. Pre-Set sessions get one guarded object-list migration; fresh
+sessions never count unconfirmed MinIO objects as progress.
+
+Completion validates ownership before acquiring the nonblocking per-upload
+`lock:upload-merge:{uuid}` redis-py Lock, then rechecks the completion receipt
+under that lock and verifies the exact index set `0..totalChunks-1`. Independent
+uploads can merge concurrently. Ordered local workspace merge computes MD5
+incrementally while bytes flow; this is a content fingerprint, not an upload ID
+or pre-upload deduplication key.
+
+The Redis lock has a 30-minute finite lease; the merge scope has a 20-minute
+deadline. The owning token is renewed through the library's `reacquire()` at
+chunk and persistence boundaries. Redis calls run outside the event loop;
+MySQL connection/read/write I/O is bounded. A cancelled DB save is allowed to
+settle before release because cancelling an asyncio await cannot cancel its
+executor-thread transaction. There is no periodic watchdog. See
+[redis-py Lock](https://redis.readthedocs.io/en/stable/lock.html).
+
+The final object key is `media/upload-{uuid}{suffix}`. MySQL stores its durable
+MediaRecord. Redis `upload:completed:{uuid}` retains the media ID, owner and
+session shape for approximately 24 hours after completion. **The lock prevents
+concurrent merges; the receipt provides business idempotency for later/lost
+response retries.** If the durable row committed but receipt creation failed,
+complete returns a retryable error and retains row/object/chunks. A retry under
+the lock finds the same durable row by its exact deterministic source, writes
+the receipt and returns the same media ID without another merge or insert.
+Both receipt owner and durable row owner are checked.
+
+Only after receipt success is temporary cleanup attempted, with its own
+10-second budget outside the merge deadline. Cleanup failure does not change
+the business result. Redis loss/expiry ends the coordination recovery window;
+process pauses/failover beyond a lease and orphan objects are explicit limits.
+This is not an exactly-once or distributed transaction guarantee. No SQL
+per-chunk writes, content deduplication, instant upload, dynamic chunks, Java
+lock client or server-side object compose are used. Local development keeps
+its explicit process-local upload adapter; it is not a production fallback.
+
+See [source audit](UPLOAD_FINALIZATION_AUDIT.md) and
+[validation and failure semantics](UPLOAD_FINALIZATION_REPORT.md).
+
 ## Request and preparation lifecycle
 
 1. The Vue client uploads media in bounded chunks and submits an analysis

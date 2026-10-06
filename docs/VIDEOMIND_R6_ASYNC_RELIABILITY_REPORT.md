@@ -1,5 +1,10 @@
 # VideoMind R6 Async Reliability Report
 
+> Upload implementation update (2026-10-06): the R6 results below are historical.
+> Current upload coordination and receipt-failure behavior are documented in
+> the [upload finalization report](UPLOAD_FINALIZATION_REPORT.md). The earlier
+> upload rollback description is superseded; unrelated R6 results are unchanged.
+
 日期：2026-09-30。仓库：`D:\Agent Learning\dovideo-python`。
 
 ## 1. Status

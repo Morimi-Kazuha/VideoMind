@@ -258,6 +258,14 @@ def create_sqlalchemy_engine(
             max_overflow=int(max_overflow),
             pool_timeout=float(pool_timeout),
         )
+        if url.startswith("mysql+pymysql:"):
+            # Executor-thread I/O must settle within the upload lease headroom
+            # even when the request/merge deadline cancels its asyncio await.
+            options["connect_args"] = {
+                "connect_timeout": max(1, int(pool_timeout)),
+                "read_timeout": 30,
+                "write_timeout": 30,
+            }
     return create_engine(url, **options)
 
 
@@ -740,6 +748,14 @@ class SqlAlchemyMediaRecordRepository:
 
     async def get(self, media_id: int) -> MediaRecord | None:
         return await asyncio.to_thread(self._get_sync, media_id)
+
+    async def get_by_source(self, source: str) -> MediaRecord | None:
+        def read() -> MediaRecord | None:
+            with self._sessions() as session:
+                row = session.scalars(select(MediaRow).where(MediaRow.file_path == source)).one_or_none()
+                return None if row is None else _media_value(row)
+
+        return await asyncio.to_thread(read)
 
     async def delete(self, media_id: int) -> None:
         await asyncio.to_thread(self._delete_sync, media_id)

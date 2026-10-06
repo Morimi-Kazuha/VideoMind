@@ -23,6 +23,7 @@ from dovideo.application import (
     MediaRecord,
     MediaStorageFailure,
     MediaUnauthorized,
+    MediaRecordFailure,
     UploadConflict,
     UploadNotFoundOrExpired,
     UploadSession,
@@ -35,6 +36,7 @@ from dovideo.application.ports.ingest import (
     ChunkObjectPort,
     MediaRecordPort,
     MergeLockPort,
+    MergeLockLease,
     UploadSessionPort,
 )
 from dovideo.application.ports.media import ObjectStoragePort
@@ -46,6 +48,8 @@ from .workspace import MediaWorkspace
 
 CHUNK_OBJECT_PREFIX = "chunk-uploads/"
 CHUNK_CONTENT_TYPE = "application/octet-stream"
+MERGE_TIMEOUT_SECONDS = 20 * 60
+CLEANUP_TIMEOUT_SECONDS = 10
 
 
 class ChunkUploadService:
@@ -64,6 +68,7 @@ class ChunkUploadService:
         ttl: timedelta = MEDIA_SESSION_TTL,
         max_chunk_bytes: int = MAX_CHUNK_BYTES,
         max_total_chunks: int = MAX_TOTAL_CHUNKS,
+        merge_timeout_seconds: float = MERGE_TIMEOUT_SECONDS,
     ) -> None:
         if ttl <= timedelta(0):
             raise ValueError("upload TTL must be positive")
@@ -87,6 +92,9 @@ class ChunkUploadService:
         self._ttl = ttl
         self._max_chunk_bytes = max_chunk_bytes
         self._max_total_chunks = max_total_chunks
+        if merge_timeout_seconds <= 0:
+            raise ValueError("merge timeout must be positive")
+        self._merge_timeout_seconds = merge_timeout_seconds
 
     async def initialize(
         self,
@@ -127,25 +135,29 @@ class ChunkUploadService:
             record = await self._records.get(marker.media_id)
             if record is None:
                 await self._sessions.delete_completed(canonical)
-            elif (
-                marker.filename is None
-                or marker.total_chunks is None
-                or marker.created_at is None
-            ):
-                # A marker without the original session shape cannot produce
-                # an honest status response.  Drop it and fall through to the
-                # active-session lookup instead of inventing total_chunks=1.
-                await self._sessions.delete_completed(canonical)
             else:
+                if record.user_id != user_id:
+                    raise MediaUnauthorized("completed media is owned by another user")
+                if marker.filename is None or marker.total_chunks is None or marker.created_at is None:
+                    # Preserve legacy receipts: deleting one destroys business
+                    # idempotency. Recover shape from surviving metadata only.
+                    original = await self._sessions.get_session(canonical)
+                    if original is None:
+                        raise UploadConflict("completed status metadata unavailable; retry complete")
+                    if original.user_id != user_id:
+                        raise MediaUnauthorized("upload is owned by another user")
+                    filename, total_chunks, created_at = original.filename, original.total_chunks, original.created_at
+                else:
+                    filename, total_chunks, created_at = marker.filename, marker.total_chunks, marker.created_at
                 # A completed session's active metadata may have been
                 # cleaned; the marker carries the original shape when it
                 # was written by this implementation.
                 session = UploadSession(
                     upload_id=canonical,
-                    filename=marker.filename,
-                    total_chunks=marker.total_chunks,
+                    filename=filename,
+                    total_chunks=total_chunks,
                     user_id=user_id,
-                    created_at=marker.created_at,
+                    created_at=created_at,
                     expires_at=marker.expires_at,
                     state=UploadSessionState.COMPLETED,
                 )
@@ -155,7 +167,7 @@ class ChunkUploadService:
                     completed_media_id=record.media_id,
                 )
         session = await self._require_active(canonical, user_id)
-        indexes = await self._sorted_chunk_indexes(canonical)
+        indexes = await self._sorted_chunk_indexes(session)
         return UploadStatus(session=session, uploaded_chunks=indexes)
 
     async def uploaded_chunks(self, upload_id: str, user_id: int) -> tuple[int, ...]:
@@ -184,6 +196,7 @@ class ChunkUploadService:
         payload = await _read_limited(chunk, self._max_chunk_bytes)
         if not payload:
             raise InvalidMediaInput("chunk cannot be empty")
+        await self._sorted_chunk_indexes(session)  # migrate legacy state before new confirmation
         object_name = _chunk_object_name(canonical, chunk_index)
 
         async def one_chunk() -> AsyncIterable[bytes]:
@@ -197,15 +210,15 @@ class ChunkUploadService:
             raise MediaStorageFailure("chunk object upload failed") from exc
         renewed = session.renewed(self._clock.now(), ttl=self._ttl)
         try:
-            await self._sessions.renew_session(canonical, renewed)
+            await self._sessions.confirm_chunks(renewed, (chunk_index,))
         except asyncio.CancelledError:
             raise
+        except (UploadConflict, UploadNotFoundOrExpired):
+            raise
         except Exception as exc:
-            try:
-                await self._chunks.delete_chunk(object_name)
-            except Exception as cleanup_error:
-                exc.add_note(f"chunk rollback failed: {cleanup_error!r}")
-            raise MediaStorageFailure("upload session renewal failed") from exc
+            # The write may have succeeded or a duplicate may already be
+            # confirmed. Never delete valid data after an uncertain Redis ACK.
+            raise MediaStorageFailure("upload chunk confirmation failed") from exc
 
     async def complete(self, upload_id: str, user_id: int) -> MediaRecord:
         """Merge exact indexes once, with a nonblocking per-upload lock."""
@@ -216,23 +229,59 @@ class ChunkUploadService:
         # unrelated caller must not be able to turn a held lock into a
         # misleading conflict response (and must never learn merge timing).
         await self._verify_owner(canonical, user_id)
-        lease = self._merge_lock.try_acquire(canonical)
+        try:
+            lease = await asyncio.to_thread(self._merge_lock.try_acquire, canonical)
+        except Exception as exc:
+            raise MediaStorageFailure("upload merge lock unavailable") from exc
         if lease is None:
             raise UploadConflict("upload is already being merged")
         try:
+            if lease.ttl_seconds is not None and self._merge_timeout_seconds >= lease.ttl_seconds:
+                raise MediaStorageFailure("merge deadline must be shorter than lock lease")
+            async with asyncio.timeout(self._merge_timeout_seconds):
+                result, cleanup_chunks = await self._complete_locked(canonical, user_id, lease)
+        except TimeoutError as exc:
+            raise MediaStorageFailure("upload merge deadline exceeded; retry complete") from exc
+        finally:
+            await asyncio.to_thread(lease.release)
+        # Core completion has succeeded. Cleanup has its own small deadline,
+        # outside the merge deadline, and cannot turn success into failure.
+        if cleanup_chunks:
+            try:
+                async with asyncio.timeout(CLEANUP_TIMEOUT_SECONDS):
+                    await self._best_effort_cleanup(canonical, cleanup_chunks)
+            except Exception:
+                pass
+        return result
+
+    async def _complete_locked(
+        self, canonical: str, user_id: int, lease: MergeLockLease,
+    ) -> tuple[MediaRecord, int]:
+        try:
             completed = await self._completed_record(canonical, user_id)
             if completed is not None:
-                return completed
+                return completed, 0
             session = await self._require_active(canonical, user_id)
-            indexes = await self._sorted_chunk_indexes(canonical)
+            object_name = _final_object_name(session)
+            source = self._object_storage.source_for(object_name)
+            committed = await self._records.get_by_source(source)
+            if committed is not None:
+                if committed.user_id != user_id:
+                    raise MediaUnauthorized("completed media is owned by another user")
+                # MySQL committed but receipt creation/response failed. Rebuild
+                # the receipt without a second merge or a second MediaRecord.
+                return await self._finish_completion(session, committed, lease)
+            indexes = await self._sorted_chunk_indexes(session)
             expected = tuple(range(session.total_chunks))
             if indexes != expected:
                 raise UploadConflict(
                     f"upload chunks are incomplete ({len(indexes)}/{session.total_chunks})"
                 )
+            session = session.renewed(self._clock.now(), ttl=self._ttl)
+            await self._sessions.renew_session(canonical, session)
 
             workspace = MediaWorkspace(parent=self._workspace_parent, prefix="dovideo-merge-")
-            result: MediaRecord | None = None
+            result: tuple[MediaRecord, int] | None = None
             merge_error: BaseException | None = None
             entered = False
             try:
@@ -243,6 +292,7 @@ class ChunkUploadService:
                     canonical,
                     user_id,
                     workspace,
+                    lease,
                 )
             except BaseException as exc:
                 merge_error = exc
@@ -268,8 +318,12 @@ class ChunkUploadService:
             if result is None:  # defensive; _merge_in_workspace always returns
                 raise MediaStorageFailure("merge did not produce a media record")
             return result
-        finally:
-            lease.release()
+        except (MediaUnauthorized, UploadConflict, UploadNotFoundOrExpired, MediaStorageFailure, MediaRecordFailure):
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise MediaStorageFailure("upload completion persistence failed") from exc
 
     async def _merge_in_workspace(
         self,
@@ -277,12 +331,13 @@ class ChunkUploadService:
         upload_id: str,
         user_id: int,
         workspace: MediaWorkspace,
-    ) -> MediaRecord:
+        lease: MergeLockLease,
+    ) -> tuple[MediaRecord, int]:
         # The merged file never escapes the active workspace.  It is consumed
         # by the object port before the scope is closed and is not returned in
         # any application value.
         merged_path = workspace.path / "merged.mp4"
-        return await self._merge_file(session, upload_id, user_id, merged_path)
+        return await self._merge_file(session, upload_id, user_id, merged_path, lease)
 
     async def _merge_file(
         self,
@@ -290,10 +345,12 @@ class ChunkUploadService:
         upload_id: str,
         user_id: int,
         merged_path: Path,
-    ) -> MediaRecord:
+        lease: MergeLockLease,
+    ) -> tuple[MediaRecord, int]:
         digest = hashlib.md5()
         with merged_path.open("wb") as output:
             for index in range(session.total_chunks):
+                await self._refresh_lease(lease)
                 object_name = _chunk_object_name(upload_id, index)
                 try:
                     stream = self._chunks.read_chunk(object_name)
@@ -307,7 +364,8 @@ class ChunkUploadService:
                 except Exception as exc:
                     raise MediaStorageFailure("chunk object read failed") from exc
 
-        object_name = f"{MEDIA_OBJECT_PREFIX}{uuid4().hex}{filename_suffix(session.filename)}"
+        await self._refresh_lease(lease)
+        object_name = _final_object_name(session)
         try:
             source = await self._object_storage.put_object(
                 _file_chunks(merged_path),
@@ -320,6 +378,8 @@ class ChunkUploadService:
             raise MediaStorageFailure("merged media object upload failed") from exc
         if not isinstance(source, str) or not source.strip():
             raise MediaStorageFailure("merged object storage returned an empty source")
+        if source != self._object_storage.source_for(object_name):
+            raise MediaStorageFailure("merged object storage returned an unstable source")
 
         record = MediaRecord(
             user_id=user_id,
@@ -329,39 +389,52 @@ class ChunkUploadService:
             uploaded_at=self._clock.now(),
             content_type=_content_type(session.filename),
         )
+        await self._refresh_lease(lease)
+        # A cancelled/failed DB call can have committed in its executor thread.
+        # Keep the deterministic object for recovery rather than deleting bytes
+        # potentially referenced by a durable row.
+        saving = asyncio.create_task(self._records.save(record))
         try:
-            saved = await self._records.save(record)
-        except asyncio.CancelledError as exc:
-            await _rollback_object(self._object_storage, source, exc)
-            raise
-        except Exception as exc:
-            await _rollback_object(self._object_storage, source, exc)
+            saved = await asyncio.shield(saving)
+        except asyncio.CancelledError:
+            # Cancelling to_thread does not cancel a database transaction.
+            # Keep the lease until the bounded DB call settles, then propagate
+            # cancellation. Retry can recover a row that actually committed.
+            try:
+                await asyncio.shield(saving)
+            except Exception:
+                pass
             raise
         if not isinstance(saved, MediaRecord) or saved.media_id is None:
-            error = TypeError("media record port returned no persisted id")
-            await _rollback_object(self._object_storage, source, error)
-            raise error
+            raise MediaStorageFailure("media record port returned no persisted id")
+
+        return await self._finish_completion(session, saved, lease)
+
+    async def _finish_completion(
+        self, session: UploadSession, saved: MediaRecord, lease: MergeLockLease,
+    ) -> tuple[MediaRecord, int]:
+        await self._refresh_lease(lease)
 
         marker = CompletedUploadMarker(
-            upload_id=upload_id,
-            user_id=user_id,
+            upload_id=session.upload_id,
+            user_id=session.user_id,
             media_id=saved.media_id,
             expires_at=self._clock.now() + self._ttl,
             filename=session.filename,
             total_chunks=session.total_chunks,
             created_at=session.created_at,
         )
-        try:
-            await self._sessions.set_completed(marker)
-        except asyncio.CancelledError as exc:
-            await self._rollback_completed_failure(saved, source, exc)
-            raise
-        except Exception as exc:
-            await self._rollback_completed_failure(saved, source, exc)
-            raise
+        # Receipt outage is a visible retryable failure. Durable row/object and
+        # valid chunks remain; the next complete recovers this exact result.
+        await self._sessions.set_completed(marker)
 
-        await self._best_effort_cleanup(upload_id, session.total_chunks)
-        return saved
+        return saved, session.total_chunks
+
+    async def _refresh_lease(self, lease: MergeLockLease) -> None:
+        try:
+            await asyncio.to_thread(lease.refresh)
+        except Exception as exc:
+            raise MediaStorageFailure("upload merge lease lost; retry complete") from exc
 
     async def _best_effort_cleanup(self, upload_id: str, total_chunks: int) -> None:
         for index in range(total_chunks):
@@ -374,21 +447,10 @@ class ChunkUploadService:
         except Exception:
             pass
 
-    async def _rollback_completed_failure(
-        self,
-        record: MediaRecord,
-        source: str,
-        original: BaseException,
-    ) -> None:
-        await _rollback_object(self._object_storage, source, original)
-        if record.media_id is not None:
-            try:
-                await self._records.delete(record.media_id)
-            except Exception as cleanup_error:
-                original.add_note(f"media record rollback failed: {cleanup_error!r}")
-                setattr(original, "record_cleanup_error", cleanup_error)
-
     async def _require_active(self, upload_id: str, user_id: int) -> UploadSession:
+        marker = await self._valid_completed_marker(upload_id, user_id)
+        if marker is not None:
+            raise UploadConflict("upload has already completed")
         session = await self._sessions.get_session(upload_id)
         if session is None:
             marker = await self._sessions.get_completed(upload_id)
@@ -421,9 +483,15 @@ class ChunkUploadService:
         if isinstance(marker, CompletedUploadMarker) and marker.user_id != user_id:
             raise MediaUnauthorized("upload is owned by another user")
 
-    async def _sorted_chunk_indexes(self, upload_id: str) -> tuple[int, ...]:
+    async def _sorted_chunk_indexes(self, session: UploadSession) -> tuple[int, ...]:
         try:
-            indexes = tuple(await self._chunks.list_chunks(upload_id))
+            confirmed = await self._sessions.get_uploaded_chunks(session.upload_id)
+            if confirmed is None:
+                # One-time rolling upgrade for pre-Set sessions only. Fresh
+                # sessions never treat unconfirmed MinIO objects as progress.
+                confirmed = tuple(await self._chunks.list_chunks(session.upload_id))
+                await self._sessions.confirm_chunks(session, confirmed)
+            indexes = tuple(confirmed)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -513,18 +581,6 @@ async def _file_chunks(path: Path, *, chunk_bytes: int = STREAM_CHUNK_BYTES) -> 
         await asyncio.to_thread(stream.close)
 
 
-async def _rollback_object(
-    storage: ObjectStoragePort,
-    source: str,
-    original: BaseException,
-) -> None:
-    try:
-        await storage.delete_object(source)
-    except Exception as cleanup_error:
-        original.add_note(f"merged object rollback failed: {cleanup_error!r}")
-        setattr(original, "object_cleanup_error", cleanup_error)
-
-
 def _canonical_upload_id(upload_id: str) -> str:
     if not isinstance(upload_id, str):
         raise InvalidMediaInput("upload_id must be text")
@@ -536,6 +592,10 @@ def _canonical_upload_id(upload_id: str) -> str:
 
 def _chunk_object_name(upload_id: str, index: int) -> str:
     return f"{CHUNK_OBJECT_PREFIX}{upload_id}/part-{index}"
+
+
+def _final_object_name(session: UploadSession) -> str:
+    return f"{MEDIA_OBJECT_PREFIX}upload-{session.upload_id}{filename_suffix(session.filename)}"
 
 
 def _validate_total_chunks(total_chunks: int, maximum: int) -> None:

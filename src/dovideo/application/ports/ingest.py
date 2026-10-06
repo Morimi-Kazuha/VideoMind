@@ -26,6 +26,10 @@ class MediaRecordPort(Protocol):
     async def get(self, media_id: int) -> MediaRecord | None:
         ...
 
+    async def get_by_source(self, source: str) -> MediaRecord | None:
+        """Recover a committed upload result after receipt/response failure."""
+        ...
+
     async def delete(self, media_id: int) -> None:
         """Delete a record during a failed merge rollback."""
         ...
@@ -72,6 +76,14 @@ class UploadSessionPort(Protocol):
     async def renew_session(self, upload_id: str, session: UploadSession) -> None:
         ...
 
+    async def confirm_chunks(self, session: UploadSession, indexes: tuple[int, ...]) -> None:
+        """Atomically confirm persisted objects and renew active state only."""
+        ...
+
+    async def get_uploaded_chunks(self, upload_id: str) -> tuple[int, ...] | None:
+        """Confirmed indexes; None denotes pre-Set metadata needing migration."""
+        ...
+
     async def delete_session(self, upload_id: str) -> None:
         ...
 
@@ -92,6 +104,15 @@ class MergeLockLease(Protocol):
     """A nonblocking per-upload lease released by the owning task."""
 
     def release(self) -> None:
+        ...
+
+    @property
+    def ttl_seconds(self) -> float | None:
+        """Finite Redis lease duration; local locks have no expiration."""
+        ...
+
+    def refresh(self) -> None:
+        """Renew only the owning lease; raise if ownership has been lost."""
         ...
 
 

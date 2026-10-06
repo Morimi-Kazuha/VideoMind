@@ -13,10 +13,14 @@ import secrets
 import time
 from datetime import datetime, timezone
 from typing import Any
+from redis.exceptions import RedisError
 
 from dovideo.application import (
     CompletedUploadMarker,
     MEDIA_SESSION_TTL,
+    MediaStorageFailure,
+    UploadConflict,
+    UploadNotFoundOrExpired,
     UploadSession,
     UploadSessionState,
 )
@@ -164,24 +168,31 @@ class RedisTaskLock(TaskLockPort):
 
 
 class _RedisMergeLease(MergeLockLease):
-    def __init__(self, owner: "RedisMergeLock", key: str, token: str) -> None:
-        self._owner = owner
-        self._key = key
-        self._token = token
+    def __init__(self, lock: Any, ttl_seconds: float) -> None:
+        self._lock = lock
+        self._ttl_seconds = ttl_seconds
         self._released = False
+
+    @property
+    def ttl_seconds(self) -> float:
+        return self._ttl_seconds
+
+    def refresh(self) -> None:
+        # redis-py reacquire checks the token atomically before renewing TTL.
+        self._lock.reacquire()
 
     def release(self) -> None:
         if self._released:
             return
         self._released = True
         try:
-            self._owner.client.eval(_LOCK_RELEASE_SCRIPT, 1, self._key, self._token)
+            self._lock.release()
         except Exception:
             return
 
 
 class RedisMergeLock:
-    """Synchronous nonblocking upload-merge lock for ``ChunkUploadService``."""
+    """Per-upload redis-py Lock; service calls run outside the event loop."""
 
     def __init__(self, client: Any, *, ttl_ms: int = 30 * 60 * 1000) -> None:
         if ttl_ms <= 0:
@@ -194,11 +205,41 @@ class RedisMergeLock:
         return f"{self.prefix}:{upload_id}"
 
     def try_acquire(self, upload_id: str) -> MergeLockLease | None:
-        token = secrets.token_urlsafe(32)
-        key = self.redis_key(upload_id)
-        if not self.client.set(key, token, nx=True, px=self.ttl_ms):
+        ttl = self.ttl_ms / 1000
+        lock = self.client.lock(
+            self.redis_key(upload_id), timeout=ttl, blocking=False,
+            # Acquisition/refresh/release can run on different executor threads.
+            thread_local=False,
+        )
+        if not lock.acquire(blocking=False):
             return None
-        return _RedisMergeLease(self, key, token)
+        return _RedisMergeLease(lock, ttl)
+
+
+_CONFIRM_UPLOAD_CHUNKS = """
+if redis.call('exists', KEYS[3]) == 1 then return -2 end
+local raw = redis.call('get', KEYS[1])
+if not raw then return -1 end
+local current = cjson.decode(raw)
+local proposed = cjson.decode(ARGV[1])
+if current.userId ~= proposed.userId or
+   current.totalChunks ~= proposed.totalChunks or
+   current.state ~= 'ACTIVE' then return -2 end
+for i = 3, #ARGV do
+  local index = tonumber(ARGV[i])
+  if not index or index < 0 or index >= current.totalChunks or
+     index ~= math.floor(index) then return -2 end
+end
+local ttl = math.max(tonumber(ARGV[2]), redis.call('ttl', KEYS[1]))
+if current.expiresAt > proposed.expiresAt then
+  proposed.expiresAt = current.expiresAt
+end
+proposed.partsTracked = true
+redis.call('set', KEYS[1], cjson.encode(proposed), 'EX', ttl, 'XX')
+for i = 3, #ARGV do redis.call('sadd', KEYS[2], ARGV[i]) end
+redis.call('expire', KEYS[2], ttl)
+return 1
+"""
 
 
 class RedisTaskQuota:
@@ -230,6 +271,7 @@ class RedisUploadSessionStore:
         self.ttl_seconds = int(ttl_seconds)
         self.session_prefix = "upload:session"
         self.completed_prefix = "upload:completed"
+        self.parts_prefix = "upload:parts"
 
     def _session_key(self, upload_id: str) -> str:
         return f"{self.session_prefix}:{upload_id}"
@@ -237,17 +279,28 @@ class RedisUploadSessionStore:
     def _completed_key(self, upload_id: str) -> str:
         return f"{self.completed_prefix}:{upload_id}"
 
+    def _parts_key(self, upload_id: str) -> str:
+        return f"{self.parts_prefix}:{upload_id}"
+
+    async def _call(self, operation, *args, **kwargs):
+        try:
+            return await asyncio.to_thread(operation, *args, **kwargs)
+        except RedisError as exc:
+            raise MediaStorageFailure("upload coordination unavailable") from exc
+
     async def create_session(self, session: UploadSession) -> None:
-        await asyncio.to_thread(
+        created = await self._call(
             self.client.set,
             self._session_key(session.upload_id),
             json.dumps(_session_json(session), separators=(",", ":"), sort_keys=True),
             ex=_seconds_until(session.expires_at),
             nx=True,
         )
+        if not created:
+            raise UploadConflict("upload session already exists")
 
     async def get_session(self, upload_id: str) -> UploadSession | None:
-        value = await asyncio.to_thread(self.client.get, self._session_key(upload_id))
+        value = await self._call(self.client.get, self._session_key(upload_id))
         if value is None:
             return None
         try:
@@ -259,18 +312,46 @@ class RedisUploadSessionStore:
             return None
 
     async def renew_session(self, upload_id: str, session: UploadSession) -> None:
-        await asyncio.to_thread(
-            self.client.set,
-            self._session_key(upload_id),
+        if upload_id != session.upload_id:
+            raise ValueError("upload session identity mismatch")
+        await self.confirm_chunks(session, ())
+
+    async def confirm_chunks(self, session: UploadSession, indexes: tuple[int, ...]) -> None:
+        result = await self._call(
+            self.client.eval, _CONFIRM_UPLOAD_CHUNKS, 3,
+            self._session_key(session.upload_id), self._parts_key(session.upload_id),
+            self._completed_key(session.upload_id),
             json.dumps(_session_json(session), separators=(",", ":"), sort_keys=True),
-            ex=_seconds_until(session.expires_at),
+            _seconds_until(session.expires_at), *indexes,
         )
+        if result == -1:
+            raise UploadNotFoundOrExpired("upload does not exist or has expired")
+        if result != 1:
+            raise UploadConflict("upload is no longer active")
+
+    async def get_uploaded_chunks(self, upload_id: str) -> tuple[int, ...] | None:
+        def read() -> tuple[int, ...] | None:
+            # A transaction gives migration detection and Set a single snapshot.
+            with self.client.pipeline(transaction=True) as pipe:
+                pipe.get(self._session_key(upload_id))
+                pipe.smembers(self._parts_key(upload_id))
+                raw, members = pipe.execute()
+            if raw is not None and not json.loads(raw).get("partsTracked", False):
+                return None
+            return tuple(sorted(int(value) for value in members))
+
+        try:
+            return await self._call(read)
+        except (ValueError, TypeError) as exc:
+            raise MediaStorageFailure("upload chunk state is invalid") from exc
 
     async def delete_session(self, upload_id: str) -> None:
-        await asyncio.to_thread(self.client.delete, self._session_key(upload_id))
+        await self._call(
+            self.client.delete, self._session_key(upload_id), self._parts_key(upload_id)
+        )
 
     async def get_completed(self, upload_id: str) -> CompletedUploadMarker | None:
-        value = await asyncio.to_thread(self.client.get, self._completed_key(upload_id))
+        value = await self._call(self.client.get, self._completed_key(upload_id))
         if value is None:
             return None
         try:
@@ -282,7 +363,7 @@ class RedisUploadSessionStore:
             return None
 
     async def set_completed(self, marker: CompletedUploadMarker) -> None:
-        await asyncio.to_thread(
+        await self._call(
             self.client.set,
             self._completed_key(marker.upload_id),
             json.dumps(_marker_json(marker), separators=(",", ":"), sort_keys=True),
@@ -290,7 +371,7 @@ class RedisUploadSessionStore:
         )
 
     async def delete_completed(self, upload_id: str) -> None:
-        await asyncio.to_thread(self.client.delete, self._completed_key(upload_id))
+        await self._call(self.client.delete, self._completed_key(upload_id))
 
 
 def _session_json(value: UploadSession) -> dict[str, Any]:
@@ -302,6 +383,7 @@ def _session_json(value: UploadSession) -> dict[str, Any]:
         "createdAt": _as_utc(value.created_at).isoformat(),
         "expiresAt": _as_utc(value.expires_at).isoformat(),
         "state": value.state.value,
+        "partsTracked": True,
     }
 
 

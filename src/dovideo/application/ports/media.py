@@ -31,6 +31,10 @@ class ObjectStoragePort(Protocol):
     async def delete_object(self, source: str) -> None:
         """Delete an object previously returned by :meth:`put_object`."""
 
+    def source_for(self, object_name: str) -> str:
+        """Return the stable source identity for a deterministic object key."""
+        ...
+
 
 class ReadableSourcePort(Protocol):
     """Resolve an object/source token to an ASR/OCR-readable token."""

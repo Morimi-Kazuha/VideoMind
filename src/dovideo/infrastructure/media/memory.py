@@ -146,6 +146,9 @@ class InMemoryMediaRecordStore(MediaRecordPort):
     async def get(self, media_id: int) -> MediaRecord | None:
         return self.records.get(media_id)
 
+    async def get_by_source(self, source: str) -> MediaRecord | None:
+        return next((record for record in self.records.values() if record.source == source), None)
+
     async def delete(self, media_id: int) -> None:
         if self.delete_error is not None:
             raise self.delete_error
@@ -227,6 +230,7 @@ class InMemoryUploadSessionStore(UploadSessionPort):
         self.clock = clock or SystemClock()
         self.sessions: dict[str, UploadSession] = {}
         self.completed: dict[str, CompletedUploadMarker] = {}
+        self.parts: dict[str, set[int]] = {}
         self.create_calls = 0
         self.renew_calls = 0
         self.delete_session_calls: list[str] = []
@@ -239,6 +243,7 @@ class InMemoryUploadSessionStore(UploadSessionPort):
     async def create_session(self, session: UploadSession) -> None:
         self._purge_expired()
         self.sessions[session.upload_id] = session
+        self.parts[session.upload_id] = set()
         self.create_calls += 1
 
     async def get_session(self, upload_id: str) -> UploadSession | None:
@@ -252,10 +257,31 @@ class InMemoryUploadSessionStore(UploadSessionPort):
         self.sessions[upload_id] = session
         self.renew_calls += 1
 
+    async def confirm_chunks(self, session: UploadSession, indexes: tuple[int, ...]) -> None:
+        from dovideo.application import UploadConflict, UploadNotFoundOrExpired
+
+        self._purge_expired()
+        if await self.get_completed(session.upload_id) is not None:
+            raise UploadConflict("upload has already completed")
+        current = self.sessions.get(session.upload_id)
+        if current is None:
+            raise UploadNotFoundOrExpired("upload does not exist or has expired")
+        if current.user_id != session.user_id or current.total_chunks != session.total_chunks:
+            raise UploadConflict("upload session changed")
+        if any(not 0 <= index < session.total_chunks for index in indexes):
+            raise UploadConflict("upload chunk state is invalid")
+        self.parts.setdefault(session.upload_id, set()).update(indexes)
+        await self.renew_session(session.upload_id, session)
+
+    async def get_uploaded_chunks(self, upload_id: str) -> tuple[int, ...] | None:
+        self._purge_expired()
+        return tuple(sorted(self.parts.get(upload_id, set())))
+
     async def delete_session(self, upload_id: str) -> None:
         if self.delete_session_error is not None:
             raise self.delete_session_error
         self.sessions.pop(upload_id, None)
+        self.parts.pop(upload_id, None)
         self.delete_session_calls.append(upload_id)
 
     async def get_completed(self, upload_id: str) -> CompletedUploadMarker | None:
@@ -282,9 +308,16 @@ class InMemoryUploadSessionStore(UploadSessionPort):
         for upload_id, session in tuple(self.sessions.items()):
             if session.is_expired(now):
                 del self.sessions[upload_id]
+                self.parts.pop(upload_id, None)
 
 
 class _InMemoryMergeLease(MergeLockLease):
+    ttl_seconds = None
+
+    def refresh(self) -> None:
+        if self._released:
+            raise RuntimeError("merge lease has been released")
+
     def __init__(self, lock: threading.Lock) -> None:
         self._lock = lock
         self._released = False

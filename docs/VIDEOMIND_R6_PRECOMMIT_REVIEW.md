@@ -1,5 +1,11 @@
 # VideoMind R6 Pre-Commit Review
 
+> Upload implementation update (2026-10-06): this is a historical R6 review.
+> The current upload path uses a Redis chunk Set, redis-py merge Lock and
+> durable-source receipt recovery instead of the older receipt-failure
+> rollback described below. See [finalization audit](UPLOAD_FINALIZATION_AUDIT.md)
+> and [current validation](UPLOAD_FINALIZATION_REPORT.md).
+
 Review date: 2026-09-30。审查对象是已有 R6 工作树及本轮必要加固，不改变产品定位。
 
 ## 1. Status

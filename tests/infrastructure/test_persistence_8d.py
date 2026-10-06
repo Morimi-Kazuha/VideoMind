@@ -100,6 +100,9 @@ class _FakeCursor:
             self.result = [(self.database.next_media_id,)]
             return
         if compact.startswith("select id, user_id") and "from media_files" in compact:
+            if "file_path = %s" in compact:
+                self.result = [row for row in self.database.media.values() if row[4] == values[0]]
+                return
             media_id = int(values[0])
             row = self.database.media.get(media_id)
             self.result = [] if row is None else [(row[0], *row[1:])]
@@ -306,6 +309,8 @@ async def test_sqlite_media_reopen_assignment_upsert_delete_and_media_ref(tmp_pa
     saved = await repository.save(_record())
     assert saved.media_id is not None
     assert (await repository.get(saved.media_id)) == saved
+    assert await repository.get_by_source(saved.source) == saved
+    assert await repository.get_by_source("memory://missing") is None
     assert (await repository.get_media(saved.media_id)).source == saved.source  # type: ignore[union-attr]
     explicit = await repository.save(_record(saved.media_id, source="memory://updated"))
     assert explicit.source == "memory://updated"
@@ -316,6 +321,7 @@ async def test_sqlite_media_reopen_assignment_upsert_delete_and_media_ref(tmp_pa
     assert (await reopened.get(saved.media_id)).content_type == "video/mp4"  # type: ignore[union-attr]
     await reopened.delete(saved.media_id)
     assert await reopened.get(saved.media_id) is None
+    assert await reopened.get_by_source("memory://updated") is None
     reopened.close()
 
 
@@ -338,6 +344,8 @@ async def test_mysql_media_mapping_roundtrip_and_rollback() -> None:
     assert loaded.source == "memory://video"
     assert loaded.content_hash == "abcdef"
     assert loaded.content_type is None  # V1 has no content_type column.
+    assert await repository.get_by_source(saved.source) == loaded
+    assert await repository.get_by_source("memory://missing") is None
     await repository.save(_record(saved.media_id, source="memory://updated"))
     assert (await repository.get(saved.media_id)).source == "memory://updated"  # type: ignore[union-attr]
     database.fail_next = True
