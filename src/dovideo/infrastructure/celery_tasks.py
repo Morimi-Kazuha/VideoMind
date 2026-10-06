@@ -88,7 +88,11 @@ def register_analysis_task(
         if outcome.disposition in {WorkerDisposition.RETRY, WorkerDisposition.LOCKED}:
             raise self.retry(
                 exc=RuntimeError("TaskWorker requested another delivery"),
-                countdown=selected_settings.retry_countdown_seconds,
+                countdown=(
+                    selected_settings.locked_countdown_seconds
+                    if outcome.disposition is WorkerDisposition.LOCKED
+                    else selected_settings.retry_countdown_seconds
+                ),
                 max_retries=None,
             )
         return {

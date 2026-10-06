@@ -31,6 +31,7 @@ from dovideo.domain import (
 from dovideo.domain._base import DomainModel, normalize_nullable_aliases, tuple_or_empty
 
 from .analysis_task_keys import goal_digest
+from .task_lease import TaskLeaseUnavailable, check_task_lease
 from .model_routing import (
     ModelProfile,
     ModelRouteHistory,
@@ -450,17 +451,24 @@ class ExecutionRecordService:
         )
 
     async def _call(self, operation: str, *args: Any, **kwargs: Any) -> Any:
+        check_task_lease()
         method = getattr(self.repository, operation, None)
         if not callable(method):
             raise ExecutionRecordPersistenceError(
                 f"execution record repository has no {operation} operation"
             )
         try:
-            value = await asyncio.to_thread(method, *args, **kwargs)
+            def guarded_call():
+                check_task_lease()
+                return method(*args, **kwargs)
+
+            value = await asyncio.to_thread(guarded_call)
+            check_task_lease()
             if inspect.isawaitable(value):
-                return await value
+                value = await value
+                check_task_lease()
             return value
-        except ExecutionRecordError:
+        except (ExecutionRecordError, TaskLeaseUnavailable):
             raise
         except Exception as exc:
             raise ExecutionRecordPersistenceError(

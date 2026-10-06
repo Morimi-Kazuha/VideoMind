@@ -184,6 +184,7 @@ def test_envelope_is_bounded_json_and_celery_disallows_pickle() -> None:
     assert app.conf.task_acks_late is True
     assert app.conf.task_acks_on_failure_or_timeout is False
     assert app.conf.task_reject_on_worker_lost is True
+    assert app.conf.worker_prefetch_multiplier == 1
 
 
 @pytest.mark.asyncio
@@ -256,3 +257,53 @@ def test_registered_task_acknowledges_stale_delivery_without_retry() -> None:
 
     assert result["disposition"] == "STALE"
     assert runtime.calls == [_request()]
+
+
+@pytest.mark.parametrize("disposition, countdown", [("LOCKED", 5.0), ("RETRY", 0.25)])
+def test_contention_uses_delayed_transport_retry_without_business_attempt_policy(monkeypatch, disposition, countdown):
+    app = create_celery_app(_settings())
+    task = register_analysis_task(app, runtime_factory=lambda: _TaskRuntime(disposition))
+    calls = []
+    def retry(**kwargs):
+        calls.append(kwargs)
+        raise Retry()
+    monkeypatch.setattr(task, "retry", retry)
+    with pytest.raises(Retry): task.run(CeleryAnalysisEnvelope.from_request(_request()).as_message())
+    assert calls[0]["countdown"] == countdown
+    assert calls[0]["max_retries"] is None
+
+
+def test_lease_loss_uses_recovery_retry_and_default_composition_is_r4(monkeypatch):
+    from dovideo.application.task_lease import TaskLeaseLost
+    from dovideo.infrastructure.r4_runtime import R4WorkerRuntime
+    class Runtime:
+        async def process(self, request): raise TaskLeaseLost("not owner")
+    selected = []
+    def factory(*, settings):
+        selected.append(settings)
+        return Runtime()
+    monkeypatch.setattr(R4WorkerRuntime, "from_environment", factory)
+    app = create_celery_app(_settings())
+    task = register_analysis_task(app)
+    calls = []
+    def retry(**kwargs):
+        calls.append(kwargs)
+        raise Retry()
+    monkeypatch.setattr(task, "retry", retry)
+    with pytest.raises(Retry): task.run(CeleryAnalysisEnvelope.from_request(_request()).as_message())
+    assert selected == [_settings()]
+    assert calls[0]["max_retries"] is None and calls[0]["countdown"] == 0.25
+
+
+@pytest.mark.parametrize("delay", [0, -1, float("nan"), float("inf"), True])
+def test_locked_delay_rejects_invalid_or_hot_loop_configuration(delay):
+    with pytest.raises(RuntimeError):
+        CeleryTransportSettings(_settings().broker_url, locked_countdown_seconds=delay)
+
+
+def test_locked_delay_environment_override():
+    settings = CeleryTransportSettings.from_environment({
+        "DOVIDEO_PROFILE": "production", "DOVIDEO_BROKER_URL": _settings().broker_url,
+        "DOVIDEO_CELERY_LOCKED_COUNTDOWN_SECONDS": "12",
+    })
+    assert settings.locked_countdown_seconds == 12

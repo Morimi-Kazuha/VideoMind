@@ -60,6 +60,21 @@ See [source audit](UPLOAD_FINALIZATION_AUDIT.md) and
 
 ## Request and preparation lifecycle
 
+Analysis TaskLock is a renewable owner-token lease, independent of the upload
+MergeLock. `SET NX PX` retains the default 15-minute TTL; TaskWorker starts a
+per-delivery keeper which refreshes at TTL/3 through the existing atomic
+GET-token/PEXPIRE Lua operation. LOCKED deliveries use a separate delayed
+transport retry (5 seconds by default), without consuming a business attempt.
+Transient renewal exceptions retry within the conservative last known expiry;
+false ownership or expiry cancels cooperative work and prevents subsequent
+worker, checkpoint and execution-history writes. Renewal is joined before
+owner-safe release on every exit. Crash stops renewal, TTL expires, and late-ACK
+RabbitMQ delivery can resume lifecycle/checkpoint work. Result persistence still
+precedes lifecycle completion and the completion marker. This is not database
+fencing or exactly-once: already-dispatched thread/third-party I/O may settle
+after cancellation. See [lease audit](TASK_LEASE_SOURCE_AUDIT.md) and
+[fault-window report](TASK_LEASE_REPORT.md).
+
 1. The Vue client uploads media in bounded chunks and submits an analysis
    goal. FastAPI returns a task identity rather than holding the request open
    for extraction and model work. REST and SSE expose status and results.

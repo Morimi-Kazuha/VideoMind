@@ -295,20 +295,29 @@ class _CompletionStore(TaskCompletionPort):
 
 
 class _LockStore(TaskLockPort):
+    lease_seconds = None  # Process-local asyncio lock does not expire.
+
+    async def refresh(self, key: TaskKey, token: object) -> bool:
+        lock = self.values.get(key)
+        return lock is not None and lock.locked() and self.tokens.get(key) is token
+
     def __init__(self) -> None:
         self.values: dict[TaskKey, asyncio.Lock] = {}
+        self.tokens: dict[TaskKey, object] = {}
 
     async def acquire(self, key: TaskKey) -> object | None:
         lock = self.values.setdefault(key, asyncio.Lock())
         if lock.locked():
             return None
         await lock.acquire()
-        return object()
+        token = object()
+        self.tokens[key] = token
+        return token
 
     async def release(self, key: TaskKey, token: object) -> None:
-        del token
         lock = self.values.get(key)
-        if lock is not None and lock.locked():
+        if lock is not None and lock.locked() and self.tokens.get(key) is token:
+            self.tokens.pop(key, None)
             lock.release()
 
 

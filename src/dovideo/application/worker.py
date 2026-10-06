@@ -9,8 +9,10 @@ raising a broker-specific retry exception; a future adapter can translate
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 from dovideo.domain import (
     AgentState,
@@ -37,6 +39,7 @@ from .dead_letter_handoff import PendingDeadLetterHandoff
 from .errors import BudgetExceededError
 from .mode_profiles import mode_profile_for
 from .task_lifecycle import DEFAULT_MAX_ATTEMPTS, TaskLifecycle
+from .task_lease import TaskLeaseKeeper, TaskLeaseUnavailable, check_task_lease
 from .value_objects import AnalysisRequest
 
 
@@ -142,6 +145,7 @@ class TaskWorker:
         if not isinstance(request, AnalysisRequest):
             raise TypeError("request must be an AnalysisRequest")
         key = request.task_key
+        acquired_at = time.monotonic()
         token = await self._lock.acquire(key)
         if token is None:
             return WorkerOutcome(
@@ -149,6 +153,20 @@ class TaskWorker:
                 TaskLifecycle.new(key, max_attempts=self._max_attempts),
             )
 
+        try:
+            lease = TaskLeaseKeeper(self._lock, key, token, acquired_at=acquired_at)
+            return await lease.run(lambda: self._handle_locked(request, lease, profile=profile))
+        finally:
+            # Keeper.run joins renewal on every exit before releasing ownership.
+            try:
+                await self._lock.release(key, token)
+            except Exception:
+                pass  # Finite TTL remains the crash/release-error fallback.
+
+    async def _handle_locked(
+        self, request: AnalysisRequest, lease: TaskLeaseKeeper, *, profile: ModeProfile | None,
+    ) -> WorkerOutcome:
+        key = request.task_key
         current = TaskLifecycle.new(key, max_attempts=self._max_attempts)
         started: TaskLifecycle | None = None
         outcome: WorkerOutcome | None = None
@@ -179,8 +197,10 @@ class TaskWorker:
                     # Applying a durable staged plan is worker work too. A
                     # storage failure here must follow the bounded retry path.
                     started = current.begin_attempt()
+                    check_task_lease()
                     await self._lifecycle.save_lifecycle(started)
                     await self._publish(key, started.status, started.stage)
+                    check_task_lease()
                     applied = await begin_revision(
                         key.media_id, key.goal, key.mode, request_id=current.request_id,
                     )
@@ -195,6 +215,7 @@ class TaskWorker:
                 outcome = await self._recover_completed(key, started or current, saved)
                 return outcome
             if marker_completed and self._completion is not None:
+                check_task_lease()
                 await self._completion.clear_completed(key)
 
             if current.terminal:
@@ -208,6 +229,7 @@ class TaskWorker:
 
             if started is None:
                 started = current.begin_attempt()
+                check_task_lease()
                 await self._lifecycle.save_lifecycle(started)
                 await self._publish(
                     key,
@@ -246,6 +268,7 @@ class TaskWorker:
                     raise RuntimeError(
                         "legacy checkpoint has no durable X2-B execution history"
                     )
+                check_task_lease()
                 execution = await self._execution_records.start_or_resume(
                     key,
                     force_new=(
@@ -274,20 +297,28 @@ class TaskWorker:
             )
             if not isinstance(state, AgentState) or state.result is None:
                 raise ValueError("analysis did not produce a result")
+            check_task_lease()
             await self._results.save_result(key, state)
             completed = started.complete(self._result_text(state))
+            check_task_lease()
             await self._lifecycle.save_lifecycle(completed)
             await self._mark_completed(key)
             await self._publish(key, TaskStatus.completed(state), TaskStage.COMPLETED)
             outcome = WorkerOutcome(WorkerDisposition.COMPLETED, completed, state)
             return outcome
         except BaseException as error:
+            # Lease loss is transport recovery, never an old-owner lifecycle
+            # failure write or business DLQ decision. Preserve the reservation.
+            check_task_lease()
+            if isinstance(error, TaskLeaseUnavailable):
+                raise
             if isinstance(error, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
                 raise
             if started is None:
                 raise
             if not self._is_permanent(error) and started.can_retry:
                 retrying = started.retry()
+                check_task_lease()
                 await self._lifecycle.save_lifecycle(retrying)
                 await self._refresh_active(key)
                 await self._publish(
@@ -315,6 +346,7 @@ class TaskWorker:
             )
             failed = started.fail(public_failure, stage=failure_stage)
             if self._execution_records is not None:
+                check_task_lease()
                 await self._execution_records.fail_for_task(
                     key,
                     error,
@@ -332,11 +364,14 @@ class TaskWorker:
                     attempt=failed.attempt,
                     error=error,
                 )
+                check_task_lease()
                 await self._dead_letter_handoff.save_pending(handoff)
+                check_task_lease()
                 await self._lifecycle.save_lifecycle(failed)
                 if self._dead_letter is None:
                     raise RuntimeError("dead-letter publisher is required")
                 try:
+                    check_task_lease()
                     await self._dead_letter.publish(
                         request,
                         attempt=failed.attempt,
@@ -347,12 +382,15 @@ class TaskWorker:
                     # not turn a transport error into another analysis
                     # attempt or a RETRYING lifecycle.
                     raise
+                check_task_lease()
                 await self._dead_letter_handoff.clear_pending(key)
                 pending_dead_letter = False
             else:
+                check_task_lease()
                 await self._lifecycle.save_lifecycle(failed)
             if self._dead_letter_handoff is None and self._dead_letter is not None:
                 try:
+                    check_task_lease()
                     await self._dead_letter.publish(
                         request,
                         attempt=failed.attempt,
@@ -382,14 +420,16 @@ class TaskWorker:
             return outcome
         finally:
             if (
-                (outcome is None or outcome.disposition not in (WorkerDisposition.RETRY, WorkerDisposition.LOCKED, WorkerDisposition.STALE))
+                lease.valid
+                and not asyncio.current_task().cancelling()
+                and (
+                    outcome is None or outcome.disposition not in (
+                        WorkerDisposition.RETRY, WorkerDisposition.LOCKED, WorkerDisposition.STALE,
+                    )
+                )
                 and not pending_dead_letter
             ):
                 await self._release_active(key)
-            try:
-                await self._lock.release(key, token)
-            except Exception:
-                pass
 
     process = handle
     on_message = handle
@@ -439,6 +479,7 @@ class TaskWorker:
         completed = current
         if current.state is not TaskStatusState.COMPLETED:
             completed = current.complete(self._result_text(state))
+            check_task_lease()
             await self._lifecycle.save_lifecycle(completed)
         await self._mark_completed(key)
         await self._publish(key, TaskStatus.completed(state), TaskStage.COMPLETED)
@@ -477,9 +518,11 @@ class TaskWorker:
             # This closes the handoff-first crash boundary: a redelivery that
             # finds the durable handoff must durably finish the terminal state
             # before publishing or clearing that handoff.
+            check_task_lease()
             await self._lifecycle.save_lifecycle(terminal)
         if self._dead_letter is None:
             raise RuntimeError("dead-letter publisher is required")
+        check_task_lease()
         await self._dead_letter.publish(
             request,
             attempt=attempt,
@@ -489,6 +532,7 @@ class TaskWorker:
         # durable delete is itself followed by a best-effort cache eviction
         # inside the Phase 8 adapter.
         if durable and self._dead_letter_handoff is not None:
+            check_task_lease()
             await self._dead_letter_handoff.clear_pending(key)
         else:
             self._pending_dead_letters.pop(key, None)
@@ -504,6 +548,7 @@ class TaskWorker:
         )
 
     async def _publish(self, key, status: TaskStatus, stage: TaskStage) -> None:
+        check_task_lease()
         if self._events is None:
             return
         try:
@@ -512,6 +557,7 @@ class TaskWorker:
             return
 
     async def _mark_completed(self, key) -> None:
+        check_task_lease()
         if self._completion is None:
             return
         try:
@@ -523,12 +569,14 @@ class TaskWorker:
             return
 
     async def _refresh_active(self, key) -> None:
+        check_task_lease()
         try:
             await self._active.refresh(key, ttl_seconds=self._active_ttl_seconds)
         except Exception:
             return
 
     async def _release_active(self, key) -> None:
+        check_task_lease()
         try:
             await self._active.release(key)
         except Exception:

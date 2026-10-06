@@ -27,6 +27,7 @@ from dovideo.domain import (
 from dovideo.domain._base import DomainModel
 
 from .analysis_task_keys import goal_digest
+from .task_lease import check_task_lease
 from .errors import AgentFeedbackPersistenceError
 from .ports.checkpoint import (
     AgentCheckpointPort,
@@ -177,14 +178,21 @@ class AgentCheckpointService(
     # Async adapter bridge
     # ------------------------------------------------------------------
     async def _call(self, operation: str, *args: Any, **kwargs: Any) -> Any:
+        check_task_lease()
         method = getattr(self._repository, operation, None)
         if not callable(method):
             raise TypeError(f"checkpoint repository has no {operation} operation")
         # to_thread also works for in-memory adapters and keeps this service's
         # contract safe if the composition root later swaps in file-backed DB.
-        result = await asyncio.to_thread(method, *args, **kwargs)
+        def guarded_call():
+            check_task_lease()
+            return method(*args, **kwargs)
+
+        result = await asyncio.to_thread(guarded_call)
+        check_task_lease()
         if inspect.isawaitable(result):
-            return await result
+            result = await result
+            check_task_lease()
         return result
 
     @classmethod

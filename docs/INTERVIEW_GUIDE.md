@@ -37,6 +37,16 @@ VideoMind 是支持长视频分析的 AI 视频工作台。它把视频、ASR/OC
 
 ## 面试官可能追问
 
+**分析任务的锁为什么需要自动续租？** 固定 15 分钟租约可能早于长视频 Agent
+结束，重复消息就可能启动第二个执行。TaskWorker 按租期的三分之一调用已有
+owner-safe Lua refresh；任务结束先停止并回收续租 coroutine，再校验 token 释放。
+Worker 崩溃后没有续租，TTL 自动到期，RabbitMQ 的未 ACK 消息可重投。
+refresh=false 或无法在已知租期内续租时，取消可协作工作，并在 worker、checkpoint、
+执行记录的存储入口阻止后续提交，保留 active marker 进入恢复路径。它借鉴 WatchDog
+思想，没有引入 Java Redisson；锁解决租期内互斥，幂等与 checkpoint 解决重复与恢复。
+已发出的线程 I/O、Redis 故障转移与数据库 fencing 不在这个保证内，不能称为 exactly-once。
+完整 30 秒、2 分钟版本和追问见 [分析租约报告](TASK_LEASE_REPORT.md)。
+
 **大文件上传如何续传和收敛？** UUID 标识一次上传尝试，内容哈希标识文件内容，两者分开。
 浏览器按 5 MiB、并发 3 上传，只保存按用户隔离的 uploadId；续传查询服务端确认的分片索引。
 Redis 保存约 24 小时的会话和分片 Set，MinIO 保存分片字节。先写对象，再原子确认 Set 和续期，

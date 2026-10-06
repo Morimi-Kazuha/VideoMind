@@ -37,6 +37,11 @@ class Lifecycles:
 
 
 class Lock:
+    lease_seconds = None
+
+    async def refresh(self, key, token):
+        return True
+
     async def acquire(self, key): return object()
     async def release(self, key, token): pass
 

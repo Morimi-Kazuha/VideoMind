@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -157,6 +158,7 @@ class CeleryTransportSettings:
     dead_letter_routing_key: str = DEFAULT_DEAD_LETTER_ROUTING_KEY
     task_name: str = DEFAULT_TASK_NAME
     retry_countdown_seconds: float = 0.25
+    locked_countdown_seconds: float = 5.0
     connect_timeout_seconds: float = 5.0
     max_envelope_bytes: int = DEFAULT_MAX_ENVELOPE_BYTES
 
@@ -179,13 +181,15 @@ class CeleryTransportSettings:
             if not isinstance(value, str) or not value.strip() or len(value.strip()) > 255:
                 raise R3ConfigurationError(f"R3 {name} is invalid")
             object.__setattr__(self, name, value.strip())
-        for name in ("retry_countdown_seconds", "connect_timeout_seconds"):
+        for name in ("retry_countdown_seconds", "locked_countdown_seconds", "connect_timeout_seconds"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
                 raise R3ConfigurationError(f"R3 {name} is invalid")
             object.__setattr__(self, name, float(value))
         if self.connect_timeout_seconds <= 0:
             raise R3ConfigurationError("R3 connect timeout must be positive")
+        if not math.isfinite(self.locked_countdown_seconds) or self.locked_countdown_seconds < 1:
+            raise R3ConfigurationError("R3 locked retry delay must be finite and at least one second")
         if isinstance(self.max_envelope_bytes, bool) or not isinstance(self.max_envelope_bytes, int):
             raise R3ConfigurationError("R3 envelope size must be an integer")
         if self.max_envelope_bytes < 1024:
@@ -233,6 +237,9 @@ class CeleryTransportSettings:
                 "DOVIDEO_CELERY_RETRY_COUNTDOWN_SECONDS",
                 0.25,
                 minimum=0.0,
+            ),
+            locked_countdown_seconds=_float_value(
+                values, "DOVIDEO_CELERY_LOCKED_COUNTDOWN_SECONDS", 5.0, minimum=1.0,
             ),
             connect_timeout_seconds=_float_value(
                 values,

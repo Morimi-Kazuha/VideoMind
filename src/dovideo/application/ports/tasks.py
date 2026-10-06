@@ -123,12 +123,21 @@ class TaskCompletionPort(Protocol):
 
 
 class TaskLockPort(Protocol):
-    """Acquire/release an opaque per-task lock token."""
+    """Owner-safe renewable per-task lock with an opaque token."""
+
+    @property
+    def lease_seconds(self) -> float | None:
+        """Finite lease duration; None only for process-local nonexpiring locks."""
+        ...
 
     async def acquire(self, key: TaskKey) -> object | None:
         ...
 
     async def release(self, key: TaskKey, token: object) -> None:
+        ...
+
+    async def refresh(self, key: TaskKey, token: object) -> bool:
+        """True only when this owner atomically extended its own lease."""
         ...
 
 

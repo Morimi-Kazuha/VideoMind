@@ -98,6 +98,11 @@ class SharedActive:
 
 
 class Lock:
+    lease_seconds = None
+
+    async def refresh(self, key, token):
+        return True
+
     def __init__(self) -> None:
         self.release_calls = []
 

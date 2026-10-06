@@ -128,6 +128,10 @@ class RedisTaskLock(TaskLockPort):
         self.ttl_ms = int(ttl_ms)
         self.prefix = prefix.rstrip(":")
 
+    @property
+    def lease_seconds(self) -> float:
+        return self.ttl_ms / 1000
+
     def redis_key(self, key: TaskKey) -> str:
         return f"{self.prefix}:{_task_suffix(key)}"
 
