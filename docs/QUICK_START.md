@@ -16,7 +16,7 @@ python -m pip install -e ".[test]"
 
 ## 2. 配置完整分析环境
 
-复制 [.env.example](../.env.example) 为仓库根目录下的 `.env.r2.local`。该文件已由 `.gitignore` 排除。将其中所有 `replace-me` 换成独立的本地密码或密钥，将 `DOVIDEO_PROFILE` 改为 `production`，确认 `DOVIDEO_R2_DATA_ROOT` 是可写目录。Compose 用同一文件配置 MySQL、Redis、MinIO、Qdrant、RabbitMQ；**API 与 worker 进程也必须加载这个文件**。Compose 的 `--env-file` 不会自动设置宿主机终端的进程环境。
+复制 [.env.example](../.env.example) 为仓库根目录下的 `.env.r2.local`。该文件已由 `.gitignore` 排除。将其中所有 `replace-me` 换成独立的本地密码或密钥，保持 `DOVIDEO_PROFILE=production`，确认 `DOVIDEO_R2_DATA_ROOT` 是可写目录，并替换聊天与 Embedding 的示例 endpoint/model。Compose 用同一文件配置 MySQL、Redis、MinIO、Qdrant、RabbitMQ；**API 与 worker 进程也必须加载这个文件**。Compose 的 `--env-file` 不会自动设置宿主机终端的进程环境。
 
 聊天模型有两种受支持配置，选一种：
 
@@ -54,6 +54,19 @@ Get-Content .env.r2.local | ForEach-Object {
 ```
 
 不要把实际配置内容打印到终端记录、截图或提交中。
+
+首次部署和每次升级，在加载环境变量后、启动任何 API/worker 前执行一次：
+
+```bash
+alembic upgrade head
+alembic current
+alembic check
+```
+
+全新库和已有 VideoMind 库使用同一迁移路径；不要对旧库直接 `stamp head`。
+API/worker 启动只检查 revision，不运行 DDL。迁移失败时停止部署。
+MySQL 迁移使用 30 秒部署锁等待及 metadata lock 等待；生产发布可再加外部总时限。
+备份、历史兼容范围及预处理版本规则见 [工程化说明](BACKEND_ENGINEERING.md)。
 
 ## 4. 启动 API、worker 与前端
 

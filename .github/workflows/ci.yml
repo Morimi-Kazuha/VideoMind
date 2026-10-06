@@ -21,6 +21,20 @@ jobs:
         run: python -m pip install -e ".[test]"
       - name: Offline tests
         run: python -m pytest -q
+      - name: Compile Python sources
+        run: python -m compileall -q src scripts alembic
+      - name: Deployment environment and production composition
+        run: python scripts/validate_deployment.py --env-file .env.example
+      - name: Docker Compose configuration
+        run: docker compose --env-file .env.example -f docker-compose.r2.yml config --quiet
+      - name: Alembic upgrade and model drift
+        env:
+          DOVIDEO_DATABASE_URL: sqlite:///migration-ci.db
+        run: |
+          alembic upgrade head
+          alembic upgrade head
+          alembic current
+          alembic check
 
   frontend:
     runs-on: ubuntu-latest

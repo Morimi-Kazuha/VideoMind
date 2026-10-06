@@ -30,7 +30,6 @@ from sqlalchemy import (
     create_engine,
     delete,
     func,
-    inspect,
     select,
 )
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -227,6 +226,18 @@ class AgentExecutionEventRow(Base):
     payload_digest: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
+class ContentContextArtifactRow(Base):
+    """Content-only durable preprocessing; no media/user/task foreign key."""
+    __tablename__ = "content_context_artifacts"
+
+    cache_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    pipeline_contract: Mapped[str] = mapped_column(String(1024), nullable=False)
+    payload: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), nullable=False)
+    payload_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=lambda: _db_now())
+
+
 def create_sqlalchemy_engine(
     database_url: str,
     *,
@@ -270,22 +281,13 @@ def create_sqlalchemy_engine(
 
 
 def create_schema(engine: Engine) -> None:
-    """Create tables and widen legacy MySQL checkpoints for source-rich chunks."""
+    """Compatibility helper for explicit tests/scripts, using Alembic ownership.
 
-    Base.metadata.create_all(engine)
-    if engine.dialect.name != "mysql":
-        return
-    with engine.begin() as connection:
-        columns = inspect(connection).get_columns("agent_checkpoints")
-        payload = next(column for column in columns if column["name"] == "payload")
-        # MySQL reflection appends collation to str(type), so use its dialect class.
-        column_type = type(payload["type"]).__name__.upper()
-        if column_type == "TEXT":
-            connection.exec_driver_sql(
-                "ALTER TABLE agent_checkpoints MODIFY COLUMN payload LONGTEXT NULL"
-            )
-        elif column_type not in {"MEDIUMTEXT", "LONGTEXT"}:
-            raise R2DatabaseError("MySQL checkpoint payload column has an unsupported type")
+    Production API and workers only check the revision, never run DDL.
+    """
+    from .migrations import upgrade_schema
+
+    upgrade_schema(engine)
 
 
 def _db_now() -> datetime:

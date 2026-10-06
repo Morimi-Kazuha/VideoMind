@@ -43,6 +43,7 @@ from dovideo.application import (
     BudgetExceededError,
 )
 from dovideo.application.ports.checkpoint import ContextCheckpointPort
+from dovideo.application.content_context import ContentContextKey, ContentContextPreparation
 from dovideo.application.ports.tasks import AgentLoopEntryPort, TaskEventPublisherPort
 from dovideo.domain import (
     AgentState,
@@ -113,6 +114,8 @@ from .celery_transport import (
 )
 from .r2_config import R2Infrastructure, create_r2_infrastructure
 from .x1_config import X1ToolCallingSettings
+from .content_context import RedisContentBuildLock, pipeline_contract, sha256_file
+from .persistence.content_context import SqlAlchemyContentArtifacts
 
 
 EXPECTED_EMBEDDING_MODEL = "BAAI/bge-m3"
@@ -1225,88 +1228,111 @@ class R4MediaPipeline:
         self.telemetry = telemetry
         self.events = events
         self._whisper: LocalWhisperTranscriptionAdapter | None = None
+        self.pipeline_contract = pipeline_contract(settings)
+        self.context_preparation = ContentContextPreparation(
+            SqlAlchemyContentArtifacts(infrastructure.engine, infrastructure.redis_client),
+            RedisContentBuildLock(infrastructure.redis_client),
+            wait_seconds=settings.media_timeout_seconds + 120,
+        )
 
     async def build_context(self, request: AnalysisRequest) -> VideoContext:
         local_path = await self._download(request)
         try:
-            _prepend_tool_directory(self.settings.ffmpeg_executable)
-            runner = AsyncSubprocessRunner(
-                default_timeout=self.settings.process_timeout_seconds
-            )
-            duration = await FfprobeDurationAdapter(
-                runner,
-                executable=self.settings.ffprobe_executable,
-            ).probe(local_path)
-            self.telemetry.observe("mediaDurationSeconds", duration.seconds)
-            if duration.seconds <= 300.0:
-                raise ValueError("R4 representative media must exceed five minutes")
+            fingerprint = await asyncio.to_thread(sha256_file, local_path)
+            key = ContentContextKey(fingerprint, self.pipeline_contract)
+            complete = [False]
 
-            await self._publish(
-                request,
-                TaskStage.VIDEO_CONTEXT,
-                "正在对 MinIO 视频执行 FFmpeg 媒体处理",
-            )
-            await self._publish(request, TaskStage.ASR, "正在运行本地 Whisper ASR")
-            await self._publish(request, TaskStage.TRANSCRIPTION, "正在生成时间戳转录")
-            observations = await MediaBranchOrchestrator(
-                AudioSegmenter(
-                    runner,
-                    executable=self.settings.ffmpeg_executable,
-                    timeout=self.settings.process_timeout_seconds,
-                ),
-                SegmentedTranscriptionService(
-                    _WhisperSegmentTranscriber(self._whisper_adapter())
-                ),
-                FFmpegKeyframeExtractor(
-                    runner,
-                    executable=self.settings.ffmpeg_executable,
-                    timeout=self.settings.process_timeout_seconds,
-                ),
-                OcrBatchService(
-                    TesseractOcrAdapter(
-                        runner,
-                        executable=self.settings.tesseract_executable,
-                    ),
-                    PillowDifferenceHash(),
-                    telemetry=self.telemetry,
-                ),
-                telemetry=self.telemetry,
-                total_timeout_seconds=self.settings.media_timeout_seconds,
-            ).collect(
-                str(local_path),
-                media_identity=(
-                    request.media.content_hash or f"media-id:{request.media.media_id}"
-                ),
-                parent=self.infrastructure.settings.media_workspace / "r4-media-workspaces",
-            )
-            self.telemetry.observe("asrSpanCount", len(observations.asr.observations))
-            self.telemetry.observe("ocrObservationCount", len(observations.ocr.observations))
-            if not observations.asr.observations and not observations.ocr.observations:
-                raise ValueError("R4 media produced no usable ASR or OCR observations")
+            async def build():
+                return await self._build_local(request, local_path, key, complete)
 
-            context = VideoContextBuilder().build(
-                request.media.source,
-                request.goal,
-                observations,
-                media_content_identity=(
-                    request.media.content_hash
-                    or f"media-id:{request.media.media_id}"
-                ),
+            return await self.context_preparation.prepare(
+                key, request.media.source, request.goal, build,
+                cacheable=lambda: complete[0],
             )
-            if len(context.segments) < 2:
-                raise ValueError("R4 long media did not produce multiple temporal windows")
-            self.telemetry.observe("videoContextWindowCount", len(context.segments))
-            await self._publish(
-                request,
-                TaskStage.CONTEXT_COMPLETED,
-                "VideoContext 时间窗口已从真实媒体观察构建",
-            )
-            return context
         finally:
             try:
                 await asyncio.to_thread(local_path.unlink, True)
             except OSError:
                 pass
+
+    async def _build_local(self, request, local_path, key, complete):
+        _prepend_tool_directory(self.settings.ffmpeg_executable)
+        runner = AsyncSubprocessRunner(
+            default_timeout=self.settings.process_timeout_seconds
+        )
+        duration = await FfprobeDurationAdapter(
+            runner,
+            executable=self.settings.ffprobe_executable,
+        ).probe(local_path)
+        self.telemetry.observe("mediaDurationSeconds", duration.seconds)
+        if duration.seconds <= 300.0:
+            raise ValueError("R4 representative media must exceed five minutes")
+
+        await self._publish(
+            request,
+            TaskStage.VIDEO_CONTEXT,
+            "正在对 MinIO 视频执行 FFmpeg 媒体处理",
+        )
+        await self._publish(request, TaskStage.ASR, "正在运行本地 Whisper ASR")
+        await self._publish(request, TaskStage.TRANSCRIPTION, "正在生成时间戳转录")
+        observations = await MediaBranchOrchestrator(
+            AudioSegmenter(
+                runner,
+                executable=self.settings.ffmpeg_executable,
+                timeout=self.settings.process_timeout_seconds,
+            ),
+            SegmentedTranscriptionService(
+                _WhisperSegmentTranscriber(self._whisper_adapter())
+            ),
+            FFmpegKeyframeExtractor(
+                runner,
+                executable=self.settings.ffmpeg_executable,
+                timeout=self.settings.process_timeout_seconds,
+            ),
+            OcrBatchService(
+                TesseractOcrAdapter(
+                    runner,
+                    executable=self.settings.tesseract_executable,
+                ),
+                PillowDifferenceHash(),
+                telemetry=self.telemetry,
+            ),
+            telemetry=self.telemetry,
+            total_timeout_seconds=self.settings.media_timeout_seconds,
+        ).collect(
+            str(local_path),
+            media_identity=(
+                key.media_identity
+            ),
+            parent=self.infrastructure.settings.media_workspace / "r4-media-workspaces",
+        )
+        self.telemetry.observe("asrSpanCount", len(observations.asr.observations))
+        self.telemetry.observe("ocrObservationCount", len(observations.ocr.observations))
+        if not observations.asr.observations and not observations.ocr.observations:
+            raise ValueError("R4 media produced no usable ASR or OCR observations")
+
+        context = VideoContextBuilder().build(
+            key.artifact_source,
+            "",
+            observations,
+            media_content_identity=(
+                key.media_identity
+            ),
+        )
+        if len(context.segments) < 2:
+            raise ValueError("R4 long media did not produce multiple temporal windows")
+        self.telemetry.observe("videoContextWindowCount", len(context.segments))
+        from dovideo.application.value_objects import BranchStatus
+        complete[0] = (
+            observations.asr.status is BranchStatus.SUCCESS
+            and observations.ocr.status is BranchStatus.SUCCESS
+        )
+        await self._publish(
+            request,
+            TaskStage.CONTEXT_COMPLETED,
+            "VideoContext 时间窗口已从真实媒体观察构建",
+        )
+        return context
 
     def _whisper_adapter(self) -> LocalWhisperTranscriptionAdapter:
         if self._whisper is None:
@@ -1391,10 +1417,16 @@ class R4RequestContextCheckpoint(ContextCheckpointPort):
             self.pipeline.telemetry.store.start_for_request(
                 request.task_key, request.request_id,
             )
-        context = await self.delegate.load_context(media_id)
-        if context is None and request is not None and request.media.media_id == media_id:
+        if request is not None and request.media.media_id == media_id:
+            # Revalidate content bytes and pipeline identity at the authorized
+            # target object. Legacy media checkpoints cannot bypass versioning.
             context = await self.pipeline.build_context(request)
+            prior = await self.delegate.load_context(media_id)
+            if prior is not None and prior.source_revision != context.source_revision:
+                await self.delegate.save_chunks(media_id, ())
             await self.delegate.save_context(media_id, context)
+        else:
+            context = await self.delegate.load_context(media_id)
         if context is None or request is None or request.media.media_id != media_id:
             return context
         if context.user_goal == request.goal:

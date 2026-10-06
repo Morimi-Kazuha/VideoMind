@@ -19,7 +19,6 @@ from .persistence.sqlalchemy import (
     SqlAlchemyFailedTaskStore,
     SqlAlchemyMediaRecordRepository,
     SqlAlchemyUserStore,
-    create_schema,
     create_sqlalchemy_engine,
 )
 from .redis import (
@@ -155,7 +154,9 @@ class R2Infrastructure:
 
         import asyncio
 
-        await asyncio.to_thread(create_schema, self.engine)
+        from .persistence.migrations import require_schema_head
+
+        await asyncio.to_thread(require_schema_head, self.engine)
         await self.object_storage.ensure_bucket()
         ping = getattr(self.redis_client, "ping", None)
         if callable(ping):

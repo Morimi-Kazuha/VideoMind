@@ -435,7 +435,15 @@ async def test_revision_budget_starts_fresh_and_retry_keeps_sent_usage() -> None
         async def load_context(self, media_id):
             return VideoContext(source='memory://99', user_goal='goal')
 
-    boundary = R4RequestContextCheckpoint(Checkpoint(), SimpleNamespace(telemetry=telemetry))
+        async def save_context(self, media_id, context):
+            pass
+
+    async def prepare_context(request):
+        return VideoContext(source=request.media.source, user_goal=request.goal)
+
+    boundary = R4RequestContextCheckpoint(
+        Checkpoint(), SimpleNamespace(telemetry=telemetry, build_context=prepare_context)
+    )
     bound = telemetry.bind(key)
     request_token = bind_r4_request(v2)
     try:
