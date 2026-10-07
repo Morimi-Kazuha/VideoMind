@@ -35,7 +35,6 @@ from .redis import (
     RedisTaskActiveMarker,
     RedisTaskCompletionMarker,
     RedisTaskLock,
-    RedisTaskQuota,
     RedisUploadSessionStore,
 )
 from .redis_observability import (
@@ -426,7 +425,6 @@ __all__ = [
     "RedisTaskActiveMarker",
     "RedisTaskCompletionMarker",
     "RedisTaskLock",
-    "RedisTaskQuota",
     "RedisUploadSessionStore",
     "MinIOChunkObjectStore",
     "MinIOObjectStorage",

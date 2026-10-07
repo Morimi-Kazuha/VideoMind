@@ -8,10 +8,12 @@ import asyncio
 import hashlib
 import os
 import time
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from redis import Redis
+from fastapi.testclient import TestClient
 
 from dovideo.infrastructure.ai_interaction_limiter import AiInteractionLimiter, AiInteractionRateLimitSettings
 
@@ -38,6 +40,57 @@ def live():
 
 def _tokens(client, key):
     return float(client.hget(key, "tokens"))
+
+
+def test_live_analysis_api_admits_once_and_dispatches_without_legacy_keys(live):
+    from dovideo.application import MediaRef, TaskDispatchService, TaskKey
+    from dovideo.infrastructure.redis import RedisTaskActiveMarker, RedisTaskCompletionMarker
+    from dovideo.presentation.api import create_app
+    from dovideo.presentation.api.r4_runtime import ProductionR4Services
+
+    client, _, prefix = live
+    media_id = int(uuid4().hex[:8], 16) + 1
+    legacy_pattern = f"quota:analysis:{media_id}:*"
+    assert list(client.scan_iter(match=legacy_pattern)) == []
+    services = object.__new__(ProductionR4Services)
+    services.ai_interaction_limiter = AiInteractionLimiter(client, prefix=prefix)
+    services.auth = SimpleNamespace(require=lambda authorization: {"id": 1})
+    record = SimpleNamespace(to_ref=lambda: MediaRef(media_id, "memory://analysis"))
+
+    async def owned(media, user):
+        assert (media, user) == (media_id, 1)
+        return record
+
+    async def no_result(key):
+        return None
+
+    async def no_op():
+        pass
+
+    enqueued = []
+
+    async def enqueue(request):
+        enqueued.append(request)
+
+    services.startup = services.shutdown = no_op
+    services.media = SimpleNamespace(require_owned=owned)
+    services.checkpoint = SimpleNamespace(load_result=no_result)
+    services.dispatcher = TaskDispatchService(
+        RedisTaskActiveMarker(client, prefix=prefix + ":active"),
+        completion=RedisTaskCompletionMarker(client, prefix=prefix + ":completed"),
+        transport=SimpleNamespace(enqueue=enqueue),
+    )
+    with TestClient(create_app(services=services)) as api:
+        response = api.post(f"/analysis/ai?id={media_id}&goal=valid&mode=GENERAL", headers={"Authorization": "Bearer test"})
+    assert response.status_code == 202
+    assert len(enqueued) == 1
+    assert enqueued[0].task_key == TaskKey(media_id, "valid", enqueued[0].mode)
+    assert services.ai_interaction_limiter.observation_snapshot() == {"analysis:ALLOWED": 1}
+    assert client.type(services.ai_interaction_limiter._user_key(1)) == b"hash"
+    assert client.type(services.ai_interaction_limiter.global_key) == b"hash"
+    assert _tokens(client, services.ai_interaction_limiter._user_key(1)) == 59
+    assert _tokens(client, services.ai_interaction_limiter.global_key) == 599
+    assert list(client.scan_iter(match=legacy_pattern)) == []
 
 
 def _seed(client, key, tokens, elapsed_ms=0):

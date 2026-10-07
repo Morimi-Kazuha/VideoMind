@@ -141,13 +141,6 @@ class TaskLockPort(Protocol):
         ...
 
 
-class TaskQuotaPort(Protocol):
-    """Optional provider-neutral quota decision used by dispatch."""
-
-    async def try_acquire(self, request: AnalysisRequest) -> bool:
-        ...
-
-
 class TaskDeadLetterPort(Protocol):
     """Dead-letter publication seam; no broker type leaks into application."""
 
@@ -218,6 +211,5 @@ __all__ = [
     "TaskStatusReadPort",
     "TaskLifecyclePort",
     "TaskLockPort",
-    "TaskQuotaPort",
     "TaskResultPort",
 ]

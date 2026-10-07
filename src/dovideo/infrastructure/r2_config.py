@@ -26,7 +26,6 @@ from .redis import (
     RedisTaskActiveMarker,
     RedisTaskCompletionMarker,
     RedisTaskLock,
-    RedisTaskQuota,
     RedisUploadSessionStore,
 )
 from .storage import MinioChunkObjectStore, MinioObjectStorage
@@ -146,7 +145,6 @@ class R2Infrastructure:
     active_marker: RedisTaskActiveMarker
     completion_marker: RedisTaskCompletionMarker
     task_lock: RedisTaskLock
-    quota: RedisTaskQuota
     vector_index: QdrantVectorIndex
 
     async def initialize(self) -> None:
@@ -227,7 +225,6 @@ def create_r2_infrastructure(settings: R2Settings | None = None) -> R2Infrastruc
         active_marker=RedisTaskActiveMarker(redis_client),
         completion_marker=RedisTaskCompletionMarker(redis_client),
         task_lock=RedisTaskLock(redis_client),
-        quota=RedisTaskQuota(redis_client),
         vector_index=QdrantVectorIndex(
             base_url=selected.qdrant_url,
             api_key=selected.qdrant_api_key,

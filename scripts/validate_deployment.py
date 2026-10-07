@@ -107,6 +107,11 @@ async def production_smoke(values):
         api = worker = None
         try:
             api = ProductionR4Services(infrastructure)
+            assert not hasattr(infrastructure, "quota")
+            assert not hasattr(api.dispatcher, "_quota")
+            assert api.dispatcher._active is infrastructure.active_marker
+            assert api.dispatcher._completion is infrastructure.completion_marker
+            assert api.dispatcher._transport is api.transport
             worker = R4WorkerRuntime.from_environment(infrastructure=infrastructure)
             assert isinstance(worker.worker._context, R4RequestContextCheckpoint)
             assert worker.worker._context.pipeline.context_preparation is not None

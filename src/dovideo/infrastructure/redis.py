@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 import secrets
-import time
 from datetime import datetime, timezone
 from typing import Any
 from redis.exceptions import RedisError
@@ -27,7 +26,7 @@ from dovideo.application import (
 from dovideo.application.analysis_task_keys import goal_digest
 from dovideo.application.ports.ingest import MergeLockLease
 from dovideo.application.ports.tasks import TaskActiveMarkerPort, TaskCompletionPort, TaskLockPort
-from dovideo.application.value_objects import AnalysisRequest, TaskKey
+from dovideo.application.value_objects import TaskKey
 
 from .persistence.redis_cache import RedisCheckpointCache
 
@@ -246,25 +245,6 @@ return 1
 """
 
 
-class RedisTaskQuota:
-    """Fixed-window Redis quota with increment and expiry."""
-
-    def __init__(self, client: Any, *, limit: int = 30, window_seconds: int = 60) -> None:
-        if limit <= 0 or window_seconds <= 0:
-            raise ValueError("quota settings must be positive")
-        self.client = client
-        self.limit = int(limit)
-        self.window_seconds = int(window_seconds)
-
-    async def try_acquire(self, request: AnalysisRequest) -> bool:
-        bucket = int(time.time() // self.window_seconds)
-        key = f"quota:analysis:{request.media.media_id}:{bucket}"
-        count = int(await asyncio.to_thread(self.client.incr, key))
-        if count == 1:
-            await asyncio.to_thread(self.client.expire, key, self.window_seconds + 1)
-        return count <= self.limit
-
-
 class RedisUploadSessionStore:
     """24-hour resumable-upload metadata and completion markers."""
 
@@ -440,6 +420,5 @@ __all__ = [
     "RedisTaskActiveMarker",
     "RedisTaskCompletionMarker",
     "RedisTaskLock",
-    "RedisTaskQuota",
     "RedisUploadSessionStore",
 ]

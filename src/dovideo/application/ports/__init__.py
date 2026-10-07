@@ -70,7 +70,6 @@ from .tasks import (
     TaskStatusProjectionPort,
     TaskLifecyclePort,
     TaskLockPort,
-    TaskQuotaPort,
     TaskResultPort,
 )
 
@@ -124,7 +123,6 @@ __all__ = [
     "TaskStatusProjectionPort",
     "TaskLifecyclePort",
     "TaskLockPort",
-    "TaskQuotaPort",
     "TaskResultPort",
     "TelemetryPort",
     "TracePort",

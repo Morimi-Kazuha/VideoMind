@@ -141,7 +141,6 @@ class ProductionR4Services(ProductionR2Services):
         self.dispatcher = TaskDispatchService(
             infrastructure.active_marker,
             completion=infrastructure.completion_marker,
-            quota=infrastructure.quota,
             lifecycle=self.lifecycle,
             events=self.events,
             transport=self.transport,

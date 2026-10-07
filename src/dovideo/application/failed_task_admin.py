@@ -252,6 +252,7 @@ class FailedTaskAdminService:
             await self._mark(attempt.attempt_id, "CONFLICT")
             raise FailedTaskAdminConflict("相同任务已有其他提交，未重复投递")
         if disposition is DispatchDisposition.RATE_LIMITED:
+            # Legacy/custom submitter compatibility, not a current dispatch quota.
             await self._mark(attempt.attempt_id, "DISPATCH_FAILED", "DispatchRateLimited")
             raise FailedTaskAdminRateLimited("重放提交受现有任务配额限制")
 

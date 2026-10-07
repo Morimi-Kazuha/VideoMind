@@ -312,6 +312,7 @@ class DispatchDisposition(str, Enum):
     """The Java ``AnalysisDispatchService.SubmissionResult`` values."""
 
     ACCEPTED = "ACCEPTED"
+    # Legacy submission contract; current TaskDispatchService never emits it.
     RATE_LIMITED = "RATE_LIMITED"
     DUPLICATE = "DUPLICATE"
     FAILED = "FAILED"

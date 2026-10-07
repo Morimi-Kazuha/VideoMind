@@ -77,6 +77,28 @@ Versioned v2 Hash keys avoid collisions with old String counters, use hashed
 user identities, and expire after two full refill periods of inactivity.
 See [request-level limiting and migration](AI_INTERACTION_RATE_LIMIT.md).
 
+AI 请求级限流统一由 API admission boundary 的 Redis + Lua User/Global
+Token Bucket 负责。TaskDispatchService 只负责任务幂等预留、生命周期初始化
+与 broker enqueue，不再实现独立 per-media fixed-window quota。
+Its order is completion check -> active reservation -> optional revision staging
+-> QUEUED lifecycle -> RabbitMQ/Celery enqueue. Failed enqueue, exceptions and
+cancellation retain active-marker release and staged-revision compensation.
+Active Marker suppresses duplicate TaskKeys; Task Lock/Lease prevents concurrent
+execution; MQ transports accepted work; Checkpoint/Lifecycle stores recovery
+state and durable task truth. None is a second request-admission policy.
+
+Revision and admin failed-task replay reuse this dispatcher without an extra
+quota charge for previously accepted work. Historical replay reads saved
+execution records and never dispatches work. Direct internal dispatch is a
+trusted task boundary, not an HTTP admission boundary.
+`DispatchDisposition.RATE_LIMITED` remains a legacy/reserved submission value
+for API/custom-adapter compatibility (including replay's 429 mapping); the
+current production dispatcher has no producer for it. API Token Bucket
+rejections still return 429/Retry-After before dispatch, or 503 on backend loss.
+Old `quota:analysis:{mediaId}:{bucket}` keys are neither read nor written and
+expire under their existing short TTL (normally 61 seconds). No key deletion,
+migration script or downtime is required.
+
 Analysis TaskLock is a renewable owner-token lease, independent of the upload
 MergeLock. `SET NX PX` retains the default 15-minute TTL; TaskWorker starts a
 per-delivery keeper which refreshes at TTL/3 through the existing atomic

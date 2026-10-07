@@ -851,6 +851,7 @@ def _submission(disposition: DispatchDisposition) -> JSONResponse:
     if disposition is DispatchDisposition.DUPLICATE:
         raise R1ServiceError("相同视频和分析目标正在处理中", status_code=409)
     if disposition is DispatchDisposition.RATE_LIMITED:
+        # Compatibility for legacy/custom submitters; API admission owns 429s.
         raise R1ServiceError("系统繁忙，请稍后再试", status_code=429)
     raise R1ServiceError("任务提交失败", status_code=500)
 

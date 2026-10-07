@@ -170,16 +170,6 @@ class FakeDeadLetter:
             raise self.failures.pop(0)
 
 
-class FakeQuota:
-    def __init__(self, allowed: bool) -> None:
-        self.allowed = allowed
-        self.calls = 0
-
-    async def try_acquire(self, request) -> bool:
-        self.calls += 1
-        return self.allowed
-
-
 class FakeAgentLoop:
     def __init__(self, outcomes: list[AgentState | BaseException]) -> None:
         self.outcomes = list(outcomes)
@@ -238,10 +228,16 @@ async def test_dispatch_accepts_new_request_saves_queued_and_publishes_event() -
 
 
 @pytest.mark.asyncio
-async def test_dispatch_active_completed_and_rejected_outcomes() -> None:
+async def test_dispatch_active_and_completed_duplicates_skip_enqueue() -> None:
     request = _request()
     active, completion = FakeActive(), FakeCompletion()
-    service = TaskDispatchService(active, completion=completion)
+    enqueued = []
+
+    class Transport:
+        async def enqueue(self, request):
+            enqueued.append(request)
+
+    service = TaskDispatchService(active, completion=completion, transport=Transport())
 
     assert await service.dispatch(request) is DispatchDisposition.ACCEPTED
     assert await service.dispatch(request) is DispatchDisposition.DUPLICATE
@@ -250,8 +246,43 @@ async def test_dispatch_active_completed_and_rejected_outcomes() -> None:
     completion.completed.add(other.task_key)
     assert await service.dispatch(other) is DispatchDisposition.DUPLICATE
 
-    rejected = TaskDispatchService(FakeActive(), quota=FakeQuota(False))
-    assert await rejected.dispatch(_request()) is DispatchDisposition.RATE_LIMITED
+    assert enqueued == [request]
+    assert len(active.reserve_calls) == 2  # Completed marker short-circuits reserve.
+
+
+@pytest.mark.asyncio
+async def test_dispatch_distinct_goals_on_one_media_have_no_second_admission_policy():
+    active = FakeActive()
+    enqueued = []
+
+    class Transport:
+        async def enqueue(self, request):
+            enqueued.append(request)
+
+    service = TaskDispatchService(active, transport=Transport())
+    requests = [AnalysisRequest(_request().media, f"goal {i}", AnalysisMode.GENERAL) for i in range(31)]
+    for request in requests:
+        assert await service.dispatch(request) is DispatchDisposition.ACCEPTED
+    assert enqueued == requests
+    assert len(active.active) == 31
+
+
+@pytest.mark.asyncio
+async def test_dispatch_lifecycle_exception_releases_reservation_before_enqueue():
+    active = FakeActive()
+
+    class BrokenLifecycle:
+        async def save_lifecycle(self, lifecycle):
+            raise RuntimeError("lifecycle unavailable")
+
+    class Transport:
+        async def enqueue(self, request):
+            pytest.fail("failed lifecycle must not enqueue")
+
+    service = TaskDispatchService(active, lifecycle=BrokenLifecycle(), transport=Transport())
+    assert await service.dispatch(_request()) is DispatchDisposition.FAILED
+    assert active.active == set()
+    assert active.release_calls == [_request().task_key]
 
 
 @pytest.mark.asyncio

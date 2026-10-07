@@ -321,12 +321,6 @@ class _LockStore(TaskLockPort):
             lock.release()
 
 
-class _AllowQuota:
-    async def try_acquire(self, request: AnalysisRequest) -> bool:
-        del request
-        return True
-
-
 class _MemoryCheckpoint(
     AgentCheckpointPort,
     AnalysisStatusCheckpointPort,
@@ -847,7 +841,6 @@ class LocalR1Services:
         self.dispatcher = TaskDispatchService(
             self.active,
             completion=self.completion,
-            quota=_AllowQuota(),
             lifecycle=self.lifecycle,
             events=self.publisher,
         )

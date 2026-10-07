@@ -298,6 +298,21 @@ def test_analysis_admission_order_and_duplicate_contract():
         assert order == ["ownership", "reuse", "limiter", "dispatch"]
 
 
+def test_legacy_rate_limited_submission_value_keeps_429_compatibility():
+    # Custom/legacy submitters may still return the reserved contract value;
+    # current TaskDispatchService has no RATE_LIMITED producer.
+    client, services = _client(AiInteractionLimitDecision(True))
+
+    async def legacy_submit(*args):
+        return DispatchDisposition.RATE_LIMITED
+
+    services.submit_analysis = legacy_submit
+    with client:
+        response = client.post("/analysis/ai?id=7&goal=valid", headers={"Authorization": "Bearer user-1"})
+        assert response.status_code == 429
+        assert services.ai_interaction_limiter.calls == [(1, "analysis")]
+
+
 @pytest.mark.parametrize("url", [
     "/analysis/analysis-events?id=7&goal=valid",
     "/analysis/analysis-status?id=7&goal=valid",

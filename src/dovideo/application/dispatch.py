@@ -1,7 +1,8 @@
 """Transport-neutral analysis dispatch orchestration for Phase 9B.
 
 The service mirrors the Java submission boundary while keeping active-marker,
-quota, event, and lifecycle storage behind application ports.  It does not
+event, and lifecycle storage behind application ports. Request admission is
+owned by the API User/Global Token Bucket. The dispatcher does not
 know about Redis, RocketMQ, HTTP, or any concrete queue implementation.
 """
 
@@ -18,7 +19,6 @@ from .ports.tasks import (
     TaskCompletionPort,
     TaskEventPublisherPort,
     TaskLifecyclePort,
-    TaskQuotaPort,
     TaskTransportPort,
 )
 
@@ -34,7 +34,6 @@ class TaskDispatchService:
         active: TaskActiveMarkerPort,
         *,
         completion: TaskCompletionPort | None = None,
-        quota: TaskQuotaPort | None = None,
         lifecycle: TaskLifecyclePort | None = None,
         events: TaskEventPublisherPort | None = None,
         transport: TaskTransportPort | None = None,
@@ -42,14 +41,13 @@ class TaskDispatchService:
     ) -> None:
         self._active = active
         self._completion = completion
-        self._quota = quota
         self._lifecycle = lifecycle
         self._events = events
         self._transport = transport
         self._active_ttl_seconds = active_ttl_seconds
 
     async def dispatch(self, request: AnalysisRequest, *, revision_plan=None, revision_checkpoint=None) -> DispatchDisposition:
-        """Return Java-shaped ACCEPTED/RATE_LIMITED/DUPLICATE/FAILED."""
+        """Return ACCEPTED/DUPLICATE/FAILED; RATE_LIMITED is legacy/reserved."""
 
         if not isinstance(request, AnalysisRequest):
             return DispatchDisposition.FAILED
@@ -64,11 +62,6 @@ class TaskDispatchService:
             )
             if not reserved:
                 return DispatchDisposition.DUPLICATE
-            if self._quota is not None and not await self._quota.try_acquire(request):
-                await self._release(key)
-                reserved = False
-                return DispatchDisposition.RATE_LIMITED
-
             if revision_checkpoint is not None:
                 await revision_checkpoint.stage_revision(
                     key.media_id, key.goal, revision_plan, key.mode, request_id=request.request_id,

@@ -281,7 +281,6 @@ async def _run(root: Path) -> None:
     dispatcher = TaskDispatchService(
         infrastructure.active_marker,
         completion=infrastructure.completion_marker,
-        quota=infrastructure.quota,
         lifecycle=lifecycle,
         events=events,
         transport=transport,

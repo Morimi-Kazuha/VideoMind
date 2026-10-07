@@ -130,8 +130,10 @@ Java dependency, limiter framework, gateway or Nginx limiter is introduced.
 
 Token Bucket decides whether work may enter. RabbitMQ/Celery queue, consume
 and recover work already accepted; task idempotency prevents duplicate
-execution. The dispatcher quota, broker topology, Celery retry policy and
-worker locking are unchanged. Admission stays before MQ, not in a worker.
+execution. TaskDispatchService has no independent per-media quota; the legacy
+RedisTaskQuota fixed-window adapter and TaskQuotaPort have been removed.
+Broker topology, Celery retry policy and worker locking are unchanged.
+Admission stays before MQ, not in a worker.
 Upstream is design context only, never the Python implementation authority.
 
 ## Validation and reproduction
