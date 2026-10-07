@@ -1,0 +1,19 @@
+{
+  "broaderQualityClaim": "NOT_PROVEN",
+  "conclusion": "Real-provider A/B/C final metrics tie at the annotation-defined metric ceiling; offline regressions did not reproduce",
+  "crossVideoScale": "NOT_MEASURED",
+  "defaultRerankerEnabled": false,
+  "finalProvenSuperior": false,
+  "fineRankingFixRequiredByThisMeasurement": false,
+  "noAnswer": "NOT_MEASURED",
+  "productionAlgorithmChange": false,
+  "productionDecision": "KEEP RERANKER OPTIONAL",
+  "providerCost": "NOT_MEASURED",
+  "providerLatencyDistribution": "NOT_MEASURED",
+  "publicPushPerformed": false,
+  "publicationScope": "12 synthetic cases with live BGE-M3/Qdrant/reranker and local frozen summary/planner",
+  "qualityDecision": "D",
+  "realDataGeneralization": "NOT_MEASURED",
+  "rerankerQualityGainMeasured": false,
+  "status": "PASS WITH NOTES"
+}

@@ -1,0 +1,86 @@
+{
+  "cases": [
+    {
+      "caseId": "semantic-01",
+      "changedTop3": false,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "semantic-02",
+      "changedTop3": true,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "technical-01",
+      "changedTop3": true,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "technical-02",
+      "changedTop3": true,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "ocr-01",
+      "changedTop3": true,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "ocr-02",
+      "changedTop3": false,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "asr-01",
+      "changedTop3": true,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "asr-02",
+      "changedTop3": true,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "boundary-01",
+      "changedTop3": true,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "boundary-02",
+      "changedTop3": false,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "distractor-01",
+      "changedTop3": true,
+      "harmed": false,
+      "rescued": false
+    },
+    {
+      "caseId": "distractor-02",
+      "changedTop3": true,
+      "harmed": false,
+      "rescued": false
+    }
+  ],
+  "counts": {
+    "changedTop3": 9,
+    "harmed": 0,
+    "rescued": 0
+  },
+  "unchanged": [
+    "semantic-01",
+    "ocr-02",
+    "boundary-02"
+  ]
+}

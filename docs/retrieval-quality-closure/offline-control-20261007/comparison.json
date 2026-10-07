@@ -1,0 +1,228 @@
+{
+  "arms": {
+    "A": {
+      "cases": 12,
+      "categories": {
+        "asr_only": {
+          "mrr": 1.0,
+          "precision@1": 1.0,
+          "precision@3": 0.3333333333333333,
+          "precision@5": 0.2,
+          "recall@1": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "boundary_crossing": {
+          "mrr": 1.0,
+          "precision@1": 1.0,
+          "precision@3": 0.6666666666666666,
+          "precision@5": 0.4,
+          "recall@1": 0.5,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "distractor": {
+          "mrr": 1.0,
+          "precision@1": 1.0,
+          "precision@3": 0.3333333333333333,
+          "precision@5": 0.2,
+          "recall@1": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "exact_technical_terms": {
+          "mrr": 1.0,
+          "precision@1": 1.0,
+          "precision@3": 0.3333333333333333,
+          "precision@5": 0.2,
+          "recall@1": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "ocr_only": {
+          "mrr": 1.0,
+          "precision@1": 1.0,
+          "precision@3": 0.3333333333333333,
+          "precision@5": 0.2,
+          "recall@1": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "semantic_paraphrase": {
+          "mrr": 0.75,
+          "precision@1": 0.5,
+          "precision@3": 0.3333333333333333,
+          "precision@5": 0.2,
+          "recall@1": 0.5,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        }
+      },
+      "chunkMetrics": {
+        "baselineWeighted": {
+          "recall@1": 0.8333333333333334,
+          "recall@10": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "recall@8": 1.0
+        },
+        "dense": {
+          "recall@1": 0.6666666666666666,
+          "recall@10": 1.0,
+          "recall@3": 0.7916666666666666,
+          "recall@5": 0.9583333333333334,
+          "recall@8": 1.0
+        },
+        "final": {
+          "recall@1": 0.8333333333333334,
+          "recall@10": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "recall@8": 1.0
+        }
+      },
+      "metrics": {
+        "mrr": 0.9583333333333334,
+        "precision@1": 0.9166666666666666,
+        "precision@3": 0.38888888888888884,
+        "precision@5": 0.23333333333333336,
+        "recall@1": 0.8333333333333334,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "status": "OFFLINE_LOCAL_SUCCESS"
+    },
+    "B": {
+      "cases": 12,
+      "categories": {
+        "asr_only": {
+          "mrr": 1.0,
+          "precision@1": 1.0,
+          "precision@3": 0.3333333333333333,
+          "precision@5": 0.2,
+          "recall@1": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "boundary_crossing": {
+          "mrr": 1.0,
+          "precision@1": 1.0,
+          "precision@3": 0.6666666666666666,
+          "precision@5": 0.4,
+          "recall@1": 0.5,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "distractor": {
+          "mrr": 0.5833333333333334,
+          "precision@1": 0.5,
+          "precision@3": 0.16666666666666666,
+          "precision@5": 0.1,
+          "recall@1": 0.5,
+          "recall@3": 0.5,
+          "recall@5": 0.5,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "exact_technical_terms": {
+          "mrr": 1.0,
+          "precision@1": 1.0,
+          "precision@3": 0.3333333333333333,
+          "precision@5": 0.2,
+          "recall@1": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "ocr_only": {
+          "mrr": 1.0,
+          "precision@1": 1.0,
+          "precision@3": 0.3333333333333333,
+          "precision@5": 0.2,
+          "recall@1": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        },
+        "semantic_paraphrase": {
+          "mrr": 0.5833333333333334,
+          "precision@1": 0.5,
+          "precision@3": 0.16666666666666666,
+          "precision@5": 0.1,
+          "recall@1": 0.5,
+          "recall@3": 0.5,
+          "recall@5": 0.5,
+          "temporal_coverage": 1.0,
+          "temporal_hit": 1.0
+        }
+      },
+      "chunkMetrics": {
+        "dense": {
+          "recall@1": 0.5833333333333334,
+          "recall@10": 1.0,
+          "recall@3": 0.9166666666666666,
+          "recall@5": 1.0,
+          "recall@8": 1.0
+        },
+        "final": {
+          "recall@1": 0.8333333333333334,
+          "recall@10": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "recall@8": 1.0
+        },
+        "rrf": {
+          "recall@1": 0.8333333333333334,
+          "recall@10": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "recall@8": 1.0
+        },
+        "sparse": {
+          "recall@1": 1.0,
+          "recall@10": 1.0,
+          "recall@3": 1.0,
+          "recall@5": 1.0,
+          "recall@8": 1.0
+        }
+      },
+      "metrics": {
+        "mrr": 0.8611111111111112,
+        "precision@1": 0.8333333333333334,
+        "precision@3": 0.3333333333333333,
+        "precision@5": 0.20000000000000004,
+        "recall@1": 0.75,
+        "recall@3": 0.8333333333333334,
+        "recall@5": 0.8333333333333334,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "status": "OFFLINE_LOCAL_SUCCESS"
+    }
+  },
+  "baselineSha": "c7c02707911c8cb823d7f7a46c328469689256b7",
+  "classification": "OFFLINE LOCAL RESULT / SYNTHETIC",
+  "datasetDigest": "f1820acf0b0aec90a64b0bcd9d7f4a8a8d204e70fe55cfd667e5da04ae569b71",
+  "historicalMetricsVerified": true,
+  "liveQualityConclusion": "NOT_RUN"
+}

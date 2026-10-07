@@ -1,0 +1,24 @@
+{
+  "bgeM3": {
+    "dimension": 1024,
+    "host": "api.siliconflow.cn",
+    "model": "BAAI/bge-m3",
+    "status": "PASS"
+  },
+  "qdrant": {
+    "causeType": "URLError",
+    "collection": "video_chunks_r4_bge_m3",
+    "dimension": "NOT_RUN",
+    "errorType": "QdrantVectorError",
+    "host": "127.0.0.1",
+    "status": "FAILED",
+    "write": "NOT_RUN"
+  },
+  "reranker": {
+    "configuredEnabled": "false",
+    "missing": [
+      "DOVIDEO_RERANKER_API_KEY"
+    ],
+    "status": "NOT_CONFIGURED"
+  }
+}

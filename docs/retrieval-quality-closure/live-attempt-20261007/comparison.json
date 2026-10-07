@@ -1,0 +1,16 @@
+{
+  "arms": {
+    "A": {
+      "status": "NOT_RUN"
+    },
+    "B": {
+      "status": "NOT_RUN"
+    },
+    "C": {
+      "status": "NOT_RUN"
+    }
+  },
+  "qualityDecision": "E",
+  "reason": "Live embedding/Qdrant preflight did not pass",
+  "status": "NOT READY"
+}

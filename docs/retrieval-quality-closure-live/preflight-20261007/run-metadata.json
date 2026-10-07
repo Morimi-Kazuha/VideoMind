@@ -1,0 +1,87 @@
+{
+  "baselineSha": "c7c02707911c8cb823d7f7a46c328469689256b7",
+  "candidateSettings": {
+    "bm25B": 0.75,
+    "bm25K1": 1.2,
+    "dense": 8,
+    "final": 3,
+    "fusion": 10,
+    "overlapMs": 60000,
+    "rrfK": 60,
+    "segmentWeights": [
+      0.55,
+      0.25,
+      0.2
+    ],
+    "sparse": 8,
+    "strideMs": 240000,
+    "windowMs": 300000
+  },
+  "classification": "SYNTHETIC",
+  "configPresence": {
+    "DOVIDEO_EMBEDDING_API_KEY": true,
+    "DOVIDEO_EMBEDDING_BASE_URL": true,
+    "DOVIDEO_EMBEDDING_MODEL": true,
+    "DOVIDEO_QDRANT_API_KEY": true,
+    "DOVIDEO_QDRANT_COLLECTION": true,
+    "DOVIDEO_QDRANT_URL": true,
+    "DOVIDEO_RERANKER_API_KEY": true,
+    "DOVIDEO_RERANKER_MODEL": true,
+    "DOVIDEO_RERANKER_URL": true
+  },
+  "dataset": "retrieval-focused-v2",
+  "environmentSources": [
+    {
+      "filename": ".env.r2.local",
+      "names": [
+        "DOVIDEO_QDRANT_API_KEY",
+        "DOVIDEO_QDRANT_COLLECTION",
+        "DOVIDEO_QDRANT_URL"
+      ],
+      "status": "LOADED"
+    },
+    {
+      "filename": ".env.r4.local",
+      "names": [
+        "DOVIDEO_EMBEDDING_API_KEY",
+        "DOVIDEO_EMBEDDING_BASE_URL",
+        "DOVIDEO_EMBEDDING_MODEL",
+        "DOVIDEO_QDRANT_COLLECTION"
+      ],
+      "status": "LOADED"
+    }
+  ],
+  "frozenFiles": {
+    "datasets/x3/retrieval-focused-v2-source.json": "d586e7ae2ae7610d16b74a423f5eb5d4f58127f2ad0e215c5ce2cebee9d5384a",
+    "datasets/x3/retrieval-focused-v2.json": "6a1f62c235ce0e14399dc0f99baab7d03102bf0ace060dd87840fb685a1ec5e1"
+  },
+  "gitSha": "da5b2ffc5c2d1cec65874c0c0627b70ebc34a4f4",
+  "packages": {
+    "Pillow": "12.3.0",
+    "PyMySQL": "1.2.3",
+    "SQLAlchemy": "2.1.3",
+    "alembic": "1.20.0",
+    "celery": "5.6.3",
+    "fastapi": "0.142.2",
+    "httpx": "0.28.1",
+    "minio": "7.2.20",
+    "pydantic": "2.13.5",
+    "pytest": "8.4.2",
+    "pytest-asyncio": "0.26.0",
+    "python-multipart": "0.0.32",
+    "redis": "7.4.1",
+    "uvicorn": "0.54.0"
+  },
+  "python": "3.13.3 (tags/v3.13.3:6280bb5, Apr  8 2025, 14:47:33) [MSC v.1943 64 bit (AMD64)]",
+  "rerankerRuntimeConfiguration": {
+    "credentialSource": "DOVIDEO_EMBEDDING_API_KEY_RUNTIME_INHERITANCE",
+    "defaultedSettings": [
+      "DOVIDEO_RERANKER_URL",
+      "DOVIDEO_RERANKER_MODEL"
+    ],
+    "processOnly": true
+  },
+  "startedAt": "2026-10-07T12:12:45.942475+00:00",
+  "toolDigest": "d12549918ca79f8245b90904978799929d792294a2d7c9306f368c2f27b9628e",
+  "workingTree": "?? docs/interview-guide/\n?? docs/retrieval-quality-closure/\n?? tests/application/test_retrieval_quality_closure.py\n?? tools/run_retrieval_quality_closure.py"
+}

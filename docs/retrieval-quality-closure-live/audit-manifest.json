@@ -1,0 +1,42 @@
+{
+  "branch": "main",
+  "commitCreated": false,
+  "datasetDigest": "f1820acf0b0aec90a64b0bcd9d7f4a8a8d204e70fe55cfd667e5da04ae569b71",
+  "datasetFiles": {
+    "datasets/x3/retrieval-focused-v2-source.json": "d586e7ae2ae7610d16b74a423f5eb5d4f58127f2ad0e215c5ce2cebee9d5384a",
+    "datasets/x3/retrieval-focused-v2.json": "6a1f62c235ce0e14399dc0f99baab7d03102bf0ace060dd87840fb685a1ec5e1"
+  },
+  "environmentFilesWritten": false,
+  "headAfter": "da5b2ffc5c2d1cec65874c0c0627b70ebc34a4f4",
+  "headBefore": "da5b2ffc5c2d1cec65874c0c0627b70ebc34a4f4",
+  "historicalFilesUnchanged": true,
+  "historicalFilesVerified": 23,
+  "interviewGuide": {
+    "action": "UNTOUCHED / UNSTAGED / UNCOMMITTED",
+    "combinedDigest": "a9fbec6e7d3646f8140dd3e0a1cab216512dcb0b6d4448ed681336d7ecbd3b85",
+    "fileCount": 6,
+    "trackedFiles": []
+  },
+  "productionSourceMatchesPriorAudit": true,
+  "providerAuthorization": "User explicitly authorized only retrieval-focused-v2 SYNTHETIC provider text and isolated local Qdrant vectors",
+  "pushed": false,
+  "sourceAudit": {
+    "src/dovideo/application/chunking.py": "3bc5cf5265d4102d497fff4d117febb4e4059adbe82791aac143efd203ac5cc4",
+    "src/dovideo/application/evaluation_runner.py": "f9ebb7bc3ff5db43bb00d34fcac8a374bdcbc1cc89cea801210641fc8d62b007",
+    "src/dovideo/application/ports/retrieval.py": "06a99ce349ad1a78ba4effc7e0f3369767299edc2d4dad1e79c9b6fe91cb8ba2",
+    "src/dovideo/application/rank_fusion.py": "6529c455b66786c5bc8a9e155bff16eb210d035f67fdf7bdfbd3138c48b39220",
+    "src/dovideo/application/retrieval.py": "3b19f617446c3dbd8654160ed1fe273ff7f2189f12e64626313e4507688bda00",
+    "src/dovideo/application/retrieval_documents.py": "0530e44825f659b8ad9e8432a4ea8c5edccc7651d61ca81e7c0886ec173da51c",
+    "src/dovideo/application/retrieval_observation.py": "c0be8438a98e36ea9cc84ac46b059470f06a07fef77d78be7a34a382cb75962c",
+    "src/dovideo/application/sparse_retrieval.py": "683131cc16f98f3dd883bca839274eda5c9c936b36e484628fe3fe32d26cfb20",
+    "src/dovideo/application/value_objects.py": "ebe65c050faa94aa0f05c5c7f4813ad7838a58e280be9d6d750408e9ef37dbdf",
+    "src/dovideo/infrastructure/providers/embedding.py": "30307fe5c91d9cd3a0e5a23a82a9feaf024cc00963a292fb4497e29ede41b063",
+    "src/dovideo/infrastructure/providers/reranker.py": "e9dd9cdafb5baaf56b096c7b5ff238eb7dfa5d8025edb362f4886fa8dee2c733",
+    "src/dovideo/infrastructure/r4_runtime.py": "c54bb9aceaf9cd8d32b41ac350458ad43a65943c1988f7e3e2ed8db4fb29e404",
+    "src/dovideo/infrastructure/vector/qdrant.py": "c389ee53a53f6bb922c60469859b6ae87fbf47c5e8bc050da3cd6d7ff911aeb6",
+    "tools/run_retrieval_comparison.py": "a0f9b0fceb6f9391c57462d95b15427ab597f8d5c15ed5fd3b2c547d49fb10d4"
+  },
+  "toolDigest": "d12549918ca79f8245b90904978799929d792294a2d7c9306f368c2f27b9628e",
+  "workingTreeAfter": "?? docs/interview-guide/\n?? docs/retrieval-quality-closure-live/\n?? docs/retrieval-quality-closure/\n?? tests/application/test_retrieval_quality_closure.py\n?? tools/run_retrieval_quality_closure.py",
+  "workingTreeBefore": "?? docs/interview-guide/\n?? docs/retrieval-quality-closure-live/\n?? docs/retrieval-quality-closure/\n?? tests/application/test_retrieval_quality_closure.py\n?? tools/run_retrieval_quality_closure.py"
+}

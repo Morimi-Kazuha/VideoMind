@@ -1,0 +1,28 @@
+{
+  "collection": "video_chunks_r4_bge_m3",
+  "operation": "READ_ONLY_COUNT",
+  "ownedNamespaces": [
+    {
+      "mediaId": 800367839060,
+      "remainingPoints": 0
+    },
+    {
+      "mediaId": 800379438070,
+      "remainingPoints": 0
+    },
+    {
+      "mediaId": 900326948780,
+      "remainingPoints": 0
+    },
+    {
+      "mediaId": 900403380020,
+      "remainingPoints": 0
+    },
+    {
+      "mediaId": 900566015960,
+      "remainingPoints": 0
+    }
+  ],
+  "status": "PASS",
+  "totalRemainingOwnedPoints": 0
+}

@@ -1,0 +1,376 @@
+{
+  "bgeDensePromotedExpectedParentToRank1": false,
+  "bm25RrfPromotedExpectedParentToRank1": true,
+  "firstOfflineLiveDifferenceStage": "Dense",
+  "focusCases": {
+    "distractor-02": {
+      "A": [
+        {
+          "denseTopKHit": true,
+          "evidenceHitRank": 1,
+          "expectedSegmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f",
+          "expectedTemporalRange": [
+            420000,
+            480000
+          ],
+          "final3Hit": true,
+          "parents": [
+            {
+              "baselineWeightedRank": 1,
+              "baselineWeightedScore": 0.61136941,
+              "chunkId": "chunk_2b7399dd9eca2ececa97ea44479723daa9b2ce8111e59315a082acf06700ea64",
+              "denseRank": 1,
+              "denseScore": 0.60228235,
+              "finalRank": 1,
+              "finalScore": 0.61136941,
+              "rerankerRank": null,
+              "rerankerScore": null,
+              "rrfRank": null,
+              "rrfScore": null,
+              "sparseRank": null,
+              "sparseScore": null
+            }
+          ],
+          "recallAt": {
+            "1": true,
+            "3": true,
+            "5": true
+          },
+          "segment": {
+            "asrMatch": 1.0,
+            "chunkId": "chunk_2b7399dd9eca2ececa97ea44479723daa9b2ce8111e59315a082acf06700ea64",
+            "finalSegmentScore": 0.5862531755,
+            "ocrMatch": 0.0,
+            "parentRank": 1,
+            "parentRelevance": 0.61136941,
+            "rank": 1,
+            "segmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+          },
+          "segmentRank": 1,
+          "sparseTopKHit": false
+        }
+      ],
+      "B": [
+        {
+          "denseTopKHit": true,
+          "evidenceHitRank": 1,
+          "expectedSegmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f",
+          "expectedTemporalRange": [
+            420000,
+            480000
+          ],
+          "final3Hit": true,
+          "parents": [
+            {
+              "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+              "denseRank": 2,
+              "denseScore": 0.48871917,
+              "finalRank": 1,
+              "finalScore": 0.03252247488101534,
+              "rerankerRank": null,
+              "rerankerScore": null,
+              "rrfRank": 1,
+              "rrfScore": 0.03252247488101534,
+              "sparseRank": 1,
+              "sparseScore": 8.419074622109227
+            }
+          ],
+          "recallAt": {
+            "1": true,
+            "3": true,
+            "5": true
+          },
+          "segment": {
+            "asrMatch": 1.0,
+            "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+            "finalSegmentScore": 0.8,
+            "ocrMatch": 0.0,
+            "parentRank": 1,
+            "parentRelevance": 1.0,
+            "rank": 1,
+            "segmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+          },
+          "segmentRank": 1,
+          "sparseTopKHit": true
+        }
+      ],
+      "C": [
+        {
+          "denseTopKHit": true,
+          "evidenceHitRank": 1,
+          "expectedSegmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f",
+          "expectedTemporalRange": [
+            420000,
+            480000
+          ],
+          "final3Hit": true,
+          "parents": [
+            {
+              "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+              "denseRank": 2,
+              "denseScore": 0.48871917,
+              "finalRank": 1,
+              "finalScore": 0.03252247488101534,
+              "rerankerRank": 1,
+              "rerankerScore": 0.03252247488101534,
+              "rrfRank": 1,
+              "rrfScore": 0.03252247488101534,
+              "sparseRank": 1,
+              "sparseScore": 8.419074622109227
+            }
+          ],
+          "recallAt": {
+            "1": true,
+            "3": true,
+            "5": true
+          },
+          "segment": {
+            "asrMatch": 1.0,
+            "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+            "finalSegmentScore": 0.8,
+            "ocrMatch": 0.0,
+            "parentRank": 1,
+            "parentRelevance": 1.0,
+            "rank": 1,
+            "segmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+          },
+          "segmentRank": 1,
+          "sparseTopKHit": true
+        }
+      ],
+      "offlineFinal": [
+        {
+          "denseTopKHit": true,
+          "evidenceHitRank": 6,
+          "expectedSegmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f",
+          "expectedTemporalRange": [
+            420000,
+            480000
+          ],
+          "final3Hit": true,
+          "parents": [
+            {
+              "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+              "denseRank": 3,
+              "denseScore": 0.08343250171099333,
+              "finalRank": 2,
+              "finalScore": 0.032266458495966696,
+              "rerankerRank": null,
+              "rerankerScore": null,
+              "rrfRank": 2,
+              "rrfScore": 0.032266458495966696,
+              "sparseRank": 1,
+              "sparseScore": 8.419074622109227
+            }
+          ],
+          "recallAt": {
+            "1": false,
+            "3": false,
+            "5": false
+          },
+          "segment": {
+            "asrMatch": 1.0,
+            "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+            "finalSegmentScore": 0.525,
+            "ocrMatch": 0.0,
+            "parentRank": 2,
+            "parentRelevance": 0.5,
+            "rank": 6,
+            "segmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+          },
+          "segmentRank": 6,
+          "sparseTopKHit": true
+        }
+      ]
+    },
+    "semantic-01": {
+      "A": [
+        {
+          "denseTopKHit": true,
+          "evidenceHitRank": 1,
+          "expectedSegmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f",
+          "expectedTemporalRange": [
+            420000,
+            480000
+          ],
+          "final3Hit": true,
+          "parents": [
+            {
+              "baselineWeightedRank": 1,
+              "baselineWeightedScore": 0.53881762,
+              "chunkId": "chunk_2b7399dd9eca2ececa97ea44479723daa9b2ce8111e59315a082acf06700ea64",
+              "denseRank": 1,
+              "denseScore": 0.6376127,
+              "finalRank": 1,
+              "finalScore": 0.53881762,
+              "rerankerRank": null,
+              "rerankerScore": null,
+              "rrfRank": null,
+              "rrfScore": null,
+              "sparseRank": null,
+              "sparseScore": null
+            }
+          ],
+          "recallAt": {
+            "1": true,
+            "3": true,
+            "5": true
+          },
+          "segment": {
+            "asrMatch": 0.5,
+            "chunkId": "chunk_2b7399dd9eca2ececa97ea44479723daa9b2ce8111e59315a082acf06700ea64",
+            "finalSegmentScore": 0.421349691,
+            "ocrMatch": 0.0,
+            "parentRank": 1,
+            "parentRelevance": 0.53881762,
+            "rank": 1,
+            "segmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+          },
+          "segmentRank": 1,
+          "sparseTopKHit": false
+        }
+      ],
+      "B": [
+        {
+          "denseTopKHit": true,
+          "evidenceHitRank": 1,
+          "expectedSegmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f",
+          "expectedTemporalRange": [
+            420000,
+            480000
+          ],
+          "final3Hit": true,
+          "parents": [
+            {
+              "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+              "denseRank": 2,
+              "denseScore": 0.5339582,
+              "finalRank": 1,
+              "finalScore": 0.03252247488101534,
+              "rerankerRank": null,
+              "rerankerScore": null,
+              "rrfRank": 1,
+              "rrfScore": 0.03252247488101534,
+              "sparseRank": 1,
+              "sparseScore": 4.190134165332411
+            }
+          ],
+          "recallAt": {
+            "1": true,
+            "3": true,
+            "5": true
+          },
+          "segment": {
+            "asrMatch": 0.5,
+            "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+            "finalSegmentScore": 0.675,
+            "ocrMatch": 0.0,
+            "parentRank": 1,
+            "parentRelevance": 1.0,
+            "rank": 1,
+            "segmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+          },
+          "segmentRank": 1,
+          "sparseTopKHit": true
+        }
+      ],
+      "C": [
+        {
+          "denseTopKHit": true,
+          "evidenceHitRank": 1,
+          "expectedSegmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f",
+          "expectedTemporalRange": [
+            420000,
+            480000
+          ],
+          "final3Hit": true,
+          "parents": [
+            {
+              "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+              "denseRank": 2,
+              "denseScore": 0.5339582,
+              "finalRank": 1,
+              "finalScore": 0.03252247488101534,
+              "rerankerRank": 1,
+              "rerankerScore": 0.03252247488101534,
+              "rrfRank": 1,
+              "rrfScore": 0.03252247488101534,
+              "sparseRank": 1,
+              "sparseScore": 4.190134165332411
+            }
+          ],
+          "recallAt": {
+            "1": true,
+            "3": true,
+            "5": true
+          },
+          "segment": {
+            "asrMatch": 0.5,
+            "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+            "finalSegmentScore": 0.675,
+            "ocrMatch": 0.0,
+            "parentRank": 1,
+            "parentRelevance": 1.0,
+            "rank": 1,
+            "segmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+          },
+          "segmentRank": 1,
+          "sparseTopKHit": true
+        }
+      ],
+      "offlineFinal": [
+        {
+          "denseTopKHit": true,
+          "evidenceHitRank": 6,
+          "expectedSegmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f",
+          "expectedTemporalRange": [
+            420000,
+            480000
+          ],
+          "final3Hit": true,
+          "parents": [
+            {
+              "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+              "denseRank": 3,
+              "denseScore": 0.15898014120419915,
+              "finalRank": 2,
+              "finalScore": 0.032266458495966696,
+              "rerankerRank": null,
+              "rerankerScore": null,
+              "rrfRank": 2,
+              "rrfScore": 0.032266458495966696,
+              "sparseRank": 1,
+              "sparseScore": 4.190134165332411
+            }
+          ],
+          "recallAt": {
+            "1": false,
+            "3": false,
+            "5": false
+          },
+          "segment": {
+            "asrMatch": 0.5,
+            "chunkId": "chunk_480042a984ecd04eaaeca520521295cef6955b6f1de8fef79bfbe52cb039bbf2",
+            "finalSegmentScore": 0.4,
+            "ocrMatch": 0.0,
+            "parentRank": 2,
+            "parentRelevance": 0.5,
+            "rank": 6,
+            "segmentId": "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+          },
+          "segmentRank": 6,
+          "sparseTopKHit": true
+        }
+      ]
+    }
+  },
+  "liveExpectedParentRank2SampleCount": 0,
+  "liveFailedCases": [],
+  "liveParentRank2FineRankingBottleneck": "NOT_MEASURED",
+  "liveRootCause": "No observed regression. Dense rank improved 3 to 2; BM25/RRF selected correct parent first; parent dominance condition not activated",
+  "offlineRootCause": "Fine-Ranking Parent Dominance",
+  "parameterTuning": false,
+  "parentRank1ZeroTextScoreFloor": 0.55,
+  "parentRank2AsrOnlyScoreCap": 0.525,
+  "rerankerAdditionalPromotion": false
+}

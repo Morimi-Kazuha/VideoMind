@@ -1,0 +1,25 @@
+{
+  "backend": {
+    "errors": 0,
+    "failures": 0,
+    "passed": 1089,
+    "seconds": 39.457,
+    "skipped": 17,
+    "total": 1106
+  },
+  "frontend": {
+    "failed": 0,
+    "passed": 79
+  },
+  "frontendBuild": "PASS",
+  "initialBackendAttempt": {
+    "errors": 164,
+    "passed": 918,
+    "reason": "old pytest temporary directory ACL; resolved with new workspace basetemp",
+    "skipped": 17
+  },
+  "targeted": {
+    "passed": 94,
+    "seconds": 5.23
+  }
+}

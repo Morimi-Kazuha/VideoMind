@@ -1,0 +1,34 @@
+{
+  "automaticApproval": {
+    "fullRetry": "REJECTED",
+    "reason": "Potential transmission of dataset text to external embedding provider and Qdrant",
+    "safeAlternative": "preflight-only fixed short probe approved and completed; no dataset text transmitted"
+  },
+  "liveArms": {
+    "A": "NOT_RUN",
+    "B": "NOT_RUN",
+    "C": "NOT_RUN"
+  },
+  "liveFallbackDeltas": "NOT_RUN; no live case executed",
+  "liveScopeAndWrites": "NOT_RUN; no points written or deleted",
+  "productionRecommendation": "FURTHER MEASUREMENT REQUIRED",
+  "qdrant": {
+    "collection": "video_chunks_r4_bge_m3",
+    "dockerEngine": "NOT_RUNNING",
+    "dockerStartupFailure": "Ingest server could not rename sailor-ingest.sock to sailor-ingest.sock.stale: file cannot be accessed by the system",
+    "host": "127.0.0.1",
+    "repairAttempt": "Started existing Docker Desktop hidden; backend cancelled startup",
+    "status": "FAILED",
+    "transportCause": "URLError",
+    "wslDockerDesktop": "Stopped"
+  },
+  "qualityDecision": "E",
+  "reranker": {
+    "armC": "NOT_RUN",
+    "missing": [
+      "DOVIDEO_RERANKER_API_KEY"
+    ],
+    "status": "NOT_CONFIGURED"
+  },
+  "status": "NOT READY"
+}

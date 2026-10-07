@@ -1,0 +1,22 @@
+{
+  "benchmarkTuningPerformed": false,
+  "coarseRecall3": 1.0,
+  "correctnessBugFound": false,
+  "firstRecall3FailureStage": "Segment Fine Ranking",
+  "liveRootCause": "NOT_MEASURED; provider environment insufficient",
+  "offlineCaseIds": [
+    "semantic-01",
+    "distractor-02"
+  ],
+  "offlineOnly": true,
+  "offlineRootCause": "Fine-Ranking Parent Dominance",
+  "parentRank1ZeroTextMinimum": 0.55,
+  "parentRank2AsrOnlyMaximum": 0.525,
+  "rerankerValue": "NOT_RUN",
+  "segmentRecall3": 0.8333333333333334,
+  "weightsUnchanged": [
+    0.55,
+    0.25,
+    0.2
+  ]
+}

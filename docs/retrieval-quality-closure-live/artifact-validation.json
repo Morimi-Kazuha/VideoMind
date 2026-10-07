@@ -1,0 +1,12 @@
+{
+  "bCAllSegmentMetricsEqualCases": 12,
+  "bCRankedUpstreamIdentityEqualCases": 12,
+  "caseExecutionsVerified": 36,
+  "fallbackCases": 0,
+  "fullQueryTranscriptOcrMatches": 0,
+  "historicalArtifactsUnchanged": true,
+  "productionAlgorithmsUnchanged": true,
+  "scannedFiles": 28,
+  "secretValueMatches": 0,
+  "status": "PASS"
+}

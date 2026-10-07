@@ -1,0 +1,34 @@
+{
+  "bgeM3": {
+    "dimension": 1024,
+    "host": "api.siliconflow.cn",
+    "model": "BAAI/bge-m3",
+    "status": "PASS"
+  },
+  "qdrant": {
+    "cleanup": "PASS",
+    "collection": "video_chunks_r4_bge_m3",
+    "dimension": 1024,
+    "health": "PASS",
+    "host": "127.0.0.1",
+    "read": "PASS",
+    "scopeVerification": {
+      "chunkingVersion": "video-chunk-5m-overlap1m-v2",
+      "mediaId": 800367839060,
+      "scopedCount": 1,
+      "sourceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "staleProbeCount": 2,
+      "status": "PASS"
+    },
+    "status": "PASS",
+    "write": "PASS"
+  },
+  "reranker": {
+    "configuredEnabled": "false",
+    "endpoint": "PASS",
+    "host": "api.siliconflow.cn",
+    "model": "BAAI/bge-reranker-v2-m3",
+    "modelExists": "PASS",
+    "status": "PASS"
+  }
+}

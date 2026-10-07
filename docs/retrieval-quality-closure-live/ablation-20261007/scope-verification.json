@@ -1,0 +1,18 @@
+[
+  {
+    "chunkingVersion": "video-chunk-5m-overlap1m-v2",
+    "mediaId": 900566015960,
+    "scopedCount": 8,
+    "sourceRevision": "f4ca4519bde75e16aff66bd4df0976a55e56a6d021b5952df85fd9dd6fddb600",
+    "staleProbeCount": 2,
+    "status": "PASS"
+  },
+  {
+    "chunkingVersion": "video-chunk-5m-overlap1m-v2",
+    "mediaId": 900403380020,
+    "scopedCount": 8,
+    "sourceRevision": "f4ca4519bde75e16aff66bd4df0976a55e56a6d021b5952df85fd9dd6fddb600",
+    "staleProbeCount": 2,
+    "status": "PASS"
+  }
+]

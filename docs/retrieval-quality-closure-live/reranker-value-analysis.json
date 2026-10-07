@@ -1,0 +1,150 @@
+{
+  "caseDetails": [
+    {
+      "caseId": "semantic-01",
+      "evidenceTop8OrderChanged": false,
+      "maxDenseScoreDrift": 0.0,
+      "membershipChanged": false,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": false,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "semantic-02",
+      "evidenceTop8OrderChanged": true,
+      "maxDenseScoreDrift": 0.0,
+      "membershipChanged": true,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": true,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "technical-01",
+      "evidenceTop8OrderChanged": true,
+      "maxDenseScoreDrift": 0.0,
+      "membershipChanged": true,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": true,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "technical-02",
+      "evidenceTop8OrderChanged": false,
+      "maxDenseScoreDrift": 0.00041389999999996707,
+      "membershipChanged": true,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": true,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "ocr-01",
+      "evidenceTop8OrderChanged": false,
+      "maxDenseScoreDrift": 0.000497200000000031,
+      "membershipChanged": true,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": true,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "ocr-02",
+      "evidenceTop8OrderChanged": false,
+      "maxDenseScoreDrift": 0.0,
+      "membershipChanged": false,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": false,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "asr-01",
+      "evidenceTop8OrderChanged": true,
+      "maxDenseScoreDrift": 0.0,
+      "membershipChanged": true,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": true,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "asr-02",
+      "evidenceTop8OrderChanged": true,
+      "maxDenseScoreDrift": 0.0,
+      "membershipChanged": true,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": true,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "boundary-01",
+      "evidenceTop8OrderChanged": true,
+      "maxDenseScoreDrift": 0.0,
+      "membershipChanged": true,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": true,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "boundary-02",
+      "evidenceTop8OrderChanged": false,
+      "maxDenseScoreDrift": 0.0,
+      "membershipChanged": false,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": false,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "distractor-01",
+      "evidenceTop8OrderChanged": true,
+      "maxDenseScoreDrift": 0.0006731099999999768,
+      "membershipChanged": true,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": true,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    },
+    {
+      "caseId": "distractor-02",
+      "evidenceTop8OrderChanged": false,
+      "maxDenseScoreDrift": 0.0,
+      "membershipChanged": true,
+      "orderOnlyChanged": false,
+      "orderedTop3Changed": true,
+      "rrfScoresEqual": true,
+      "segmentMetricsEqual": true,
+      "upstreamRankedIdsEqual": true
+    }
+  ],
+  "counts": {
+    "evidenceTop8OrderChanged": 6,
+    "membershipChanged": 9,
+    "orderOnlyChanged": 0,
+    "orderedTop3Changed": 9
+  },
+  "harmed": 0,
+  "maxDenseScoreDrift": 0.0006731099999999768,
+  "rescued": 0,
+  "unchanged": [
+    "semantic-01",
+    "ocr-02",
+    "boundary-02"
+  ]
+}

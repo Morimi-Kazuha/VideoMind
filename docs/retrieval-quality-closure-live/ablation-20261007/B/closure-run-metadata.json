@@ -1,0 +1,52 @@
+{
+  "arm": "B",
+  "candidateSettings": {
+    "bm25B": 0.75,
+    "bm25K1": 1.2,
+    "dense": 8,
+    "final": 3,
+    "fusion": 10,
+    "overlapMs": 60000,
+    "rrfK": 60,
+    "segmentWeights": [
+      0.55,
+      0.25,
+      0.2
+    ],
+    "sparse": 8,
+    "strideMs": 240000,
+    "windowMs": 300000
+  },
+  "cleanup": {
+    "remainingPoints": 0,
+    "status": "PASS"
+  },
+  "datasetDigest": "f1820acf0b0aec90a64b0bcd9d7f4a8a8d204e70fe55cfd667e5da04ae569b71",
+  "fallbackDeltas": {
+    "asr-01": 0,
+    "asr-02": 0,
+    "boundary-01": 0,
+    "boundary-02": 0,
+    "distractor-01": 0,
+    "distractor-02": 0,
+    "ocr-01": 0,
+    "ocr-02": 0,
+    "semantic-01": 0,
+    "semantic-02": 0,
+    "technical-01": 0,
+    "technical-02": 0
+  },
+  "gitSha": "da5b2ffc5c2d1cec65874c0c0627b70ebc34a4f4",
+  "providers": {
+    "embeddingHost": "api.siliconflow.cn",
+    "embeddingModel": "BAAI/bge-m3",
+    "qdrantCollection": "video_chunks_r4_bge_m3",
+    "qdrantHost": "127.0.0.1",
+    "rerankerModel": null
+  },
+  "rerankerEnabled": false,
+  "scoreSemantics": "Dense score: Qdrant cosine; sparse: BM25; RRF score retained through reranking; rerankerScore/finalScore are carried RRF candidate scores, not raw cross-encoder relevance scores. Fine-ranking uses ordinal 1/parentRank.",
+  "sourceRevision": "f4ca4519bde75e16aff66bd4df0976a55e56a6d021b5952df85fd9dd6fddb600",
+  "toolDigest": "d12549918ca79f8245b90904978799929d792294a2d7c9306f368c2f27b9628e",
+  "workingTree": "?? docs/interview-guide/\n?? docs/retrieval-quality-closure-live/\n?? docs/retrieval-quality-closure/\n?? tests/application/test_retrieval_quality_closure.py\n?? tools/run_retrieval_quality_closure.py"
+}

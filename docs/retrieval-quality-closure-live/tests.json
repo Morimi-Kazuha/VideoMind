@@ -1,0 +1,27 @@
+{
+  "backend": {
+    "errors": 0,
+    "failures": 0,
+    "passed": 1090,
+    "seconds": 43.923,
+    "skipped": 17,
+    "tests": 1107
+  },
+  "frontend": {
+    "failed": 0,
+    "passed": 79,
+    "seconds": 1.3902956
+  },
+  "frontendBuild": {
+    "durationMs": 932,
+    "status": "PASS"
+  },
+  "targeted": {
+    "errors": 0,
+    "failures": 0,
+    "passed": 95,
+    "seconds": 6.3,
+    "skipped": 0,
+    "tests": 95
+  }
+}

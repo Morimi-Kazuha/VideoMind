@@ -1,0 +1,184 @@
+{
+  "cases": [
+    {
+      "caseId": "semantic-01",
+      "category": "semantic_paraphrase",
+      "expectedSegmentIds": [
+        "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+      ],
+      "expectedTemporalRanges": [
+        [
+          420000,
+          480000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "semantic-02",
+      "category": "semantic_paraphrase",
+      "expectedSegmentIds": [
+        "seg_3b448f84e228261d76b99f1e1ea5a7b71e442eea4161b1760ed29419fe3969b7"
+      ],
+      "expectedTemporalRanges": [
+        [
+          1320000,
+          1380000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "technical-01",
+      "category": "exact_technical_terms",
+      "expectedSegmentIds": [
+        "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+      ],
+      "expectedTemporalRanges": [
+        [
+          420000,
+          480000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "technical-02",
+      "category": "exact_technical_terms",
+      "expectedSegmentIds": [
+        "seg_4b30b9ae6bd02eefef708b8af9907a128e1cd267f4c3e039bc4167bfaacc4adb"
+      ],
+      "expectedTemporalRanges": [
+        [
+          900000,
+          960000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "ocr-01",
+      "category": "ocr_only",
+      "expectedSegmentIds": [
+        "seg_bcbc4408880f1e2e24bcf49fb00ee59ccf9dca627a2c1084ce5b689e3f895b95"
+      ],
+      "expectedTemporalRanges": [
+        [
+          720000,
+          780000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "ocr-02",
+      "category": "ocr_only",
+      "expectedSegmentIds": [
+        "seg_154e1a9eb89d4c375b3c809c9a52738a78d0f6fbb62570616e66f54a42eb6e34"
+      ],
+      "expectedTemporalRanges": [
+        [
+          1080000,
+          1140000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "asr-01",
+      "category": "asr_only",
+      "expectedSegmentIds": [
+        "seg_a05b074a65e12c34835837fb8d8f91328678fa501316f96b35a0918ee0222e98"
+      ],
+      "expectedTemporalRanges": [
+        [
+          660000,
+          720000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "asr-02",
+      "category": "asr_only",
+      "expectedSegmentIds": [
+        "seg_ece8cec9e57a6d0478586e62f2623b1df900c284dc91738a9d8e856ed42cc648"
+      ],
+      "expectedTemporalRanges": [
+        [
+          1140000,
+          1200000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "boundary-01",
+      "category": "boundary_crossing",
+      "expectedSegmentIds": [
+        "seg_a1a7c8bd04ec2cd94c0bb83ba3cf61236ecef2afda60b4e9d40adc96b0e9d14d",
+        "seg_cfb75edad02836959a461b7bb9918cfd4be0d56d51af309ce0cbe0ee2af4444b"
+      ],
+      "expectedTemporalRanges": [
+        [
+          240000,
+          300000
+        ],
+        [
+          300000,
+          360000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "boundary-02",
+      "category": "boundary_crossing",
+      "expectedSegmentIds": [
+        "seg_9781aae6f30a27982647721913de9ceb54e03c2264a89930ec459bd961b88b58",
+        "seg_1f855ac608d729de65c4a498a762d59b869e18d274ce31ecaabac5049004d5c7"
+      ],
+      "expectedTemporalRanges": [
+        [
+          1440000,
+          1500000
+        ],
+        [
+          1500000,
+          1560000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "distractor-01",
+      "category": "distractor",
+      "expectedSegmentIds": [
+        "seg_3b448f84e228261d76b99f1e1ea5a7b71e442eea4161b1760ed29419fe3969b7"
+      ],
+      "expectedTemporalRanges": [
+        [
+          1320000,
+          1380000
+        ]
+      ],
+      "status": "NOT_RUN"
+    },
+    {
+      "caseId": "distractor-02",
+      "category": "distractor",
+      "expectedSegmentIds": [
+        "seg_c40a98b083b5027aaeb50438a953a8f04b785fc6561ce05aff4dbcaf41ee916f"
+      ],
+      "expectedTemporalRanges": [
+        [
+          420000,
+          480000
+        ]
+      ],
+      "status": "NOT_RUN"
+    }
+  ],
+  "reason": "Strict live Qdrant path unavailable",
+  "status": "NOT_RUN"
+}
