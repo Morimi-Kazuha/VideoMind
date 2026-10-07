@@ -60,6 +60,23 @@ See [source audit](UPLOAD_FINALIZATION_AUDIT.md) and
 
 ## Request and preparation lifecycle
 
+The four AI interaction surfaces share a Redis + Lua distributed token bucket
+with user and global dimensions. One atomic script uses Redis TIME to refill
+both buckets continuously, checks both, and deducts one request token from
+both or neither. Defaults are capacities 60/600 with a 60-second full refill
+duration (1/10 tokens per second). Rejections return 429 with the rounded-up
+maximum shortage wait; backend failures return 503 and fail closed.
+
+Analysis admission follows authentication, validation, media ownership and
+completed-result reuse, before dispatch to RabbitMQ/Celery. Follow-up and
+evidence search check ownership before admission; route validates its goal
+before admission. Status, SSE and ordinary reads consume no AI bucket tokens.
+The bucket governs admission; the broker queues accepted work and task
+idempotency prevents duplicate execution. These remain separate mechanisms.
+Versioned v2 Hash keys avoid collisions with old String counters, use hashed
+user identities, and expire after two full refill periods of inactivity.
+See [request-level limiting and migration](AI_INTERACTION_RATE_LIMIT.md).
+
 Analysis TaskLock is a renewable owner-token lease, independent of the upload
 MergeLock. `SET NX PX` retains the default 15-minute TTL; TaskWorker starts a
 per-delivery keeper which refreshes at TTL/3 through the existing atomic

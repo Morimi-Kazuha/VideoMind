@@ -515,11 +515,12 @@ def create_app(
     ) -> JSONResponse:
         normalized_goal = _goal(goal, "分析目标")
         resolved_mode = _mode(mode)
-        await enforce_ai_interaction(user, "analysis")
         await selected_services.media.require_owned(id, int(user["id"]))
         key = selected_services.key(id, normalized_goal, resolved_mode)
         if await selected_services.checkpoint.load_result(key) is not None:
             return _ok(None, "已复用已完成结果")
+        # Admission protects new work before dispatch and broker enqueue.
+        await enforce_ai_interaction(user, "analysis")
         disposition = await selected_services.submit_analysis(
             id, int(user["id"]), normalized_goal, resolved_mode
         )
@@ -536,8 +537,8 @@ def create_app(
         question = _goal(question, "追问内容")
         selected_goal = None if goal is None else _goal(goal, "原始分析目标")
         resolved_mode = _mode(mode)
-        await enforce_ai_interaction(user, "follow-up")
         await selected_services.media.require_owned(id, int(user["id"]))
+        await enforce_ai_interaction(user, "follow-up")
         return _ok(
             await selected_services.follow_up(
                 id, question, selected_goal, resolved_mode
@@ -551,8 +552,8 @@ def create_app(
         user: dict[str, Any] = Depends(require_user),
     ) -> JSONResponse:
         normalized_query = _goal(query, "检索问题")
-        await enforce_ai_interaction(user, "evidence-search")
         await selected_services.media.require_owned(id, int(user["id"]))
+        await enforce_ai_interaction(user, "evidence-search")
         return _ok(list(await selected_services.evidence_search(id, normalized_query)))
 
     @app.get("/analysis/temporal-windows")
