@@ -17,13 +17,12 @@ from dovideo.domain import (
     VideoSegment,
 )
 
-from .chunking import VideoChunkingService
+from .chunking import CHUNK_MILLISECONDS, VideoChunkingService, chunks_compatible
 from .ports.checkpoint import ContextCheckpointPort
 from .ports.observability import TelemetryPort
 from .retrieval import VideoEvidenceRetrievalService
 
 
-CHUNK_MILLISECONDS = 5 * 60 * 1000
 CHUNK_MS = CHUNK_MILLISECONDS
 MAX_CONTEXT_CHARS = 24_000
 
@@ -201,11 +200,14 @@ class LongVideoContextService:
         media_id: int | None,
         segments: Iterable[VideoSegment],
     ) -> tuple[VideoChunk, ...]:
+        segments = tuple(segments)
         if media_id is not None and self._checkpoint is not None:
             cached = await self._checkpoint.load_chunks(media_id)
-            if cached is not None and len(cached) > 0:
+            if cached is not None and chunks_compatible(cached, segments):
                 self._increment("chunkCheckpointHits")
                 return tuple(cached)
+            if cached:
+                self._increment("chunkCheckpointInvalidations")
 
         chunks = tuple(await self._chunking.build(segments))
         if media_id is not None:

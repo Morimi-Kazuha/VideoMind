@@ -54,7 +54,7 @@ class LocalTfidfEmbeddingAdapter(EmbeddingPort):
         first_seen: dict[str, int] = {}
         sequence = 0
         for tokens in normalized:
-            for token in set(tokens):
+            for token in sorted(set(tokens)):
                 document_frequency[token] += 1
                 first_seen.setdefault(token, sequence)
                 sequence += 1

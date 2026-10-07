@@ -1,9 +1,4 @@
-"""Hybrid semantic, keyword, and OCR retrieval for video chunks.
-
-This is the application-level port of Java ``VideoEvidenceRetrievalService``.
-Planner, embedding, and vector-index calls remain small injectable ports; a
-provider outage therefore falls back to the local cosine and lexical signals.
-"""
+"""Dense/BM25 candidate retrieval, RRF, optional reranking and video evidence."""
 
 from __future__ import annotations
 
@@ -22,18 +17,22 @@ from dovideo.domain import (
 from .errors import BudgetExceededError
 from .ports.ai import EmbeddingPort, RetrievalPlannerPort
 from .ports.observability import TelemetryPort
-from .ports.retrieval import VectorIndexPort
+from .ports.retrieval import VectorIndexPort, RerankerDocument, RerankerPort
 from .value_objects import VectorHit
+from .rank_fusion import RankedCandidate, reciprocal_rank_fusion
+from .retrieval_documents import retrieval_document, segment_identity, normalize_text
+from .sparse_retrieval import BM25Retriever
+from .retrieval_observation import observe_retrieval
 
 
-TOP_K = 3
+DENSE_CANDIDATE_K = 8
+SPARSE_CANDIDATE_K = 8
+FUSION_CANDIDATE_K = 10
+FINAL_CHUNK_K = 3
+TOP_K = FINAL_CHUNK_K
 MAX_USER_HITS = 8
 MAX_SNIPPET_LENGTH = 180
-VECTOR_LOOKUP_LIMIT = TOP_K * 2
-
-CHUNK_SEMANTIC_WEIGHT = 0.60
-CHUNK_KEYWORD_WEIGHT = 0.25
-CHUNK_VISUAL_WEIGHT = 0.15
+VECTOR_LOOKUP_LIMIT = DENSE_CANDIDATE_K
 SEGMENT_CHUNK_WEIGHT = 0.55
 SEGMENT_TRANSCRIPT_WEIGHT = 0.25
 SEGMENT_VISUAL_WEIGHT = 0.20
@@ -52,8 +51,10 @@ class VideoEvidenceRetrievalService:
         planner: RetrievalPlannerPort | None = None,
         embedder: EmbeddingPort | None = None,
         vector_store: VectorIndexPort | None = None,
+        sparse: BM25Retriever | None = None,
+        reranker: RerankerPort | None = None,
     ) -> None:
-        """Create the service from the three provider-neutral ports.
+        """Create the service from provider-neutral retrieval boundaries.
 
         The keyword aliases make migration wiring readable while keeping the
         canonical names aligned with the application port types.
@@ -65,6 +66,8 @@ class VideoEvidenceRetrievalService:
         self._embedding = embedding if embedding is not None else embedder
         self._vector_index = vector_index if vector_index is not None else vector_store
         self._telemetry = telemetry
+        self._sparse = sparse if sparse is not None else BM25Retriever()
+        self._reranker = reranker
         if self._retrieval_planner is None:
             raise TypeError("retrieval_planner is required")
         if self._embedding is None:
@@ -78,9 +81,10 @@ class VideoEvidenceRetrievalService:
         goal: str | None,
         chunks: Iterable[VideoChunk],
     ) -> tuple[VideoSegment, ...]:
-        """Return every raw segment in the top three ranked chunks."""
+        """Return unique ranked segments from the final three candidate chunks."""
 
         ranked_segments = await self._rank(media_id, goal, chunks)
+        observe_retrieval(lambda: tuple(self._to_hit(scored) for scored in ranked_segments))
         return tuple(scored.segment for scored in ranked_segments)
 
     async def search(
@@ -92,9 +96,11 @@ class VideoEvidenceRetrievalService:
         """Return at most eight ranked, directly seekable evidence hits."""
 
         ranked_segments = await self._rank(media_id, query, chunks)
-        return tuple(
+        hits = tuple(
             self._to_hit(scored) for scored in ranked_segments[:MAX_USER_HITS]
         )
+        observe_retrieval(lambda: hits)
+        return hits
 
     async def index(
         self,
@@ -109,6 +115,8 @@ class VideoEvidenceRetrievalService:
         try:
             await self._vector_index.upsert(media_id, normalized)
             self._increment("vectorStoreWrites", len(normalized))
+        except BudgetExceededError:
+            raise
         except Exception:
             # Cancellation is a BaseException and intentionally propagates.
             self._increment("vectorStoreFallbacks")
@@ -123,31 +131,33 @@ class VideoEvidenceRetrievalService:
         query_embedding = await self._embed(intent.semantic_query)
         # Materialize once; no sorting operation mutates the caller's list.
         normalized_chunks = tuple(chunks)
-        vector_scores = await self._vector_scores(
-            media_id,
-            query_embedding,
-            normalized_chunks,
-        )
-        ranked_chunks = [
-            _ScoredChunk(
-                chunk=chunk,
-                score=self._score(intent, query_embedding, vector_scores, chunk),
-                order=order,
+        documents = tuple(retrieval_document(chunk) for chunk in normalized_chunks)
+        dense = await self._dense_candidates(media_id, query_embedding, normalized_chunks)
+        try:
+            sparse = self._sparse.rank(
+                " ".join((intent.semantic_query, *intent.keywords, *intent.visual_keywords)),
+                documents, limit=SPARSE_CANDIDATE_K,
             )
-            for order, chunk in enumerate(normalized_chunks)
-        ]
-        # Java's ordered stream sort is stable.  The source order tie-breaker
-        # makes that behavior explicit and deterministic.
-        ranked_chunks.sort(key=lambda item: (-item.score, item.order))
-        selected_chunks = tuple(ranked_chunks[:TOP_K])
-        if selected_chunks:
-            self._observe("retrievalTopScore", selected_chunks[0].score)
-            self._increment("retrievalChunks", len(selected_chunks))
+        except BudgetExceededError:
+            raise
+        except Exception:
+            self._increment("sparseFallbacks")
+            sparse = ()
+        fused = reciprocal_rank_fusion((dense, sparse), limit=FUSION_CANDIDATE_K)
+        self._observe("denseCandidates", len(dense))
+        self._observe("sparseCandidates", len(sparse))
+        self._observe("fusionCandidates", len(fused))
+        ranked = await self._rerank(intent.semantic_query, fused, documents)
+        selected = ranked[:FINAL_CHUNK_K]
+        self._increment("retrievalChunks", len(selected))
 
-        ranked_segments: list[_ScoredSegment] = []
+        by_identity: dict[str, _ScoredSegment] = {}
         segment_order = 0
-        for scored_chunk in selected_chunks:
-            for segment in scored_chunk.chunk.raw_segments:
+        for parent_rank, candidate in enumerate(selected, start=1):
+            chunk = normalized_chunks[candidate.index]
+            # Only ordering crosses provider boundaries, never absolute scores.
+            parent_relevance = 1.0 / parent_rank
+            for segment in chunk.raw_segments:
                 transcript_score = _term_score(
                     intent.keywords, segment.transcript
                 )
@@ -155,30 +165,31 @@ class VideoEvidenceRetrievalService:
                     intent.visual_keywords,
                     " ".join(_normalized_ocr_texts(segment)),
                 )
-                ranked_segments.append(
-                    _ScoredSegment(
-                        segment=segment,
-                        score=(
-                            scored_chunk.score * SEGMENT_CHUNK_WEIGHT
-                            + transcript_score * SEGMENT_TRANSCRIPT_WEIGHT
-                            + visual_score * SEGMENT_VISUAL_WEIGHT
-                        ),
-                        transcript_score=transcript_score,
-                        visual_score=visual_score,
-                        order=segment_order,
-                        source_revision=(
-                            segment.source_revision
-                            or scored_chunk.chunk.source_revision
-                        ),
-                        chunk_id=scored_chunk.chunk.chunk_id,
-                    )
+                scored = _ScoredSegment(
+                    segment=segment,
+                    score=(
+                        parent_relevance * SEGMENT_CHUNK_WEIGHT
+                        + transcript_score * SEGMENT_TRANSCRIPT_WEIGHT
+                        + visual_score * SEGMENT_VISUAL_WEIGHT
+                    ),
+                    transcript_score=transcript_score,
+                    visual_score=visual_score,
+                    order=segment_order,
+                    source_revision=segment.source_revision or chunk.source_revision,
+                    chunk_id=chunk.chunk_id,
                 )
+                identity = segment_identity(segment)
+                previous = by_identity.get(identity)
+                if previous is None or scored.score > previous.score:
+                    by_identity[identity] = scored
                 segment_order += 1
         # Java compares score descending, then timestamp ascending.  Retain
         # source order for exact ties (including duplicate timestamps).
-        ranked_segments.sort(
+        ranked_segments = sorted(
+            by_identity.values(),
             key=lambda item: (-item.score, item.segment.start_ms, item.order)
         )
+        self._observe("retrievedSegmentCount", len(ranked_segments))
         return tuple(ranked_segments)
 
     async def _retrieval_intent(self, goal: str | None) -> VideoRetrievalIntent:
@@ -207,81 +218,89 @@ class VideoEvidenceRetrievalService:
             value = await self._embedding.embed(text)
             if value is None:
                 raise TypeError("embedding port returned None")
-            return tuple(value)
+            vector = tuple(value)
+            if text.strip() and (not vector or any(not math.isfinite(float(v)) for v in vector)):
+                raise ValueError("embedding vector unavailable")
+            return vector
+        except BudgetExceededError:
+            raise
         except Exception:
             self._increment("embeddingFallbacks")
             return ()
 
-    async def _vector_scores(
+    async def _dense_candidates(
         self,
         media_id: int | None,
         query_embedding: tuple[float, ...],
         chunks: Sequence[VideoChunk] = (),
-    ) -> dict[str, float]:
-        if media_id is None or not query_embedding:
-            return {}
+    ) -> tuple[RankedCandidate, ...]:
+        if not query_embedding:
+            return ()
+        if media_id is None:
+            return self._local_dense(query_embedding, chunks)
         try:
+            if not getattr(self._vector_index, "enabled", True):
+                raise RuntimeError("vector index unavailable")
+            scope = vector_scope(chunks)
             hits = await self._vector_index.search(
                 media_id,
                 query_embedding,
-                limit=VECTOR_LOOKUP_LIMIT,
+                limit=DENSE_CANDIDATE_K,
+                **scope,
             )
-            scores: dict[str, float] = {}
-            expected_chunk_ids = {
-                chunk.chunk_id for chunk in chunks if chunk.chunk_id
-            }
-            expected_revisions = {
-                chunk.source_revision for chunk in chunks if chunk.source_revision
-            }
+            scores: dict[int, float] = {}
+            lookup = {c.chunk_id if c.chunk_id else _range_key(c.start_ms, c.end_ms): i
+                      for i, c in enumerate(chunks)}
             for hit in hits:
-                if isinstance(hit, VectorHit):
-                    if expected_chunk_ids and hit.chunk_id not in expected_chunk_ids:
-                        # A provenance-aware retrieval must not consume a
-                        # legacy or different-revision point for the same
-                        # media/time range.
-                        continue
-                    if expected_revisions and (
-                        not hit.source_revision
-                        or hit.source_revision not in expected_revisions
-                    ):
-                        continue
-                    # Java's LinkedHashMap.put overwrites duplicate ranges;
-                    # assigning in iteration order preserves that behavior.
-                    if hit.chunk_id:
-                        scores[_chunk_id_key(hit.chunk_id)] = float(hit.score)
-                    else:
-                        scores[_range_key(hit.start_ms, hit.end_ms)] = float(hit.score)
-            return scores
+                if not isinstance(hit, VectorHit) or not math.isfinite(hit.score):
+                    continue
+                if scope.get("source_revision") is not None and hit.source_revision != scope["source_revision"]:
+                    continue
+                if scope.get("chunking_version") is not None and hit.chunking_version != scope["chunking_version"]:
+                    continue
+                key = hit.chunk_id if hit.chunk_id else _range_key(hit.start_ms, hit.end_ms)
+                index = lookup.get(key)
+                if index is None:
+                    continue
+                chunk = chunks[index]
+                if (hit.start_ms, hit.end_ms) != (chunk.start_ms, chunk.end_ms):
+                    continue
+                scores[index] = max(scores.get(index, -math.inf), hit.score)
+            return tuple(sorted((RankedCandidate(i, s) for i, s in scores.items()),
+                                key=lambda c: (-c.score, c.index))[:DENSE_CANDIDATE_K])
+        except BudgetExceededError:
+            raise
         except Exception:
             self._increment("vectorStoreFallbacks")
-            return {}
+            return self._local_dense(query_embedding, chunks)
 
-    def _score(
-        self,
-        intent: VideoRetrievalIntent,
-        query_embedding: tuple[float, ...],
-        vector_scores: dict[str, float],
-        chunk: VideoChunk,
-    ) -> float:
-        remote_score = (
-            vector_scores.get(_chunk_id_key(chunk.chunk_id))
-            if chunk.chunk_id
-            else None
-        )
-        if remote_score is None:
-            remote_score = vector_scores.get(_range_key(chunk.start_ms, chunk.end_ms))
-        semantic_score = (
-            remote_score
-            if remote_score is not None
-            else cosine_similarity(query_embedding, chunk.embedding)
-        )
-        return (
-            semantic_score * CHUNK_SEMANTIC_WEIGHT
-            + _term_score(intent.keywords, _searchable_text(chunk))
-            * CHUNK_KEYWORD_WEIGHT
-            + _term_score(intent.visual_keywords, _visual_text(chunk))
-            * CHUNK_VISUAL_WEIGHT
-        )
+    def _local_dense(self, embedding, chunks):
+        return tuple(sorted((RankedCandidate(i, cosine_similarity(embedding, c.embedding))
+                             for i, c in enumerate(chunks) if c.embedding),
+                            key=lambda c: (-c.score, c.index))[:DENSE_CANDIDATE_K])
+
+    async def _rerank(self, query, candidates, documents):
+        if self._reranker is None or not candidates:
+            self._observe("rerankedCandidates", 0)
+            return candidates
+        try:
+            inputs = tuple(RerankerDocument(str(c.index), documents[c.index][:MAX_RERANKER_DOCUMENT_CHARS])
+                           for c in candidates)
+            results = await self._reranker.rerank(query, inputs)
+            scores = {r.candidate_id: r.score for r in results}
+            if (len(results) != len(candidates) or len(scores) != len(candidates)
+                or set(scores) != {d.candidate_id for d in inputs}
+                or any(isinstance(s, bool) or not math.isfinite(float(s)) for s in scores.values())):
+                raise ValueError("reranker returned an invalid candidate permutation")
+            result = tuple(sorted(candidates, key=lambda c: -scores[str(c.index)]))
+            self._observe("rerankedCandidates", len(result))
+            return result
+        except BudgetExceededError:
+            raise
+        except Exception:
+            self._increment("rerankerFallbacks")
+            self._observe("rerankedCandidates", 0)
+            return candidates
 
     def _to_hit(self, scored: _ScoredSegment) -> VideoEvidenceHit:
         segment = scored.segment
@@ -330,13 +349,6 @@ class VideoEvidenceRetrievalService:
 
 
 @dataclass(frozen=True, slots=True)
-class _ScoredChunk:
-    chunk: VideoChunk
-    score: float
-    order: int
-
-
-@dataclass(frozen=True, slots=True)
 class _ScoredSegment:
     segment: VideoSegment
     score: float
@@ -351,26 +363,19 @@ def _range_key(start_ms: int, end_ms: int) -> str:
     return f"{start_ms}:{end_ms}"
 
 
-def _chunk_id_key(chunk_id: str) -> str:
-    return f"chunk:{chunk_id}"
+MAX_RERANKER_DOCUMENT_CHARS = 12_000
 
 
-def _searchable_text(chunk: VideoChunk) -> str:
-    return " ".join(
-        (
-            chunk.segment_summary,
-            " ".join(chunk.keywords),
-            " ".join(segment.transcript for segment in chunk.raw_segments),
-        )
-    )
-
-
-def _visual_text(chunk: VideoChunk) -> str:
-    return " ".join(
-        text
-        for segment in chunk.raw_segments
-        for text in _normalized_ocr_texts(segment)
-    )
+def vector_scope(chunks: Sequence[VideoChunk]) -> dict[str, str]:
+    """Scope before limiting candidates; mixed revisions/versions are invalid."""
+    scope = {}
+    for field in ("source_revision", "chunking_version"):
+        values = {getattr(c, field) for c in chunks}
+        if len(values) > 1:
+            raise ValueError("mixed chunk search scope")
+        if values and (value := next(iter(values))):
+            scope[field] = value
+    return scope
 
 
 def _normalized_ocr_texts(segment: VideoSegment) -> tuple[str, ...]:
@@ -450,7 +455,7 @@ def fallback_terms(query: str | None) -> tuple[str, ...]:
 def normalize_search_text(value: str | None) -> str:
     """Lowercase Unicode text and remove all Unicode whitespace."""
 
-    return _WHITESPACE.sub("", value or "").lower()
+    return _WHITESPACE.sub("", normalize_text(value or ""))
 
 
 def abbreviate(value: str | None) -> str:
@@ -461,9 +466,10 @@ def abbreviate(value: str | None) -> str:
 
 
 __all__ = [
-    "CHUNK_KEYWORD_WEIGHT",
-    "CHUNK_SEMANTIC_WEIGHT",
-    "CHUNK_VISUAL_WEIGHT",
+    "DENSE_CANDIDATE_K",
+    "SPARSE_CANDIDATE_K",
+    "FUSION_CANDIDATE_K",
+    "FINAL_CHUNK_K",
     "MAX_SNIPPET_LENGTH",
     "MAX_USER_HITS",
     "SEGMENT_CHUNK_WEIGHT",

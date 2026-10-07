@@ -36,6 +36,7 @@ from dovideo.domain import (
 
 from .agent_policy import is_result_valid, missing_section_keys
 from .evidence import EvidenceVerificationService
+from .retrieval_observation import capture_retrieval
 from .errors import BudgetExceededError
 from .evaluation_contracts import (
     DEFAULT_RUNNER_CONFIG_VERSION,
@@ -161,6 +162,7 @@ class EvaluationRunnerConfig(_StrictEvaluationModel):
     )
     max_executions: int | None = Field(default=None, alias="maxExecutions")
     publish: StrictBool = False
+    retrieval_only: StrictBool = Field(default=False, alias="retrievalOnly")
 
     @field_validator("runner_config_version", mode="before")
     @classmethod
@@ -424,6 +426,7 @@ class EvaluationRetrievedEvidence(_StrictEvaluationModel):
 
     source_revision: str = Field(alias="sourceRevision")
     source_item_id: str | None = Field(default=None, alias="sourceItemId")
+    source_item_ids: tuple[str, ...] = Field(default=(), alias="sourceItemIds")
     segment_id: str | None = Field(default=None, alias="segmentId")
     source_type: str | None = Field(default=None, alias="sourceType")
     timestamp_ms: int | None = Field(default=None, alias="timestampMs")
@@ -446,6 +449,13 @@ class EvaluationRetrievedEvidence(_StrictEvaluationModel):
         if not isinstance(value, str) or not value.strip():
             raise ValueError("provenance text must be non-blank")
         return value.strip()
+
+    @field_validator("source_item_ids")
+    @classmethod
+    def _item_ids(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not item.strip() for item in value) or len(set(value)) != len(value):
+            raise ValueError("retrieved source item IDs must be distinct nonblank text")
+        return value
 
     @field_validator("timestamp_ms", "start_ms", "end_ms", "rank", mode="before")
     @classmethod
@@ -731,7 +741,8 @@ class AgentLoopEvaluationAdapter:
             if self._media_id_resolver is None
             else self._media_id_resolver(str(execution_input["media_ref"]))
         )
-        state = await self._agent_loop.run(context, media_id=media_id, profile=profile)
+        with capture_retrieval() as retrieval_batches:
+            state = await self._agent_loop.run(context, media_id=media_id, profile=profile)
         result = state.result if isinstance(state, AgentState) else getattr(state, "result", None)
         if result is not None and not isinstance(result, AnalysisResult):
             result = AnalysisResult.model_validate(result)
@@ -741,7 +752,7 @@ class AgentLoopEvaluationAdapter:
             first_pass=(bool(critique.passed) if critique is not None and call_count <= 1 else None),
             final_pass=(bool(critique.passed) if critique is not None else None),
             additional_rounds=max(0, call_count - 1) if critique is not None else None,
-            critic_call_count=call_count,
+            critic_call_count=call_count if critique is not None else None,
             measurement_state=MeasurementState.MEASURED if critique is not None else MeasurementState.NOT_MEASURED,
         )
         schema_valid = is_result_valid(result, profile)
@@ -770,6 +781,9 @@ class AgentLoopEvaluationAdapter:
         return EvaluationExecutionObservation(
             result=result,
             agent_state=state if isinstance(state, AgentState) else None,
+            retrieved_evidence=project_retrieval_hits(
+                retrieval_batches[0] if retrieval_batches else (), context
+            ),
             schema_valid=schema_valid,
             mode_sections_valid=section_valid,
             evidence_support_rate=support_rate,
@@ -783,6 +797,26 @@ class AgentLoopEvaluationAdapter:
             planner_call_count=1 if result is not None else None,
             executor_call_count=(max(1, int(getattr(state, "round", 0))) if result is not None else None),
         )
+
+
+class RetrievalEvaluationAdapter:
+    """Retrieval-only X3 execution over the same chunk/index/search services.
+
+    No fabricated Agent output: use EvaluationRunnerConfig(retrieval_only=True).
+    Fact/reference annotations never enter this adapter's runtime input.
+    """
+
+    def __init__(self, chunking, retrieval, *, media_id: int = 1):
+        self._chunking, self._retrieval, self._media_id = chunking, retrieval, media_id
+
+    async def execute(self, execution_input, *, artifact, strategy, trial_index, timeout_seconds):
+        del strategy, trial_index, timeout_seconds
+        if artifact.context is None:
+            raise EvaluationPreflightError("retrieval evaluation requires prepared context")
+        chunks = await self._chunking.build(artifact.context.segments)
+        await self._retrieval.index(self._media_id, chunks)
+        hits = await self._retrieval.search(self._media_id, str(execution_input["query"]), chunks)
+        return EvaluationExecutionObservation(retrieved_evidence=project_retrieval_hits(hits, artifact.context))
 
 
 class EvaluationArtifactWriter:
@@ -973,6 +1007,35 @@ def _source_type(value: Any) -> str | None:
     return getattr(value, "value", str(value)).upper()
 
 
+def project_retrieval_hits(hits, context: VideoContext) -> tuple[EvaluationRetrievedEvidence, ...]:
+    """One candidate per segment hit, retaining its rank and all source-item IDs.
+
+    Source text is never persisted in the X3 projection. Gold data is absent.
+    Reject fabricated/foreign source references rather than assigning them to
+    whichever context happens to be evaluated.
+    """
+    by_id = {s.segment_id: s for s in context.segments if s.segment_id}
+    output = []
+    for rank, hit in enumerate(hits, start=1):
+        segment = by_id.get(hit.segment_id)
+        if (not context.source_revision or hit.source_revision != context.source_revision
+            or segment is None or segment.source_revision != hit.source_revision
+            or (hit.start_ms, hit.end_ms) != (segment.start_ms, segment.end_ms)
+            or not set(hit.source_item_ids) <= set(segment.source_item_ids)):
+            continue
+        output.append(EvaluationRetrievedEvidence(
+            source_revision=hit.source_revision, segment_id=hit.segment_id,
+            source_item_ids=hit.source_item_ids, source_type=hit.source,
+            start_ms=hit.start_ms, end_ms=hit.end_ms, rank=rank,
+        ))
+    return tuple(output)
+
+
+def _source_matches(expected, actual) -> bool:
+    expected_type, actual_type = _source_type(expected), _source_type(actual)
+    return expected_type is None or (actual_type is not None and expected_type in actual_type.split("+"))
+
+
 def _candidate_interval(candidate: EvaluationRetrievedEvidence) -> tuple[int, int] | None:
     if candidate.start_ms is not None and candidate.end_ms is not None:
         return candidate.start_ms, candidate.end_ms
@@ -1007,10 +1070,10 @@ def evidence_matches(
 
     if expected.source_revision != candidate.source_revision:
         return False
-    if expected.source_type is not None and _source_type(expected.source_type) != _source_type(candidate.source_type):
+    if not _source_matches(expected.source_type, candidate.source_type):
         return False
     if expected.match_level is ExpectedEvidenceMatchLevel.SOURCE_ITEM:
-        return expected.source_item_id == candidate.source_item_id
+        return expected.source_item_id == candidate.source_item_id or expected.source_item_id in candidate.source_item_ids
     if expected.match_level is ExpectedEvidenceMatchLevel.SEGMENT:
         return expected.segment_id == candidate.segment_id
     if expected.segment_id is not None and expected.segment_id != candidate.segment_id:
@@ -1058,7 +1121,7 @@ def _temporal_coverage(
         for candidate in candidates:
             if candidate.segment_id and segment_id and candidate.segment_id != segment_id:
                 continue
-            if source_type and _source_type(candidate.source_type) != source_type:
+            if not _source_matches(source_type, candidate.source_type):
                 continue
             if revision is not None and candidate.source_revision != revision:
                 continue
@@ -1383,6 +1446,7 @@ class EvaluationRunner:
             environment={
                 "runner": "x3-b",
                 "dataset_completeness": preflight.dataset.completeness.value,
+                "evaluation_scope": "retrieval" if selected_config.retrieval_only else "agent",
             },
             planned_count=planned_count,
             status=EvaluationRunStatus.RUNNING,
@@ -1701,6 +1765,9 @@ class EvaluationRunner:
                 temporal_coverage=retrieval.temporal_coverage,
             )
         metric_values = {key: value for key, value in metric_values.items() if value is not None}
+        if config.retrieval_only:
+            metric_values = {key: value for key, value in metric_values.items()
+                             if key.startswith("retrieval_") or key in {"mrr", "temporal_hit", "temporal_coverage"}}
         deterministic = DeterministicMetrics(
             **metric_values,
             measurement_state=(MeasurementState.MEASURED if metric_values else MeasurementState.NOT_MEASURED),
@@ -1753,7 +1820,11 @@ class EvaluationRunner:
                 provider_reported_cost=observation.provider_reported_cost,
             )
         failure: EvaluationFailureCategory | None = None
-        if result is None:
+        if config.retrieval_only:
+            # Completion means retrieval executed; quality is in the existing
+            # metrics, not in a fabricated Answer/Evidence Guard PASS.
+            pass
+        elif result is None:
             failure = EvaluationFailureCategory.SCHEMA_FAILURE
         elif not schema_valid:
             failure = EvaluationFailureCategory.SCHEMA_FAILURE
@@ -1997,6 +2068,8 @@ def build_evaluation_summary(
 __all__ = [
     "AdapterEvaluationStrategy",
     "AgentLoopEvaluationAdapter",
+    "RetrievalEvaluationAdapter",
+    "project_retrieval_hits",
     "ConditionalPricingRate",
     "CoverageCount",
     "CurrentProductionEvaluationStrategy",

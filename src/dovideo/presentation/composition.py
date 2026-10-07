@@ -267,6 +267,8 @@ class InMemoryVectorIndex:
         query_embedding: tuple[float, ...],
         *,
         limit: int,
+        source_revision: str | None = None,
+        chunking_version: str | None = None,
     ) -> tuple[Any, ...]:
         from dovideo.application import VectorHit
 
@@ -277,8 +279,14 @@ class InMemoryVectorIndex:
                     start_ms=chunk.start_ms,
                     end_ms=chunk.end_ms,
                     score=cosine_similarity(query_embedding, chunk.embedding),
+                    source_revision=chunk.source_revision,
+                    chunk_id=chunk.chunk_id,
+                    chunking_version=chunk.chunking_version,
                 )
                 for chunk in chunks
+                if chunk.embedding
+                and (source_revision is None or chunk.source_revision == source_revision)
+                and (chunking_version is None or chunk.chunking_version == chunking_version)
             ),
             key=lambda hit: (-hit.score, hit.start_ms),
         )

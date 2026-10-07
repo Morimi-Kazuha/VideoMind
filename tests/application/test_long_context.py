@@ -13,6 +13,8 @@ from dovideo.application.long_context import (
     near_segment,
 )
 from dovideo.domain import CriticResult, VideoChunk, VideoContext, VideoEvidenceHit, VideoSegment
+from dovideo.application.chunking import chunk_windows
+from dovideo.domain import CHUNKING_CONTRACT_VERSION
 
 
 def _segment(
@@ -178,7 +180,10 @@ async def test_long_context_builds_retrieves_and_applies_budget() -> None:
 
 @pytest.mark.asyncio
 async def test_checkpoint_hit_reuses_chunks_without_rebuild_or_index() -> None:
-    cached = (_chunk(0, _segment(0, "cached")),)
+    context = _context(_segment(0, "early"), _segment(300_000, "last"))
+    cached = tuple(VideoChunk(start_ms=start, end_ms=end, raw_segments=raw,
+                             chunking_version=CHUNKING_CONTRACT_VERSION)
+                   for start, end, raw in chunk_windows(context.segments))
     chunker = ChunkerFake((_chunk(0, _segment(0, "rebuilt")),))
     retrieval = RetrievalFake((_segment(0, "selected"),))
     checkpoint = CheckpointFake(cached)
@@ -187,7 +192,7 @@ async def test_checkpoint_hit_reuses_chunks_without_rebuild_or_index() -> None:
     )
 
     result = await service.select_relevant(
-        _context(_segment(0, "early"), _segment(300_000, "last")),
+        context,
         media_id=42,
     )
 

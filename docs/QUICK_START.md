@@ -104,3 +104,24 @@ npm run build
 ```
 
 测试套件使用离线替身，不需要真实 Provider 密钥。完整 R4 live acceptance 是单独的付费验证流程，不属于日常启动或 CI。
+
+## 6. 可选检索 Reranker
+
+默认 `DOVIDEO_RERANKER_ENABLED=false`，长视频采用 Dense + BM25 → RRF。
+启用时配置独立的 `DOVIDEO_RERANKER_URL`、`DOVIDEO_RERANKER_API_KEY`、
+`DOVIDEO_RERANKER_MODEL`；默认目标为 `BAAI/bge-reranker-v2-m3`。超时、
+最大尝试次数和重试延迟见 `.env.example`。该 adapter 实现 SiliconFlow
+text `/rerank` 协议，不能把任意 OpenAI chat 地址当成 rerank endpoint。
+在 API/worker 各终端加载同一配置，真实凭据仅放在忽略的私有环境文件中。
+本地 offline composition 保持 Reranker 关闭，不依赖远端精排。
+
+启用但失败时，base application 记录 `rerankerFallbacks` 并保持 RRF 顺序；
+canonical Strict R4 会拒绝此次降级。关闭时不记录失败。检索评测仍用
+现有 X3 runner；离线复现命令如下（输出目录必须为空）：
+
+```bash
+python tools/run_retrieval_comparison.py --output work/retrieval-comparison-new
+```
+
+案例明确标为 SYNTHETIC，使用本地 TF-IDF，默认关闭 Reranker；它不验证
+真实 BGE-M3 或 Cross-Encoder 的效果。结果与限制见 [检索说明](RETRIEVAL.md)。

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+from dataclasses import dataclass
 
 from dovideo.domain import VideoChunk
 
@@ -21,6 +22,8 @@ class VectorIndexPort(Protocol):
         query_embedding: tuple[float, ...],
         *,
         limit: int,
+        source_revision: str | None = None,
+        chunking_version: str | None = None,
     ) -> tuple[VectorHit, ...]:
         ...
 
@@ -28,4 +31,22 @@ class VectorIndexPort(Protocol):
         ...
 
 
-__all__ = ["VectorIndexPort"]
+@dataclass(frozen=True, slots=True)
+class RerankerDocument:
+    candidate_id: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class RerankerResult:
+    candidate_id: str
+    score: float
+
+
+class RerankerPort(Protocol):
+    async def rerank(self, query: str, documents: tuple[RerankerDocument, ...]) -> tuple[RerankerResult, ...]:
+        """Score every supplied candidate; no domain DTO or provider HTTP shape."""
+        ...
+
+
+__all__ = ["VectorIndexPort", "RerankerPort", "RerankerDocument", "RerankerResult"]

@@ -8,6 +8,8 @@ and never make a committed durable write look unsuccessful.
 
 from __future__ import annotations
 
+from dovideo.application.errors import CheckpointPayloadCompatibilityError
+
 
 class CheckpointError(RuntimeError):
     """Base class for checkpoint persistence and codec failures."""
@@ -29,7 +31,7 @@ class CheckpointDeleteError(DurableCheckpointError):
     """The durable checkpoint could not be deleted."""
 
 
-class CheckpointSerializationError(CheckpointReadError):
+class CheckpointSerializationError(CheckpointReadError, CheckpointPayloadCompatibilityError):
     """A checkpoint payload is not valid JSON or cannot build its model."""
 
 

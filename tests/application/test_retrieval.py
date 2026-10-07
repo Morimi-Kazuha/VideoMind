@@ -35,7 +35,7 @@ def _segment(
 def _chunk(
     start_ms: int,
     *segments: VideoSegment,
-    embedding: tuple[float, ...] = (),
+    embedding: tuple[float, ...] = (1.0, 0.0),
     summary: str = "",
     keywords: tuple[str, ...] = (),
 ) -> VideoChunk:
@@ -193,7 +193,7 @@ def test_fallback_terms_match_punctuation_unicode_and_limits() -> None:
 
 
 @pytest.mark.asyncio
-async def test_remote_vector_scores_override_local_cosine_and_use_six_limit() -> None:
+async def test_remote_hits_gate_dense_candidates_and_use_bounded_limit() -> None:
     chunks = [
         _chunk(0, _segment(0, "local low"), embedding=(0.0, 1.0)),
         _chunk(300_000, _segment(300_000, "remote high"), embedding=(0.0, 1.0)),
@@ -204,9 +204,10 @@ async def test_remote_vector_scores_override_local_cosine_and_use_six_limit() ->
     result = await service.retrieve(99, "goal", chunks)
 
     assert result[0].transcript == "remote high"
+    assert len(result) == 1
     assert embedding.calls == ["semantic query"]
     assert vector.search_calls == [(99, (1.0, 0.0), VECTOR_LOOKUP_LIMIT)]
-    assert VECTOR_LOOKUP_LIMIT == TOP_K * 2 == 6
+    assert VECTOR_LOOKUP_LIMIT == 8
 
 
 @pytest.mark.asyncio
@@ -281,7 +282,7 @@ def test_cosine_handles_mismatch_empty_and_zero_vectors() -> None:
 
 
 @pytest.mark.asyncio
-async def test_exact_chunk_weights_top_three_and_segment_sorting() -> None:
+async def test_sparse_only_positive_candidates_and_bounded_segment_signals() -> None:
     planner = PlannerFake(
         VideoRetrievalIntent(
             semantic_query="q", keywords=("speech",), visual_keywords=("logo",)
@@ -302,15 +303,9 @@ async def test_exact_chunk_weights_top_three_and_segment_sorting() -> None:
 
     # The first three chunks are considered; the segment with both signals is
     # ranked first despite its later timestamp.
-    assert [item.start_ms for item in result] == [20, 10, 30]
-    assert telemetry.counts["retrievalChunks"] == TOP_K
-
-    intent = VideoRetrievalIntent(
-        semantic_query="q", keywords=("speech",), visual_keywords=("logo",)
-    )
-    scored = service._score(intent, (), {}, chunks[0])
-    # semantic=0, keyword=1, visual=1 -> .25 + .15.
-    assert isclose(scored, 0.40)
+    assert [item.start_ms for item in result] == [20, 10]
+    assert telemetry.counts["retrievalChunks"] == 2
+    assert "retrievalTopScore" not in telemetry.values
 
 
 @pytest.mark.asyncio

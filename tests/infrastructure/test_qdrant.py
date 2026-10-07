@@ -336,3 +336,47 @@ async def test_concurrent_initialization_performs_collection_lookup_once() -> No
 
     assert sum(call["method"] == "GET" for call in client.calls) == 1
     assert sum(call["url"].endswith("/points?wait=true") for call in client.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_current_scope_filters_stale_before_candidate_limit():
+    from dovideo.domain import CHUNKING_CONTRACT_VERSION
+    class ScopedClient(FakeJsonClient):
+        async def request(self, method, url, **kwargs):
+            if method == "GET":
+                return _existing_collection(2)
+            self.calls.append({"json": kwargs["json"]})
+            points = [
+                {"payload": {"mediaId": 9, "startMs": 0, "endMs": 300_000,
+                             "sourceRevision": "a" * 64, "chunkingVersion": "old", "chunkId": "stale"}, "score": 1.0},
+                {"payload": {"mediaId": 9, "startMs": 240_000, "endMs": 540_000,
+                             "sourceRevision": "a" * 64, "chunkingVersion": CHUNKING_CONTRACT_VERSION, "chunkId": "current"}, "score": .2},
+            ]
+            conditions = kwargs["json"]["filter"]["must"]
+            eligible = [p for p in points if all(p["payload"].get(c["key"]) == c["match"]["value"] for c in conditions)]
+            return JsonHttpResponse(200, {"result": {"points": eligible[:kwargs["json"]["limit"]]}})
+    client = ScopedClient()
+    index = QdrantVectorIndex(client=client)
+    hits = await index.search(9, (1.0, 0.0), limit=1, source_revision="a" * 64, chunking_version=CHUNKING_CONTRACT_VERSION)
+    assert hits[0].chunk_id == "current"
+    assert hits[0].chunking_version == CHUNKING_CONTRACT_VERSION
+    assert client.calls[0]["json"]["filter"]["must"] == [
+        {"key": "mediaId", "match": {"value": 9}},
+        {"key": "sourceRevision", "match": {"value": "a" * 64}},
+        {"key": "chunkingVersion", "match": {"value": CHUNKING_CONTRACT_VERSION}},
+    ]
+    assert (await index.search(9, (1.0, 0.0), limit=1))[0].chunk_id == "stale"
+
+
+@pytest.mark.asyncio
+async def test_budget_error_is_not_wrapped_as_vector_failure():
+    from dovideo.application.errors import BudgetExceededError
+    for operation in ("upsert", "search", "delete_media"):
+        index = QdrantVectorIndex(client=FakeJsonClient([BudgetExceededError("budget")]))
+        with pytest.raises(BudgetExceededError):
+            if operation == "upsert":
+                await index.upsert(1, (_chunk(embedding=(1.0, 0.0)),))
+            elif operation == "search":
+                await index.search(1, (1.0, 0.0), limit=1)
+            else:
+                await index.delete_media(1)

@@ -291,6 +291,7 @@ class VectorHit:
     score: float
     source_revision: str = ""
     chunk_id: str = ""
+    chunking_version: str = ""
 
 
 @dataclass(frozen=True, slots=True)

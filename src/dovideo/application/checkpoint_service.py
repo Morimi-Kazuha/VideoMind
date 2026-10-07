@@ -28,7 +28,7 @@ from dovideo.domain._base import DomainModel
 
 from .analysis_task_keys import goal_digest
 from .task_lease import check_task_lease
-from .errors import AgentFeedbackPersistenceError
+from .errors import AgentFeedbackPersistenceError, CheckpointPayloadCompatibilityError
 from .ports.checkpoint import (
     AgentCheckpointPort,
     AnalysisStatusCheckpointPort,
@@ -295,14 +295,19 @@ class AgentCheckpointService(
         )
 
     async def load_chunks(self, media_id: int) -> tuple[VideoChunk, ...] | None:
-        chunks = await self._call(
-            "read",
-            media_id,
-            self.media_checkpoint("chunks"),
-            self.checkpoint_key(media_id),
-            "chunks",
-            tuple[VideoChunk, ...],
-        )
+        try:
+            chunks = await self._call(
+                "read",
+                media_id,
+                self.media_checkpoint("chunks"),
+                self.checkpoint_key(media_id),
+                "chunks",
+                tuple[VideoChunk, ...],
+            )
+        except CheckpointPayloadCompatibilityError:
+            # Chunks are rebuildable retrieval artifacts. Storage outages and
+            # other authoritative checkpoints retain their normal error policy.
+            return None
         return None if chunks is None else tuple(chunks)
 
     async def save_chunks(self, media_id: int, chunks: tuple[VideoChunk, ...]) -> None:

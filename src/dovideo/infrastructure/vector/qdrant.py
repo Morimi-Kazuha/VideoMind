@@ -21,6 +21,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from dovideo.application.value_objects import VectorHit
+from dovideo.application.errors import BudgetExceededError
 from dovideo.domain import VideoChunk
 
 
@@ -194,6 +195,10 @@ class QdrantVectorIndex:
                             if chunk.chunk_id
                             else {}
                         ),
+                        **(
+                            {"chunkingVersion": chunk.chunking_version}
+                            if chunk.chunking_version else {}
+                        ),
                     },
                 }
                 for chunk in vectorized
@@ -204,7 +209,7 @@ class QdrantVectorIndex:
                 {"points": points},
             )
             _require_success(response, "upsert")
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, BudgetExceededError):
             raise
         except Exception as exc:
             self._reset_ready()
@@ -218,6 +223,8 @@ class QdrantVectorIndex:
         query_embedding: tuple[float, ...],
         *,
         limit: int,
+        source_revision: str | None = None,
+        chunking_version: str | None = None,
     ) -> tuple[VectorHit, ...]:
         """Search one media ID and parse payload ranges into ``VectorHit``."""
 
@@ -242,6 +249,9 @@ class QdrantVectorIndex:
                 "limit": limit,
                 "with_payload": True,
             }
+            for key, value in (("sourceRevision", source_revision), ("chunkingVersion", chunking_version)):
+                if value is not None:
+                    body["filter"]["must"].append({"key": key, "match": {"value": value}})
             response = await self._send(
                 "POST",
                 f"/collections/{self.collection}/points/query",
@@ -292,10 +302,11 @@ class QdrantVectorIndex:
                         score=score,
                         source_revision=source_revision,
                         chunk_id=chunk_id,
+                        chunking_version=_payload_text(payload, "chunkingVersion", "chunking_version"),
                     )
                 )
             return tuple(hits)
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, BudgetExceededError):
             raise
         except Exception as exc:
             self._reset_ready()
@@ -325,7 +336,7 @@ class QdrantVectorIndex:
                 body,
             )
             _require_success(response, "delete")
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, BudgetExceededError):
             raise
         except Exception:
             # Java deliberately does not make cleanup failure fail the media
@@ -365,7 +376,7 @@ class QdrantVectorIndex:
                 _require_success(created, "collection creation")
                 self._collection_dimension = dimension
                 self._collection_ready = True
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, BudgetExceededError):
                 raise
             except Exception:
                 self._reset_ready()
@@ -410,7 +421,7 @@ class QdrantVectorIndex:
                 **{body_keyword: body},
                 timeout=self.timeout_seconds,
             )
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, BudgetExceededError):
             raise
         except Exception as exc:
             raise QdrantVectorError(
@@ -475,7 +486,7 @@ async def _coerce_response(value: Any) -> JsonHttpResponse:
                     body = json_method()
                     if inspect.isawaitable(body):
                         body = await body
-                except asyncio.CancelledError:
+                except (asyncio.CancelledError, BudgetExceededError):
                     raise
                 except Exception as exc:
                     raise QdrantVectorError(

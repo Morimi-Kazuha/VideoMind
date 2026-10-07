@@ -1,0 +1,948 @@
+{
+  "baseline": {
+    "cases": 12,
+    "categories": {
+      "asr_only": {
+        "mrr": 1.0,
+        "precision@1": 1.0,
+        "precision@3": 0.3333333333333333,
+        "precision@5": 0.2,
+        "recall@1": 1.0,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "boundary_crossing": {
+        "mrr": 1.0,
+        "precision@1": 1.0,
+        "precision@3": 0.6666666666666666,
+        "precision@5": 0.4,
+        "recall@1": 0.5,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "distractor": {
+        "mrr": 1.0,
+        "precision@1": 1.0,
+        "precision@3": 0.3333333333333333,
+        "precision@5": 0.2,
+        "recall@1": 1.0,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "exact_technical_terms": {
+        "mrr": 1.0,
+        "precision@1": 1.0,
+        "precision@3": 0.3333333333333333,
+        "precision@5": 0.2,
+        "recall@1": 1.0,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "ocr_only": {
+        "mrr": 1.0,
+        "precision@1": 1.0,
+        "precision@3": 0.3333333333333333,
+        "precision@5": 0.2,
+        "recall@1": 1.0,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "semantic_paraphrase": {
+        "mrr": 0.75,
+        "precision@1": 0.5,
+        "precision@3": 0.3333333333333333,
+        "precision@5": 0.2,
+        "recall@1": 0.5,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      }
+    },
+    "metrics": {
+      "mrr": 0.9583333333333334,
+      "precision@1": 0.9166666666666666,
+      "precision@3": 0.38888888888888884,
+      "precision@5": 0.23333333333333336,
+      "recall@1": 0.8333333333333334,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "temporal_coverage": 1.0,
+      "temporal_hit": 1.0
+    },
+    "perCase": {
+      "asr-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "asr-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "boundary-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.4,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.6666666666666666,
+          "5": 0.4
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 0.5,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "boundary-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.4,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.6666666666666666,
+          "5": 0.4
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 0.5,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "distractor-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "distractor-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "ocr-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "ocr-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "semantic-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 0.5,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 0.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 0.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "semantic-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "technical-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "technical-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      }
+    },
+    "structuralMetrics": {
+      "counts": {
+        "retrievalChunks": 36,
+        "vectorStoreWrites": 72
+      },
+      "observations": {
+        "retrievalTopScore": [
+          0.3362916674777676,
+          0.16033969873631643,
+          0.3804980901306392,
+          0.4612950260006167,
+          0.5701513578137647,
+          0.15,
+          0.4537113059977984,
+          0.25,
+          0.5563054660467008,
+          0.5301615468366632,
+          0.44243556104624815,
+          0.44813773051999406
+        ]
+      }
+    }
+  },
+  "baselineSha": "c7c02707911c8cb823d7f7a46c328469689256b7",
+  "classification": "SYNTHETIC",
+  "datasetDigest": "f1820acf0b0aec90a64b0bcd9d7f4a8a8d204e70fe55cfd667e5da04ae569b71",
+  "embedding": "offline LocalTfidfEmbeddingAdapter; BGE-M3 NOT_RUN",
+  "final": {
+    "cases": 12,
+    "categories": {
+      "asr_only": {
+        "mrr": 1.0,
+        "precision@1": 1.0,
+        "precision@3": 0.3333333333333333,
+        "precision@5": 0.2,
+        "recall@1": 1.0,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "boundary_crossing": {
+        "mrr": 1.0,
+        "precision@1": 1.0,
+        "precision@3": 0.6666666666666666,
+        "precision@5": 0.4,
+        "recall@1": 0.5,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "distractor": {
+        "mrr": 0.5833333333333334,
+        "precision@1": 0.5,
+        "precision@3": 0.16666666666666666,
+        "precision@5": 0.1,
+        "recall@1": 0.5,
+        "recall@3": 0.5,
+        "recall@5": 0.5,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "exact_technical_terms": {
+        "mrr": 1.0,
+        "precision@1": 1.0,
+        "precision@3": 0.3333333333333333,
+        "precision@5": 0.2,
+        "recall@1": 1.0,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "ocr_only": {
+        "mrr": 1.0,
+        "precision@1": 1.0,
+        "precision@3": 0.3333333333333333,
+        "precision@5": 0.2,
+        "recall@1": 1.0,
+        "recall@3": 1.0,
+        "recall@5": 1.0,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      },
+      "semantic_paraphrase": {
+        "mrr": 0.5833333333333334,
+        "precision@1": 0.5,
+        "precision@3": 0.16666666666666666,
+        "precision@5": 0.1,
+        "recall@1": 0.5,
+        "recall@3": 0.5,
+        "recall@5": 0.5,
+        "temporal_coverage": 1.0,
+        "temporal_hit": 1.0
+      }
+    },
+    "metrics": {
+      "mrr": 0.8611111111111112,
+      "precision@1": 0.8333333333333334,
+      "precision@3": 0.3333333333333333,
+      "precision@5": 0.20000000000000004,
+      "recall@1": 0.75,
+      "recall@3": 0.8333333333333334,
+      "recall@5": 0.8333333333333334,
+      "temporal_coverage": 1.0,
+      "temporal_hit": 1.0
+    },
+    "perCase": {
+      "asr-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "asr-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "boundary-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.4,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.6666666666666666,
+          "5": 0.4
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 0.5,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "boundary-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.4,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.6666666666666666,
+          "5": 0.4
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 0.5,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "distractor-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "distractor-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 0.16666666666666666,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.0,
+        "retrievalPrecisionAtKByK": {
+          "1": 0.0,
+          "3": 0.0,
+          "5": 0.0
+        },
+        "retrievalRecallAtK": 0.0,
+        "retrievalRecallAtKByK": {
+          "1": 0.0,
+          "3": 0.0,
+          "5": 0.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "ocr-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "ocr-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "semantic-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 0.16666666666666666,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.0,
+        "retrievalPrecisionAtKByK": {
+          "1": 0.0,
+          "3": 0.0,
+          "5": 0.0
+        },
+        "retrievalRecallAtK": 0.0,
+        "retrievalRecallAtKByK": {
+          "1": 0.0,
+          "3": 0.0,
+          "5": 0.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "semantic-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "technical-01": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      },
+      "technical-02": {
+        "evidenceGuardPass": null,
+        "evidencePrecision": null,
+        "evidenceRecall": null,
+        "evidenceSupportRate": null,
+        "measurementState": "MEASURED",
+        "modeSectionsValid": null,
+        "mrr": 1.0,
+        "requiredFactCoverage": null,
+        "requiredFactExactCoverage": null,
+        "retrievalK": 5,
+        "retrievalPrecisionAtK": 0.2,
+        "retrievalPrecisionAtKByK": {
+          "1": 1.0,
+          "3": 0.3333333333333333,
+          "5": 0.2
+        },
+        "retrievalRecallAtK": 1.0,
+        "retrievalRecallAtKByK": {
+          "1": 1.0,
+          "3": 1.0,
+          "5": 1.0
+        },
+        "schemaValid": null,
+        "temporalCoverage": 1.0,
+        "temporalHit": true,
+        "unsupportedClaimRate": null
+      }
+    },
+    "structuralMetrics": {
+      "counts": {
+        "retrievalChunks": 36,
+        "vectorStoreWrites": 96
+      },
+      "observations": {
+        "denseCandidates": [
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "fusionCandidates": [
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "rerankedCandidates": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "retrievedSegmentCount": [
+          14,
+          14,
+          13,
+          14,
+          14,
+          14,
+          13,
+          12,
+          14,
+          14,
+          14,
+          14
+        ],
+        "sparseCandidates": [
+          8,
+          2,
+          1,
+          1,
+          2,
+          1,
+          1,
+          2,
+          3,
+          2,
+          1,
+          5
+        ]
+      }
+    }
+  },
+  "noAnswer": "NOT_MEASURED",
+  "reranker": "disabled; live cross-encoder NOT_RUN"
+}

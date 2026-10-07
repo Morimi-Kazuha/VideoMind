@@ -260,7 +260,7 @@ class VideoContext(DomainModel):
 
 
 class VideoChunk(DomainModel):
-    """A five-minute semantic chunk with summaries and raw source segments."""
+    """A coarse retrieval window with summaries and canonical source segments."""
 
     start_ms: Annotated[int, Field(default=0, alias="startTime")]
     end_ms: Annotated[int, Field(default=0, alias="endTime")]

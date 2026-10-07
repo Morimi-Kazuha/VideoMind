@@ -85,10 +85,13 @@ after cancellation. See [lease audit](TASK_LEASE_SOURCE_AUDIT.md) and
 3. FFmpeg segments audio and extracts keyframes. Whisper ASR and Tesseract
    OCR produce observations with source times. `VideoContextBuilder` merges
    them into ordered temporal windows, preserving modality and origin.
-4. Long-video preparation groups windows into five-minute chunks while
-   retaining source spans. Embeddings and keywords support hybrid retrieval;
-   Qdrant indexes vectors. Retrieval returns candidate evidence, not an
-   authoritative answer.
+4. Long-video preparation builds five-minute sliding chunks with one-minute
+   overlap and four-minute stride. Scoped Qdrant dense candidates and in-process
+   BM25 candidates are independently ranked, fused with RRF, optionally
+   cross-encoder reranked, then expanded to canonical segments with stable
+   identity deduplication. Retrieval returns candidate evidence; final answer
+   verification remains separate. Videos at most five minutes retain the
+   existing context-selection bypass.
 5. `AgentLoop` resolves the model lane once, builds a bounded plan, executes
    structured rounds, invokes Critic, and can retrieve targeted evidence
    when feedback identifies a gap. `EvidenceVerificationService` checks final
@@ -99,6 +102,50 @@ The CLI can use local TF-IDF and process-local stores for development and
 offline tests. That choice is explicit; it does not silently replace the
 production SQL/Redis/MinIO/Qdrant composition. The standard-library web
 demo is a legacy local presentation adapter; Vue/FastAPI is the product path.
+
+## Long-video candidate retrieval
+
+```mermaid
+flowchart LR
+    S[Canonical 60s VideoSegment] --> C[5min window / 4min stride]
+    C --> D[BGE-M3 summary+keywords / scoped Qdrant Top8]
+    C --> B[Normalized summary+keywords+ASR+OCR / BM25 Top8]
+    D --> F[RRF k=60 / Top10]
+    B --> F
+    F --> R[Configured reranker or unchanged RRF order]
+    R --> P[Final Top3 parents]
+    P --> E[Rank-derived parent signal + ASR/OCR / identity dedup]
+    E --> H[Provenance VideoEvidenceHit]
+    H --> V[Existing Evidence Verification]
+```
+
+The last window is the first one covering the final segment end; empty gaps
+are skipped. Segments intersecting a window remain whole. The chunk contract
+is `video-chunk-5m-overlap1m-v2`; its version changes chunk IDs, not source
+revisions or the content preprocessing reuse contract. Loaded checkpoints must
+match the current deterministic window plan and exact source segment payloads.
+An incompatible payload is rebuilt, saved and reindexed using existing fields.
+
+Qdrant payloads include `chunkingVersion`. Current searches filter `mediaId`,
+`sourceRevision` and `chunkingVersion` before Top-K selection. Old points may
+remain stored but cannot consume current-version candidate slots. No whole-media
+delete is required. Unscoped legacy reads remain supported; current hits must
+also map back to the loaded chunk IDs/ranges and scope.
+
+Healthy dense search results define the dense candidate set, including a valid
+empty set. Base application falls back to local cosine on an unavailable/error
+vector path, BM25-only on embedding failure, dense-only on BM25 failure, and
+RRF order on enabled reranker failure. Strict R4 rejects those component
+fallbacks. Disabled reranking is a configuration choice, not a failure.
+Cancellation and BudgetExceededError propagate. See [retrieval contracts and
+measured limits](RETRIEVAL.md).
+
+X3 observes the first actual ranked retrieval call using caller-scoped transient
+state, without another query or a production API change. One segment candidate
+retains one rank and all source-item IDs in EvaluationRetrievedEvidence. Existing
+Recall/Precision/MRR/temporal calculations are reused. An optional retrieval-only
+mode on the existing runner measures retrieval without inventing an Agent answer
+or an Evidence Guard pass; synthetic/real classification stays on the dataset.
 
 ## Why the boundaries matter
 

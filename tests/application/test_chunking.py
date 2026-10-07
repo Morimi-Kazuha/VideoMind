@@ -90,8 +90,8 @@ async def test_buckets_start_at_zero_skip_gaps_and_preserve_equal_start_order() 
 
     chunks = await service.build([first, equal_a, second, equal_b])
 
-    assert [chunk.start_ms for chunk in chunks] == [0, 300_000, 600_000]
-    assert [chunk.end_ms for chunk in chunks] == [300_000, 600_000, 900_000]
+    assert [chunk.start_ms for chunk in chunks] == [0, 240_000, 480_000]
+    assert [chunk.end_ms for chunk in chunks] == [300_000, 540_000, 780_000]
     assert [segment.transcript for segment in chunks[2].raw_segments] == [
         "equal-a",
         "equal-b",

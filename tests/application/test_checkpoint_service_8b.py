@@ -91,6 +91,32 @@ def test_java_key_helpers_match_golden_values() -> None:
 
 
 @pytest.mark.asyncio
+async def test_chunk_payload_incompatible_is_miss_but_storage_outage_propagates():
+    from dovideo.infrastructure.persistence.errors import CheckpointDeserializationError, CheckpointReadError
+    class Repository:
+        error = CheckpointDeserializationError("invalid chunk payload")
+        def read(self, *args):
+            raise self.error
+    repository = Repository()
+    adapter = AgentCheckpointService(repository)
+    assert await adapter.load_chunks(7) is None
+    with pytest.raises(CheckpointDeserializationError):
+        await adapter.load_context(7)
+    repository.error = CheckpointReadError("database unavailable")
+    with pytest.raises(CheckpointReadError):
+        await adapter.load_chunks(7)
+
+
+@pytest.mark.asyncio
+async def test_invalid_durable_chunk_range_is_rebuildable(service):
+    adapter, _db, _cache = service
+    adapter.repository.write(7, "media:chunks", "media:stage", adapter.checkpoint_key(7),
+                             "chunks", TaskStage.CHUNKS_COMPLETED,
+                             [{"startTime": 100, "endTime": 50, "chunkingVersion": "old"}])
+    assert await adapter.load_chunks(7) is None
+
+
+@pytest.mark.asyncio
 async def test_context_is_media_scoped_and_saved_goal_is_empty(service) -> None:  # type: ignore[no-untyped-def]
     adapter, db, _cache = service
     source = _context("first goal")

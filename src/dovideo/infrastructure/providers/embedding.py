@@ -9,6 +9,7 @@ from inspect import isawaitable
 from typing import Any
 
 from dovideo.application.ports.ai import EmbeddingPort
+from dovideo.application.errors import BudgetExceededError
 
 from .config import ProviderConfig
 from .errors import (
@@ -79,7 +80,7 @@ class OpenAICompatibleEmbeddingAdapter(EmbeddingPort):
                         f"embedding provider rejected request ({status})"
                     )
                 return decode_embedding(body)
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, BudgetExceededError):
                 raise
             except TimeoutError:
                 # Preserve provider-local timeout identity.  AgentLoop's

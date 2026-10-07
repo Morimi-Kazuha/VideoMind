@@ -90,6 +90,8 @@ from dovideo.infrastructure.providers import (
     ProviderConfig,
     ProviderConfigurationError,
 )
+from dovideo.application.retrieval import vector_scope
+from dovideo.infrastructure.providers.reranker import RerankerConfig, configured_reranker, SiliconFlowRerankerAdapter
 from dovideo.infrastructure.redis_observability import RedisAgentTelemetry
 from dovideo.infrastructure.vector.qdrant import QdrantVectorError
 from dovideo.infrastructure.model_routing import (
@@ -782,7 +784,7 @@ class _ObservedEmbedding:
 
 
 class _StrictChunkingService(VideoChunkingService):
-    """Reuse the frozen chunking algorithm while rejecting its fallback path."""
+    """Use current chunking while rejecting provider fallback paths."""
 
     def __init__(self, *args: Any, telemetry: R4AgentTelemetry, **kwargs: Any) -> None:
         super().__init__(*args, telemetry=telemetry, **kwargs)
@@ -812,7 +814,7 @@ class _StrictChunkingService(VideoChunkingService):
 
 
 class _StrictRetrievalService(VideoEvidenceRetrievalService):
-    """Reuse hybrid scoring while making canonical Qdrant/provider failures loud."""
+    """Use hybrid candidates while rejecting canonical component fallbacks."""
 
     def __init__(self, *args: Any, telemetry: R4AgentTelemetry, **kwargs: Any) -> None:
         super().__init__(*args, telemetry=telemetry, **kwargs)
@@ -831,7 +833,10 @@ class _StrictRetrievalService(VideoEvidenceRetrievalService):
                 media_id,
                 tuple(normalized[0].embedding),
                 limit=len(normalized),
+                **vector_scope(normalized),
             )
+        except BudgetExceededError:
+            raise
         except Exception as exc:
             raise QdrantVectorError("R4 canonical Qdrant verification failed") from exc
         if len(hits) < 2:
@@ -844,14 +849,13 @@ class _StrictRetrievalService(VideoEvidenceRetrievalService):
         self._raise_if_fallback(before)
         if not result:
             raise RuntimeError("R4 canonical retrieval selected no temporal evidence")
-        self._r4_telemetry.observe("retrievedSegmentCount", len(result))
         return result
 
     async def search(self, media_id: int | None, query: str | None, chunks: Any):
         before = self._fallback_snapshot()
         result = await super().search(media_id, query, chunks)
         self._raise_if_fallback(before)
-        self._r4_telemetry.observe("retrievalCandidateCount", len(result))
+        self._r4_telemetry.observe("evidenceHitCount", len(result))
         return result
 
     async def _retrieval_intent(self, goal: str | None):
@@ -872,37 +876,39 @@ class _StrictRetrievalService(VideoEvidenceRetrievalService):
             raise RuntimeError("R4 retrieval query vector dimension is invalid")
         return value
 
-    async def _vector_scores(
+    async def _dense_candidates(
         self,
         media_id: int | None,
         query_embedding: tuple[float, ...],
         chunks: Any = (),
     ):
         before = self._r4_telemetry.counter_value("vectorStoreFallbacks")
-        scores = await super()._vector_scores(media_id, query_embedding, chunks)
+        scores = await super()._dense_candidates(media_id, query_embedding, chunks)
         if self._r4_telemetry.counter_value("vectorStoreFallbacks") > before:
             raise QdrantVectorError("R4 canonical Qdrant search used a fallback")
-        if media_id is not None and len(scores) < 2:
-            raise QdrantVectorError("R4 Qdrant returned fewer than two candidates")
-        self._r4_telemetry.observe("retrievalCandidateCount", len(scores))
+        # A healthy empty/single-hit query is distinct from a vector outage.
         return scores
 
-    def _fallback_snapshot(self) -> tuple[int, int, int]:
+    def _fallback_snapshot(self) -> tuple[int, ...]:
         return tuple(
             self._r4_telemetry.counter_value(name)
             for name in (
                 "retrievalIntentFallbacks",
                 "embeddingFallbacks",
                 "vectorStoreFallbacks",
+                "sparseFallbacks",
+                "rerankerFallbacks",
             )
         )
 
-    def _raise_if_fallback(self, before: tuple[int, int, int]) -> None:
+    def _raise_if_fallback(self, before: tuple[int, ...]) -> None:
         after = self._fallback_snapshot()
         if after[2] > before[2]:
             raise QdrantVectorError("R4 canonical retrieval used a vector store fallback")
         if after[0] > before[0] or after[1] > before[1]:
             raise R4ProviderFallbackError("R4 canonical retrieval used a provider fallback")
+        if after[3] > before[3] or after[4] > before[4]:
+            raise R4ProviderFallbackError("R4 canonical retrieval used a sparse/reranker fallback")
 
 
 @dataclass(slots=True)
@@ -933,6 +939,7 @@ class R4ProviderStack:
         ModelRouteLane, EffectiveModelProfileIdentity
     ] = field(default_factory=dict)
     additional_chat_clients: tuple[OpenAICompatibleChatClient, ...] = ()
+    reranker_adapter: SiliconFlowRerankerAdapter | None = None
 
     @property
     def routing_enabled(self) -> bool:
@@ -942,7 +949,9 @@ class R4ProviderStack:
 
     async def close(self) -> None:
         closed: set[int] = set()
-        for client in (self.chat_client, *self.additional_chat_clients):
+        for client in (self.chat_client, *self.additional_chat_clients, self.reranker_adapter):
+            if client is None:
+                continue
             if id(client) in closed:
                 continue
             closed.add(id(client))
@@ -958,6 +967,8 @@ def create_r4_provider_stack(
     tool_settings: X1ToolCallingSettings | None = None,
     execution_records: ExecutionRecordService | None = None,
     routing_settings: ModelRoutingProductionSettings | None = None,
+    reranker_config: RerankerConfig | None = None,
+    reranker_http_client: Any | None = None,
     model_routing_settings: ModelRoutingProductionSettings | None = None,
     jev_http_client: object | None = None,
     model_http_clients: Mapping[ModelRouteLane | str, object] | None = None,
@@ -1074,11 +1085,13 @@ def create_r4_provider_stack(
         OpenAICompatibleEmbeddingAdapter(embedding_config),
         telemetry,
     )
+    reranker = configured_reranker(reranker_config, client=reranker_http_client)
     retrieval = _StrictRetrievalService(
         roles.retrieval_planner,
         embedding,
         vector_index,
         telemetry=telemetry,
+        reranker=reranker,
     )
     chunking = _StrictChunkingService(
         roles.chunk_summary,
@@ -1178,6 +1191,7 @@ def create_r4_provider_stack(
         )
     return R4ProviderStack(
         model_config=effective_balanced_config,
+        reranker_adapter=reranker,
         embedding_config=embedding_config,
         chat_client=chat_client,
         telemetry=telemetry,

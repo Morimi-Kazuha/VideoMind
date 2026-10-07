@@ -1,0 +1,150 @@
+{
+  "classification": "SYNTHETIC",
+  "mediaRef": "synthetic/retrieval-focused-v2.mp4",
+  "transcripts": [
+    "Introduction to video systems and model evaluation.",
+    "Attention memory baseline stores the full matrix.",
+    "A queue transports work between the worker and broker.",
+    "Fixed windows are coarse search units.",
+    "At 4:50 cache invalidation starts the source revision handoff.",
+    "At 5:20 source revision handoff completes cache invalidation safely.",
+    "Attention memory discussion uses a naive quadratic matrix.",
+    "FlashAttention-2 avoids materializing the attention matrix and reduces memory traffic.",
+    "An unrelated attention benchmark stores the full matrix.",
+    "Observability uses structural counters instead of private text.",
+    "Provider retries must preserve cancellation.",
+    "The spoken deployment password is a fictional test phrase blue heron.",
+    "A generic database stores relational records.",
+    "Storage transactions protect durable checkpoints.",
+    "Attention memory baseline repeats the full matrix discussion.",
+    "The function rebuild_index_v2 accepts a source_revision argument.",
+    "A request timeout should remain a typed error.",
+    "A broker redelivers interrupted messages.",
+    "The video evidence unit is a timestamped segment.",
+    "The speaker says the synthetic launch code is 2048.",
+    "An unrelated deployment story discusses a queue.",
+    "A transport comparison uses ordinary HTTP JSON.",
+    "RRF combines rank positions rather than scores with different scales.",
+    "The final answer must preserve authoritative source identities.",
+    "At 24:50 the lease renewal protocol begins its checkpoint commit.",
+    "At 25:20 checkpoint commit finishes after lease renewal.",
+    "Attention memory baseline stores the full matrix again.",
+    "The distractor discusses ranking popular restaurants.",
+    "A closing summary discusses safe shutdown.",
+    "The final unrelated sentence completes this synthetic video."
+  ],
+  "ocr": [
+    {
+      "minute": 12,
+      "text": "B+Tree fanout 128"
+    },
+    {
+      "minute": 18,
+      "text": "QKV projection Wq Wk Wv"
+    }
+  ],
+  "cases": [
+    {
+      "id": "semantic-01",
+      "category": "semantic_paraphrase",
+      "query": "How does attention avoid storing the matrix to reduce memory traffic?",
+      "targets": [
+        7
+      ]
+    },
+    {
+      "id": "semantic-02",
+      "category": "semantic_paraphrase",
+      "query": "How are ranks combined when relevance scores have different scales?",
+      "targets": [
+        22
+      ]
+    },
+    {
+      "id": "technical-01",
+      "category": "exact_technical_terms",
+      "query": "FlashAttention-2",
+      "targets": [
+        7
+      ]
+    },
+    {
+      "id": "technical-02",
+      "category": "exact_technical_terms",
+      "query": "rebuild_index_v2 source_revision",
+      "targets": [
+        15
+      ]
+    },
+    {
+      "id": "ocr-01",
+      "category": "ocr_only",
+      "query": "B+Tree fanout 128",
+      "targets": [
+        12
+      ],
+      "sourceType": "OCR"
+    },
+    {
+      "id": "ocr-02",
+      "category": "ocr_only",
+      "query": "QKV projection Wq Wk Wv",
+      "targets": [
+        18
+      ],
+      "sourceType": "OCR"
+    },
+    {
+      "id": "asr-01",
+      "category": "asr_only",
+      "query": "blue heron",
+      "targets": [
+        11
+      ],
+      "sourceType": "ASR"
+    },
+    {
+      "id": "asr-02",
+      "category": "asr_only",
+      "query": "synthetic launch code 2048",
+      "targets": [
+        19
+      ],
+      "sourceType": "ASR"
+    },
+    {
+      "id": "boundary-01",
+      "category": "boundary_crossing",
+      "query": "cache invalidation source revision handoff",
+      "targets": [
+        4,
+        5
+      ]
+    },
+    {
+      "id": "boundary-02",
+      "category": "boundary_crossing",
+      "query": "lease renewal checkpoint commit",
+      "targets": [
+        24,
+        25
+      ]
+    },
+    {
+      "id": "distractor-01",
+      "category": "distractor",
+      "query": "rank positions scores different scales",
+      "targets": [
+        22
+      ]
+    },
+    {
+      "id": "distractor-02",
+      "category": "distractor",
+      "query": "attention avoids materializing reduces memory traffic",
+      "targets": [
+        7
+      ]
+    }
+  ]
+}

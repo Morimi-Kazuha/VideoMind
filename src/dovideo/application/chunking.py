@@ -1,9 +1,4 @@
-"""Five-minute semantic chunk construction.
-
-This module ports the policy in Java ``VideoChunkingService`` while keeping
-the model and embedding calls behind the small application ports.  It is
-deliberately free of provider, persistence, and transport imports.
-"""
+"""Five-minute sliding retrieval windows over canonical video segments."""
 
 from __future__ import annotations
 
@@ -22,7 +17,10 @@ from .ports.ai import ChunkSummaryPort, EmbeddingPort
 from .ports.observability import TelemetryPort
 
 
-CHUNK_MILLISECONDS = 5 * 60 * 1000
+CHUNK_WINDOW_MILLISECONDS = 5 * 60 * 1000
+CHUNK_OVERLAP_MILLISECONDS = 60 * 1000
+CHUNK_STRIDE_MILLISECONDS = CHUNK_WINDOW_MILLISECONDS - CHUNK_OVERLAP_MILLISECONDS
+CHUNK_MILLISECONDS = CHUNK_WINDOW_MILLISECONDS
 MAX_SUMMARY_FALLBACK_CHARS = 500
 
 
@@ -48,7 +46,7 @@ class VideoChunkingService:
         self,
         segments: Iterable[VideoSegment | None] | None,
     ) -> tuple[VideoChunk, ...]:
-        """Build chunks in ascending five-minute windows.
+        """Build ascending windows with one-minute overlap.
 
         ``None`` entries are ignored just as Java's stream filter ignores
         null segments.  Python's stable sort retains the original order of
@@ -67,17 +65,7 @@ class VideoChunkingService:
             return ()
 
         chunks: list[VideoChunk] = []
-        last_start = ordered[-1].start_ms
-        for chunk_start in range(0, last_start + 1, CHUNK_MILLISECONDS):
-            chunk_end = chunk_start + CHUNK_MILLISECONDS
-            raw_segments = tuple(
-                segment
-                for segment in ordered
-                if chunk_start <= segment.start_ms < chunk_end
-            )
-            if not raw_segments:
-                continue
-
+        for chunk_start, chunk_end, raw_segments in chunk_windows(ordered):
             summary = await self._summarize(raw_segments)
             keywords = _normalize_terms(summary.keywords)
             summary_text = summary.segment_summary
@@ -98,9 +86,7 @@ class VideoChunkingService:
                         chunk_end,
                     ),
                     source_revision=source_revision,
-                    chunking_version=(
-                        CHUNKING_CONTRACT_VERSION if source_revision else ""
-                    ),
+                    chunking_version=CHUNKING_CONTRACT_VERSION,
                 )
             )
         return tuple(chunks)
@@ -129,6 +115,8 @@ class VideoChunkingService:
             if embedding is None:
                 raise TypeError("embedding port returned None")
             return tuple(embedding)
+        except BudgetExceededError:
+            raise
         except Exception:
             self._increment("embeddingFallbacks")
             return ()
@@ -174,12 +162,59 @@ def _fallback_summary(segments: Sequence[VideoSegment]) -> str:
 def _common_source_revision(segments: Sequence[VideoSegment]) -> str:
     """Return one revision only when every segment agrees on provenance."""
 
-    revisions = {segment.source_revision for segment in segments if segment.source_revision}
+    revisions = {segment.source_revision for segment in segments}
     return next(iter(revisions)) if len(revisions) == 1 else ""
+
+
+def chunk_windows(segments: Sequence[VideoSegment]) -> tuple[tuple[int, int, tuple[VideoSegment, ...]], ...]:
+    """Plan windows without provider calls, preserving whole intersecting segments.
+
+    Windows live on the zero-anchored 4 minute grid. Empty gaps are skipped.
+    Once the maximum segment end is covered, no additional tail is generated.
+    A long noncanonical segment may intersect multiple windows; no input is cut.
+    """
+    ordered = tuple(sorted(segments, key=lambda segment: segment.start_ms))
+    if not ordered:
+        return ()
+    tail = max(segment.end_ms for segment in ordered)
+    windows = []
+    start = 0
+    while True:
+        end = start + CHUNK_WINDOW_MILLISECONDS
+        raw = tuple(s for s in ordered if s.start_ms < end and s.end_ms > start)
+        if raw:
+            windows.append((start, end, raw))
+        if end >= tail:
+            break
+        start += CHUNK_STRIDE_MILLISECONDS
+    return tuple(windows)
+
+
+def chunks_compatible(chunks: Sequence[VideoChunk], segments: Sequence[VideoSegment]) -> bool:
+    """Treat old, incomplete or foreign chunk payloads as a checkpoint miss."""
+    windows = chunk_windows(segments)
+    if not chunks or len(chunks) != len(windows):
+        return False
+    for chunk, (start, end, raw) in zip(chunks, windows, strict=True):
+        revision = _common_source_revision(raw)
+        if (
+            chunk.chunking_version != CHUNKING_CONTRACT_VERSION
+            or (chunk.start_ms, chunk.end_ms) != (start, end)
+            or chunk.source_revision != revision
+            or chunk.chunk_id != chunk_id_for(revision, start, end)
+            or chunk.raw_segments != raw
+        ):
+            return False
+    return True
 
 
 __all__ = [
     "CHUNK_MILLISECONDS",
+    "CHUNK_WINDOW_MILLISECONDS",
+    "CHUNK_OVERLAP_MILLISECONDS",
+    "CHUNK_STRIDE_MILLISECONDS",
+    "chunk_windows",
+    "chunks_compatible",
     "MAX_SUMMARY_FALLBACK_CHARS",
     "VideoChunkingService",
 ]

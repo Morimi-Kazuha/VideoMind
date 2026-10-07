@@ -54,7 +54,7 @@ from .observability import (
     TelemetryPort,
     TracePort,
 )
-from .retrieval import VectorIndexPort
+from .retrieval import VectorIndexPort, RerankerPort, RerankerDocument, RerankerResult
 from .tasks import (
     AgentLoopEntryPort,
     TaskActivityPort,
@@ -136,4 +136,7 @@ __all__ = [
     "UrlDownloadPort",
     "UrlDownloaderPort",
     "VectorIndexPort",
+    "RerankerPort",
+    "RerankerDocument",
+    "RerankerResult",
 ]

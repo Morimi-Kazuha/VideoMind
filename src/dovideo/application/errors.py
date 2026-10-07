@@ -11,6 +11,10 @@ class BudgetExceededError(RuntimeError):
     """The controlled Agent exceeded a configured token, cost, or deadline budget."""
 
 
+class CheckpointPayloadCompatibilityError(RuntimeError):
+    """A decoded checkpoint artifact cannot satisfy its current payload contract."""
+
+
 class DeadlineExceededError(TimeoutError):
     """The current Agent execution deadline elapsed before a stage completed."""
 

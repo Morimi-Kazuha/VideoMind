@@ -49,9 +49,12 @@ flowchart LR
 flowchart LR
     Media[视频] --> Extract[FFmpeg / Whisper ASR / Tesseract OCR]
     Extract --> Context[VideoContext 与时序来源]
-    Context --> Chunks[时间窗口与分块]
-    Chunks --> Index[Embedding / Qdrant]
-    Index --> Retrieval[混合检索]
+    Context --> Chunks[5min Chunk / 1min overlap]
+    Chunks --> Dense[BGE-M3 / Qdrant candidates]
+    Chunks --> Sparse[进程内 BM25]
+    Dense --> Fusion[RRF]
+    Sparse --> Fusion
+    Fusion --> Retrieval[可选 Cross-Encoder / Segment 排序去重]
     Retrieval --> Planner
     Planner --> Executor
     Executor --> Critic
@@ -60,6 +63,8 @@ flowchart LR
 ```
 
 Vue 3/Vite 提供界面，FastAPI 提供 REST 与 SSE。Celery/RabbitMQ 执行耗时任务；MySQL 保存持久记录，Redis 处理运行态，MinIO 保存媒体，Qdrant 建立向量索引。`VideoContext` 是时序来源的权威表示；检索与各 Agent 阶段只接收所需投影，避免重复传递完整媒体上下文。详见 [架构与权责边界](docs/ARCHITECTURE.md)、[时序读取模型](docs/VIDEOMIND_TEMPORAL_READ_MODEL.md) 和 [执行预算](docs/VIDEOMIND_R5_EXECUTION_BUDGET.md)。
+
+长视频检索采用 5 分钟窗口、1 分钟 overlap、4 分钟 stride。Dense 与 BM25 各取最多 8 个候选，RRF 融合最多 10 个，最终选 3 个 Chunk；证据仍来自 canonical 60 秒 Segment 与 ASR/OCR source item。Qdrant 按媒体、来源 revision 和 chunking version 限定候选，正常查询不会逐个扫描非命中 Chunk 的 cosine。Reranker 默认关闭，启用配置及 base/Strict R4 降级差异见 [检索说明](docs/RETRIEVAL.md)。
 
 ## 快速开始
 
@@ -100,6 +105,8 @@ npm run build
 ```
 
 项目保留可复查的 [X3 模型路由评估](docs/X3_OPENROUTER_X3_E_REPORT.md)。其完整 80/80 结果未通过预注册质量门槛，因此不以该实验宣称自适应路由优于固定策略。历史评估与当前产品能力分别呈现。
+
+本轮通过现有 X3 runner 对 12 个 **SYNTHETIC** 检索案例做冻结源码对比，使用本地 TF-IDF、summary 与 planner，Reranker 关闭。Baseline / Final 的 Recall@3 为 **1.000 / 0.833**，MRR 为 **0.958 / 0.861**；这组结果存在回退，不代表真实 BGE-M3 或 Cross-Encoder 的质量提升。完整结果、分类分析及复现命令见 [检索说明](docs/RETRIEVAL.md)。历史 golden dataset 与 X3 报告保持原样。
 
 ## 项目状态
 
