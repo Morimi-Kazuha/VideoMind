@@ -21,6 +21,7 @@ from .chunking import CHUNK_MILLISECONDS, VideoChunkingService, chunks_compatibl
 from .ports.checkpoint import ContextCheckpointPort
 from .ports.observability import TelemetryPort
 from .retrieval import VideoEvidenceRetrievalService
+from .adaptive_retrieval import baseline_retrieval
 
 
 CHUNK_MS = CHUNK_MILLISECONDS
@@ -145,7 +146,8 @@ class LongVideoContextService:
             source_revision=full_context.source_revision,
             provenance_version=full_context.provenance_version,
         )
-        retry_selected = await self.select_relevant(retry_context, media_id)
+        with baseline_retrieval():
+            retry_selected = await self.select_relevant(retry_context, media_id)
         for segment in retry_selected.segments:
             selected_by_key.setdefault(_segment_key(segment), segment)
         for segment in selected_context.segments:

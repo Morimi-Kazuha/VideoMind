@@ -1,0 +1,669 @@
+{
+  "classification": "SYNTHETIC",
+  "dataset_version": "m2-cross-fragment-v1",
+  "embedding": "offline LocalTfidfEmbeddingAdapter",
+  "routing": "FixtureChat MOCK through real Provider DTO adapter",
+  "dense": "actual local cosine ranking",
+  "sparse": "actual BM25",
+  "fusion": "actual RRF",
+  "chunking": "unchanged VideoChunkingService sliding windows",
+  "summary_provider": "LocalChunkSummaryAdapter",
+  "live_bge_qdrant_llm_video": "NOT_RUN",
+  "reranker": "OFF",
+  "critic": "NOT_RUN",
+  "coverage_semantics": "Candidate presence only; irrelevant/no-answer candidates can remain.",
+  "summary": {
+    "single": {
+      "mean_target_recall": 0.9444444444444444,
+      "total_retrieval_calls": 10,
+      "total_routing_model_calls": 0,
+      "candidate_guard_passes": 22,
+      "candidate_count": 22,
+      "route_correct_count": 3
+    },
+    "adaptive": {
+      "mean_target_recall": 0.9444444444444444,
+      "total_retrieval_calls": 19,
+      "total_routing_model_calls": 8,
+      "candidate_guard_passes": 34,
+      "candidate_count": 34,
+      "route_correct_count": 10
+    }
+  },
+  "cases": [
+    {
+      "case_id": "A-simple",
+      "expected_route": "SINGLE_HYBRID",
+      "target_count": 1,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 1,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 1,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 9.759,
+          "evidence_minutes": [
+            0,
+            16
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "MySQL initial selection transactions durability"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 1,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 1,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 9.34,
+          "evidence_minutes": [
+            0,
+            16
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "SINGLE_FACT",
+          "routing_fallback": "NONE",
+          "subquery_candidate_counts": [
+            2
+          ],
+          "executed_queries": [
+            "MySQL initial selection transactions durability"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "simple-ocr",
+      "expected_route": "SINGLE_HYBRID",
+      "target_count": 1,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 1,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 1,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 4.261,
+          "evidence_minutes": [
+            48,
+            40
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "Redis eviction policy expiration TTL"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 1,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 1,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 5.69,
+          "evidence_minutes": [
+            48,
+            40
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "SINGLE_FACT",
+          "routing_fallback": "NONE",
+          "subquery_candidate_counts": [
+            2
+          ],
+          "executed_queries": [
+            "Redis eviction policy expiration TTL"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "B-temporal",
+      "expected_route": "BOUNDED_MULTI_QUERY",
+      "target_count": 2,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 2,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 0,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 11.502,
+          "evidence_minutes": [
+            0,
+            32
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "Initially MySQL initial selection transactions durability; later Redis migration rationale memory cache"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 2,
+          "routing_model_calls": 1,
+          "intent_model_calls": 0,
+          "intent_port_calls": 2,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 4,
+          "target_hits": 2,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 2,
+          "candidate_guard_passes": 4,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 17.501,
+          "evidence_minutes": [
+            0,
+            32,
+            16,
+            72
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "BOUNDED_MULTI_QUERY",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "TEMPORAL_CHANGE",
+          "routing_fallback": "NONE",
+          "subquery_candidate_counts": [
+            2,
+            2
+          ],
+          "executed_queries": [
+            "Initially MySQL initial selection transactions durability",
+            "later Redis migration rationale memory cache"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "comparison",
+      "expected_route": "BOUNDED_MULTI_QUERY",
+      "target_count": 2,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 2,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 0,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 8.732,
+          "evidence_minutes": [
+            40,
+            8
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "Compare MySQL benchmark throughput latency disk; Redis benchmark throughput latency memory"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 2,
+          "routing_model_calls": 1,
+          "intent_model_calls": 0,
+          "intent_port_calls": 2,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 2,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 0,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 18.184,
+          "evidence_minutes": [
+            8,
+            40
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "BOUNDED_MULTI_QUERY",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "COMPARISON",
+          "routing_fallback": "NONE",
+          "subquery_candidate_counts": [
+            2,
+            2
+          ],
+          "executed_queries": [
+            "Compare MySQL benchmark throughput latency disk",
+            "Redis benchmark throughput latency memory"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "three-conditions",
+      "expected_route": "BOUNDED_MULTI_QUERY",
+      "target_count": 3,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 3,
+          "target_hits": 3,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 0,
+          "candidate_guard_passes": 3,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 3.987,
+          "evidence_minutes": [
+            0,
+            32,
+            56
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "Both MySQL initial selection transactions durability; Redis migration rationale memory cache; Kafka ingestion batching broker"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 3,
+          "routing_model_calls": 1,
+          "intent_model_calls": 0,
+          "intent_port_calls": 3,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 6,
+          "target_hits": 3,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 3,
+          "candidate_guard_passes": 6,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 18.678,
+          "evidence_minutes": [
+            0,
+            32,
+            56,
+            16,
+            72,
+            96
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "BOUNDED_MULTI_QUERY",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "MULTI_CONDITION",
+          "routing_fallback": "NONE",
+          "subquery_candidate_counts": [
+            2,
+            2,
+            2
+          ],
+          "executed_queries": [
+            "Both MySQL initial selection transactions durability",
+            "Redis migration rationale memory cache",
+            "Kafka ingestion batching broker"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "cross-chunk",
+      "expected_route": "BOUNDED_MULTI_QUERY",
+      "target_count": 2,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 2,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 0,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 4.488,
+          "evidence_minutes": [
+            56,
+            64
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "Compare Kafka ingestion batching broker; PostgreSQL reporting joins analytics"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 2,
+          "routing_model_calls": 1,
+          "intent_model_calls": 0,
+          "intent_port_calls": 2,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 4,
+          "target_hits": 2,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 2,
+          "candidate_guard_passes": 4,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 10.126,
+          "evidence_minutes": [
+            56,
+            64,
+            96,
+            104
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "BOUNDED_MULTI_QUERY",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "COMPARISON",
+          "routing_fallback": "NONE",
+          "subquery_candidate_counts": [
+            2,
+            2
+          ],
+          "executed_queries": [
+            "Compare Kafka ingestion batching broker",
+            "PostgreSQL reporting joins analytics"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "distributed-reasons",
+      "expected_route": "BOUNDED_MULTI_QUERY",
+      "target_count": 3,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 3,
+          "target_hits": 3,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 0,
+          "candidate_guard_passes": 3,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 4.08,
+          "evidence_minutes": [
+            112,
+            8,
+            32
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "Causal chain MySQL benchmark disk bottleneck; Redis migration rationale latency reduction; Architecture conclusion consistency tradeoff"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 3,
+          "routing_model_calls": 1,
+          "intent_model_calls": 0,
+          "intent_port_calls": 3,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 6,
+          "target_hits": 3,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 3,
+          "candidate_guard_passes": 6,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 15.021,
+          "evidence_minutes": [
+            8,
+            32,
+            112,
+            80,
+            72,
+            48
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "BOUNDED_MULTI_QUERY",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "CAUSAL_CHAIN",
+          "routing_fallback": "NONE",
+          "subquery_candidate_counts": [
+            2,
+            2,
+            2
+          ],
+          "executed_queries": [
+            "Causal chain MySQL benchmark disk bottleneck",
+            "Redis migration rationale latency reduction",
+            "Architecture conclusion consistency tradeoff"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "missing-subgoal",
+      "expected_route": "BOUNDED_MULTI_QUERY",
+      "target_count": 1,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 1,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 1,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 7.093,
+          "evidence_minutes": [
+            48,
+            40
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "Compare Redis eviction policy expiration TTL; MongoDB sharding geographic topology"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 2,
+          "routing_model_calls": 1,
+          "intent_model_calls": 0,
+          "intent_port_calls": 2,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 4,
+          "target_hits": 1,
+          "target_recall": 1.0,
+          "irrelevant_candidates": 3,
+          "candidate_guard_passes": 4,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 9.118,
+          "evidence_minutes": [
+            48,
+            0,
+            40,
+            8
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "BOUNDED_MULTI_QUERY",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "COMPARISON",
+          "routing_fallback": "NONE",
+          "subquery_candidate_counts": [
+            2,
+            2
+          ],
+          "executed_queries": [
+            "Compare Redis eviction policy expiration TTL",
+            "MongoDB sharding geographic topology"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "no-video-evidence",
+      "expected_route": "BOUNDED_MULTI_QUERY",
+      "target_count": 0,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 0,
+          "target_recall": null,
+          "irrelevant_candidates": 2,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 5.073,
+          "evidence_minutes": [
+            0,
+            8
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "Compare quantum entanglement photons; dinosaur extinction asteroid"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 2,
+          "routing_model_calls": 1,
+          "intent_model_calls": 0,
+          "intent_port_calls": 2,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 0,
+          "target_recall": null,
+          "irrelevant_candidates": 2,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 7.636,
+          "evidence_minutes": [
+            0,
+            8
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "BOUNDED_MULTI_QUERY",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "COMPARISON",
+          "routing_fallback": "NONE",
+          "subquery_candidate_counts": [
+            2,
+            2
+          ],
+          "executed_queries": [
+            "Compare quantum entanglement photons",
+            "dinosaur extinction asteroid"
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "C-invalid-plan",
+      "expected_route": "SINGLE_HYBRID",
+      "target_count": 2,
+      "arms": {
+        "single": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 0,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 1,
+          "target_recall": 0.5,
+          "irrelevant_candidates": 1,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 5.719,
+          "evidence_minutes": [
+            72,
+            32
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "NOT_MEASURED",
+          "executed_queries": [
+            "Initially MySQL initial selection; later Redis migration rationale"
+          ]
+        },
+        "adaptive": {
+          "retrieval_call_count": 1,
+          "routing_model_calls": 1,
+          "intent_model_calls": 0,
+          "intent_port_calls": 1,
+          "tokens": "NOT_MEASURED",
+          "candidate_count": 2,
+          "target_hits": 1,
+          "target_recall": 0.5,
+          "irrelevant_candidates": 1,
+          "candidate_guard_passes": 2,
+          "answer_guard": "NOT_RUN",
+          "measured_wall_latency_ms": 5.207,
+          "evidence_minutes": [
+            72,
+            32
+          ],
+          "source_revision": "6222dab6498823008dbce3bec3b4283edb795dc3822c784fa80924db77087a36",
+          "route": "SINGLE_HYBRID",
+          "coverage_status": "ALL_SUBQUERIES_HAVE_CANDIDATES",
+          "routing_reason": "TEMPORAL_CHANGE",
+          "routing_fallback": "INVALID_PLAN",
+          "subquery_candidate_counts": [
+            2
+          ],
+          "executed_queries": [
+            "Initially MySQL initial selection; later Redis migration rationale"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "classification": "SYNTHETIC",
+  "version": "m2-cross-fragment-v1",
+  "transcripts": [
+    "MySQL initial selection transactions durability relational schema correctness",
+    "MySQL benchmark throughput latency disk bottleneck performance measurements",
+    "MySQL initial selection workshop installation tutorial configuration example",
+    "MySQL initial selection introduction database setup connection demonstration",
+    "Redis migration rationale memory cache latency reduction hot keys",
+    "Redis benchmark throughput latency memory performance measurements",
+    "Redis eviction policy expiration TTL cache invalidation consistency",
+    "Kafka ingestion batching broker durable event stream ordering",
+    "PostgreSQL reporting joins analytics query plan index scan",
+    "Redis migration rationale demo installation configuration tutorial",
+    "MySQL benchmark replication operations maintenance disk storage",
+    "Redis benchmark monitoring dashboards operations tuning",
+    "Kafka ingestion retry dead letter recovery consumer offsets",
+    "PostgreSQL reporting vacuum maintenance backup administration",
+    "Architecture conclusion consistency throughput latency tradeoff summary"
+  ],
+  "cases": [
+    {"id":"A-simple", "query":"MySQL initial selection transactions durability", "targets":[0], "route":"SINGLE_HYBRID"},
+    {"id":"simple-ocr", "query":"Redis eviction policy expiration TTL", "targets":[6], "route":"SINGLE_HYBRID"},
+    {"id":"B-temporal", "query":"Initially MySQL initial selection transactions durability; later Redis migration rationale memory cache", "targets":[0,4], "route":"BOUNDED_MULTI_QUERY"},
+    {"id":"comparison", "query":"Compare MySQL benchmark throughput latency disk; Redis benchmark throughput latency memory", "targets":[1,5], "route":"BOUNDED_MULTI_QUERY"},
+    {"id":"three-conditions", "query":"Both MySQL initial selection transactions durability; Redis migration rationale memory cache; Kafka ingestion batching broker", "targets":[0,4,7], "route":"BOUNDED_MULTI_QUERY"},
+    {"id":"cross-chunk", "query":"Compare Kafka ingestion batching broker; PostgreSQL reporting joins analytics", "targets":[7,8], "route":"BOUNDED_MULTI_QUERY"},
+    {"id":"distributed-reasons", "query":"Causal chain MySQL benchmark disk bottleneck; Redis migration rationale latency reduction; Architecture conclusion consistency tradeoff", "targets":[1,4,14], "route":"BOUNDED_MULTI_QUERY"},
+    {"id":"missing-subgoal", "query":"Compare Redis eviction policy expiration TTL; MongoDB sharding geographic topology", "targets":[6], "route":"BOUNDED_MULTI_QUERY", "missingSubgoal":true},
+    {"id":"no-video-evidence", "query":"Compare quantum entanglement photons; dinosaur extinction asteroid", "targets":[], "route":"BOUNDED_MULTI_QUERY"},
+    {"id":"C-invalid-plan", "query":"Initially MySQL initial selection; later Redis migration rationale", "targets":[0,4], "route":"SINGLE_HYBRID", "invalidPlan":true}
+  ]
+}

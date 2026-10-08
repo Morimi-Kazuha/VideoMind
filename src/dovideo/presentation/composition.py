@@ -477,11 +477,21 @@ class VideoAnalysisApplication:
         embedder = self._build_embedder(context, goal, embedding_config)
         embedding = _ProgressEmbedding(embedder, self._progress)
         vector_index = InMemoryVectorIndex()
+        chat_client = OpenAICompatibleChatClient(model_config)
+        roles = OpenAICompatibleModelAdapter(
+            _ProgressChatClient(chat_client, self._progress)
+        )
         retrieval = VideoEvidenceRetrievalService(
             _ProgressRetrievalPlanner(LocalRetrievalPlanner(), self._progress),
             embedding,
             vector_index,
         )
+        from dovideo.infrastructure.adaptive_retrieval import adaptive_settings_from_environment
+        from dovideo.application.adaptive_retrieval import AdaptiveRetrievalService
+
+        adaptive_settings = adaptive_settings_from_environment()
+        if adaptive_settings.enabled:
+            retrieval = AdaptiveRetrievalService(retrieval, roles.retrieval_planner, adaptive_settings)
         long_context = LongVideoContextService(
             _ProgressChunkingService(
                 VideoChunkingService(
@@ -494,10 +504,6 @@ class VideoAnalysisApplication:
         )
         self._progress.emit("RETRIEVAL", "Preparing hybrid temporal retrieval")
 
-        chat_client = OpenAICompatibleChatClient(model_config)
-        roles = OpenAICompatibleModelAdapter(
-            _ProgressChatClient(chat_client, self._progress)
-        )
         try:
             agent = AgentLoopService(
                 context_service=long_context,

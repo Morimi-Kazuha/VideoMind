@@ -19,6 +19,7 @@ from typing import Any, Callable
 from dovideo.domain import VideoContext, VideoEvidenceHit, VideoSegment
 
 from .errors import DeadlineExceededError
+from .adaptive_retrieval import baseline_retrieval
 from .long_context import LongVideoContextService
 from .ports.tools import ToolExecutionContext, ToolExecutorPort
 from .tool_contracts import (
@@ -376,7 +377,8 @@ class VideoReadOnlyToolExecutor(ToolExecutorPort):
                     query_context,
                 )
             if inspect.isawaitable(value):
-                value = await value
+                with baseline_retrieval():
+                    value = await value
         except asyncio.CancelledError:
             raise
         except DeadlineExceededError:

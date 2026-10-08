@@ -116,6 +116,8 @@ from .celery_transport import (
 )
 from .r2_config import R2Infrastructure, create_r2_infrastructure
 from .x1_config import X1ToolCallingSettings
+from .adaptive_retrieval import adaptive_settings_from_environment
+from dovideo.application.adaptive_retrieval import AdaptiveRetrievalService
 from .content_context import RedisContentBuildLock, pipeline_contract, sha256_file
 from .persistence.content_context import SqlAlchemyContentArtifacts
 
@@ -197,6 +199,7 @@ class R4AgentTelemetry:
         reserves = {
             "CHUNK_SUMMARY": 4096,
             "RETRIEVAL_PLANNER": 1024,
+            "ADAPTIVE_RETRIEVAL_PLANNER": 1024,
             "PLANNER": 2048,
             "PLANNER_REPAIR": 2048,
             "REPLANNER": 2048,
@@ -1093,6 +1096,11 @@ def create_r4_provider_stack(
         telemetry=telemetry,
         reranker=reranker,
     )
+    adaptive_settings = adaptive_settings_from_environment()
+    if adaptive_settings.enabled:
+        retrieval = AdaptiveRetrievalService(
+            retrieval, roles.retrieval_planner, adaptive_settings, telemetry=telemetry,
+        )
     chunking = _StrictChunkingService(
         roles.chunk_summary,
         embedding,
