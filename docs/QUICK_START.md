@@ -90,7 +90,7 @@ npm ci
 npm run dev
 ```
 
-浏览器打开 `http://127.0.0.1:5173`。运行 `curl http://127.0.0.1:8000/health` 验证 API；前端开发代理默认指向该地址。若端口不同，可设置 `VITE_DEV_PROXY_TARGET`。完整组合首次启动会建立数据库结构和 MinIO bucket；如果生产配置缺失，启动会直接报错，不会静默退回本地组合。
+浏览器打开 `http://127.0.0.1:5173`。运行 `curl http://127.0.0.1:8000/health` 验证 API；前端开发代理默认指向该地址。若端口不同，可设置 `VITE_DEV_PROXY_TARGET`。数据库结构由上一步 Alembic 迁移建立；API/worker 只检查 revision，基础设施组合会确保 MinIO bucket 存在。生产配置缺失时启动直接报错，不会静默退回本地组合。
 
 ## 5. 演示与验证
 
@@ -104,6 +104,22 @@ npm run build
 ```
 
 测试套件使用离线替身，不需要真实 Provider 密钥。完整 R4 live acceptance 是单独的付费验证流程，不属于日常启动或 CI。
+
+### M1 / M2 与 F1 验收
+
+生产 R4 会将 M1 接入 Redis；工作台保留当前会话标识，重开或刷新后恢复近期问答。指代追问先由已配置的聊天 Provider 改写再检索，回答保留原始问题。历史与摘要不能作为视频证据；默认 local 模式的确定性替身不能用于证明真实 LLM 能力。
+
+M2 默认 `DOVIDEO_ADAPTIVE_RETRIEVAL_ENABLED=false`。仅在需要验证复杂检索的受控 API/worker 进程中显式设为 `true`，两边使用相同配置，记录决策、子查询与 Hybrid 次数；验证后停止验收进程或恢复 `false`。不要改写生产默认文件，也不要为测试切换 Provider、降低 Guard 或无限重试。
+
+F1 工作台的“核心结论”读取现有 Citation API 的结构化投影，点击相关证据复用原播放器跳转；没有合法引用时显示缺失状态，Markdown 导出保持原样。验收应选用获准的视频和项目私有配置，限制为一次主线分析、至少两轮 M1 追问，预算允许时再运行真实摘要。逐项记录 REAL_VIDEO + REAL_PROVIDER、REAL_INFRASTRUCTURE、DETERMINISTIC_TEST、MOCK 或 NOT_RUN，保留 M2 单查询对照。
+
+本轮实测、阻塞与封板门槛见 [FINAL_FREEZE_REPORT.md](FINAL_FREEZE_REPORT.md)。Windows pytest 临时目录受限时使用独立的新目录，例如：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q --basetemp='D:/Agent Learning/tmp/f1-check-new' -o cache_dir=work/f1-cache
+```
+
+`basetemp` 必须是专供本次测试的目录，不要指定已有业务数据或用户目录。
 
 ## 6. 可选检索 Reranker
 

@@ -439,6 +439,21 @@
             <p v-if="sidebar.error" class="analysis-inline-error" role="alert">
               {{ sidebar.error }}
             </p>
+            <section v-if="claims.length" class="analysis-claims" aria-label="核心结论与来源证据">
+              <h3>核心结论</h3>
+              <div v-for="(item, index) in claims" :key="index" class="analysis-claims__item">
+                <strong>{{ item.claim }}</strong>
+                <div v-if="item.citations.length" class="analysis-answer__citations">
+                  <span>相关证据：</span>
+                  <button v-for="citation in item.citations" :key="citation.id"
+                    type="button" :aria-pressed="selectedKey === `citation:${citation.id}`"
+                    @click="selectCitation(citation)">
+                    {{ citation.source }} · {{ formatMediaTime(citation.timestampMs / 1000) }}
+                  </button>
+                </div>
+                <p v-else>暂无通过校验的可绑定证据。</p>
+              </div>
+            </section>
             <div
               v-if="sidebar.content"
               class="analysis-answer__body markdown-content"
@@ -624,6 +639,7 @@ import { apiRequest, captureAuthSession } from "./api.js";
 import AcademyMark from "./design/AcademyMark.vue";
 import AnalysisTimeline from "./AnalysisTimeline.vue";
 import TemporalRecords from "./TemporalRecords.vue";
+import { useClaimEvidence } from "./claimEvidence.js";
 import {
   evidenceKey,
   formatMediaTime,
@@ -663,10 +679,10 @@ const temporalObservations = ref([]);
 const observationTotal = ref(0);
 const observationLoading = ref(false);
 const observationError = ref("");
-const citations = ref([]);
+const { claims, citations, refresh: refreshCitations, dispose: disposeCitations } =
+  useClaimEvidence(() => props.sidebar);
 let temporalRequest = 0;
 let observationRequest = 0;
-let citationRequest = 0;
 
 const mediaStatusText = computed(
   () =>
@@ -754,7 +770,7 @@ function captureOperation() {
   const mediaId = props.sidebar.mediaId;
   return () => workspaceMounted && session.isCurrent() && generation === props.sidebar.generation && mediaId === props.sidebar.mediaId;
 }
-onUnmounted(() => { workspaceMounted = false; });
+onUnmounted(() => { workspaceMounted = false; disposeCitations(); });
 
 async function loadTemporal(reset = true) {
   if (temporalLoading.value || props.demoMode || !props.sidebar.mediaId) return;
@@ -830,28 +846,6 @@ async function loadObservations(reset = true) {
       observationError.value = error?.message || "逐条来源记录读取失败";
   } finally {
     if (current() && request === observationRequest) observationLoading.value = false;
-  }
-}
-
-async function refreshCitations() {
-  const current = captureOperation();
-  const request = ++citationRequest;
-  citations.value = [];
-  if (props.demoMode || !props.sidebar.content || props.sidebar.type !== "ai")
-    return;
-  const params = new URLSearchParams({
-    id: String(props.sidebar.mediaId),
-    goal: props.sidebar.goal,
-    mode: props.sidebar.analysisMode,
-  });
-  try {
-    const response = await apiRequest(`/analysis/agent-citations?${params}`);
-    if (!response.ok) return;
-    const records = await response.json();
-    if (current() && request === citationRequest)
-      citations.value = Array.isArray(records) ? records : [];
-  } catch {
-    // Legacy answers stay readable when citation metadata is unavailable.
   }
 }
 
@@ -965,8 +959,11 @@ watch(
     props.sidebar.goal,
     props.sidebar.analysisMode,
     props.sidebar.content,
+    props.sidebar.loading,
+    props.sidebar.visible,
+    props.sidebar.type,
   ],
-  refreshCitations,
+  () => { if (!props.demoMode) refreshCitations(); },
 );
 watch(
   () => props.sidebar.loading,
@@ -982,6 +979,6 @@ onMounted(() => {
   refreshTranscript();
   loadTemporal();
   loadObservations();
-  refreshCitations();
+  if (!props.demoMode) refreshCitations();
 });
 </script>

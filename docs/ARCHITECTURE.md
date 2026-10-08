@@ -5,6 +5,34 @@ application/domain behavior is composed behind FastAPI, a Celery worker, and
 the smaller CLI path. Adapters provide I/O; they do not define separate Agent
 or evidence policy.
 
+## Current main: memory, retrieval and presentation
+
+M1's independent GroundedFollowUp path reads user/media/goal/mode/session/revision
+scoped Redis memory, performs contextual query rewrite when needed, retrieves
+current video evidence, answers the original question, and writes memory only
+after the existing Guard and a fresh access/revision check. Rolling Summary
+compresses four older turns at a ten-turn threshold and keeps six recent turns;
+history is discussion context, never authoritative video evidence.
+
+M2 is an optional wrapper of existing Hybrid retrieval, default OFF. A bounded
+model proposal may choose SINGLE_HYBRID or two to three extractive subqueries;
+Harness controls budget, immutable source scope, merge and deduplication.
+Critic refinement and search tools use baseline scope to avoid recursive
+decomposition. Candidate presence is not semantic proof; the offline A/B
+showed no average recall improvement.
+
+F1 reuses the existing owned `GET /analysis/agent-citations` endpoint. Its
+opt-in `includeConclusions=true` projection returns conclusions, current
+sourceRevision and the same verified citation list in one read response;
+the default list response stays compatible. UI links use exact claim equality,
+never Markdown similarity. Request generation, scope and auth-session checks
+discard stale responses; text is interpolated by Vue, and links reuse the
+existing selectCitation/player/timeline path. Missing bindings remain explicit.
+
+See [M1](CONVERSATION_MEMORY.md), [M2](ADAPTIVE_RETRIEVAL.md), and the
+[F1 final gate](FINAL_FREEZE_REPORT.md). Latest real Provider/video acceptance
+is pending; historical live results do not substitute for it.
+
 ## Resumable upload
 
 The browser sends 5 MiB logical chunks with concurrency 3 (at most 410 chunks).

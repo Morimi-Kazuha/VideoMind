@@ -49,6 +49,7 @@ from dovideo.application.temporal_read import (
     temporal_observation_page,
     temporal_window_page,
     verified_answer_citations,
+    verified_answer_presentation,
 )
 
 from .runtime import LocalR1Services, R1ServiceError, media_summary
@@ -614,12 +615,15 @@ def create_app(
         id: int = Query(...),
         goal: str = Query(...),
         mode: str | None = Query(None),
+        include_conclusions: bool = Query(False, alias="includeConclusions"),
         user: dict[str, Any] = Depends(require_user),
     ) -> JSONResponse:
         await selected_services.media.require_owned(id, int(user["id"]))
         key = selected_services.key(id, _goal(goal, "分析目标"), _mode(mode))
         context = await selected_services.checkpoint.load_context(id)
         state = await selected_services.checkpoint.load_result(key)
+        if include_conclusions:
+            return _ok(verified_answer_presentation(context, state))
         return _ok(verified_answer_citations(context, state))
 
     @app.post("/analysis/agent-feedback")

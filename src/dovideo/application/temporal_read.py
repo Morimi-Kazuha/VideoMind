@@ -111,3 +111,19 @@ def verified_answer_citations(
             }
         )
     return citations
+
+
+def verified_answer_presentation(
+    context: VideoContext | None, state: AgentState | None
+) -> dict[str, object]:
+    """Project conclusions and the existing verified citations in one snapshot.
+
+    The UI binds by exact claim equality only. Conclusions without citations
+    remain visible; this projection does not confer source support on them.
+    """
+    return {
+        "sourceRevision": context.source_revision if context is not None else "",
+        "conclusions": list(state.result.conclusions)
+        if state is not None and state.result is not None else [],
+        "citations": verified_answer_citations(context, state),
+    }

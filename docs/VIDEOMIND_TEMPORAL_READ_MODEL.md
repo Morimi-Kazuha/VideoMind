@@ -97,6 +97,17 @@ per-token attribution. The existing markdown status, SSE, retrieval, and
 feedback contracts remain unchanged. The UI continues to support legacy
 markdown timestamps when no structured citations are available.
 
+F1 adds an opt-in projection on this same endpoint:
+`includeConclusions=true` returns `{sourceRevision, conclusions, citations}`.
+The default response remains the existing citation array. Conclusions come
+directly from `AnalysisResult.conclusions`, including unsupported conclusions;
+the citation list still uses `verified_answer_citations()` without changed
+validation rules. The UI binds only `citation.claim === conclusion`, supports
+multiple citations and labels missing evidence explicitly. It rejects malformed
+or revision-mismatched metadata, discards late responses after workspace/auth
+changes, and renders claims as text. This is answer-level binding, not a new
+semantic entailment verifier or a structured citation API for follow-up Markdown.
+
 All three temporal/citation read endpoints apply the same media ownership
 check as existing analysis reads. They do not mutate checkpoints or require a
 data migration. All returned ASR/OCR
