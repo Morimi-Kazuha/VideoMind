@@ -788,6 +788,51 @@ def _goal_digest(key: TaskKey) -> str:
     return goal_digest(key.goal, key.mode)
 
 
+async def read_follow_up_history(services, media_id, user_id, goal, mode, conversation_id):
+    from dovideo.application.conversation_memory import ConversationIdentity, source_revision
+    await services.media.require_owned(media_id, user_id)
+    try:
+        async with asyncio.timeout(2):
+            context = await services.checkpoint.load_context(media_id)
+            if not isinstance(context, VideoContext):
+                raise R1ServiceError("视频上下文尚未准备完成", status_code=409)
+            identity = ConversationIdentity.create(user_id, media_id, goal or context.user_goal,
+                                                   mode, conversation_id, context)
+            state = await services.conversation_memory.store.load(identity)
+            await services.media.require_owned(media_id, user_id)
+            latest = await services.checkpoint.load_context(media_id)
+            if not isinstance(latest, VideoContext) or source_revision(latest) != identity.source_revision:
+                raise R1ServiceError("视频来源版本已变化，请重新加载", status_code=409)
+    except R1ServiceError:
+        raise
+    except Exception:
+        raise R1ServiceError("会话历史暂不可用，请稍后重试", status_code=503) from None
+    return {"conversationId": identity.conversation_id, "sourceRevision": identity.source_revision,
+            "turns": [t.model_dump() for t in state.turns],
+            "summary": state.summary.model_dump() if state.summary else None,
+            "summaryStatus": state.summary_status, "version": state.version}
+
+
+class _LocalFollowUpRetrieval:
+    def __init__(self, owner):
+        self.owner = owner
+
+    async def search_evidence(self, media_id, context, *, chunks=None):
+        retrieval = self.owner.retrieval.get(media_id)
+        return await retrieval.search(media_id, context.user_goal, chunks or ()) if retrieval else ()
+
+
+class _LocalGroundedFollowUpModel:
+    """Explicit deterministic local demo, not a substitute for real LLM roles."""
+    async def answer(self, question, *, sources, **kwargs):
+        from dovideo.domain import GroundedFollowUpAnswer, GroundedFollowUpEvidence
+        hit = next(item for item in sources if item.transcript.strip())
+        text = hit.transcript[:400]
+        return GroundedFollowUpAnswer(answer=text, evidence=(GroundedFollowUpEvidence(
+            candidate_index=sources.index(hit), timestamp_ms=hit.start_ms,
+            source="ASR", content=text, claim=text),))
+
+
 class LocalR1Services:
     """Composition root used by ``create_app`` for local/dev operation."""
 
@@ -824,6 +869,9 @@ class LocalR1Services:
         self.completion = _CompletionStore()
         self.lock = _LockStore()
         self.checkpoint = _MemoryCheckpoint(self)
+        from dovideo.application.conversation_memory import ConversationMemoryService
+        from dovideo.infrastructure.conversation_memory import InMemoryConversationMemoryStore
+        self.conversation_memory = ConversationMemoryService(InMemoryConversationMemoryStore())
         self.delivery = TaskEventDeliveryService()
         self.subscribers: dict[TaskKey, set[asyncio.Queue[TaskLifecycleEvent]]] = defaultdict(set)
         self.trace = _LocalTraceStore()
@@ -1006,7 +1054,19 @@ class LocalR1Services:
         filename = Path(record.filename).stem + ".mp3"
         return path, filename
 
-    async def follow_up(self, media_id: int, question: str, goal: str | None, mode: AnalysisMode) -> str:
+    async def follow_up(self, media_id: int, question: str, goal: str | None, mode: AnalysisMode,
+                        *, user_id=None, conversation_id=None, request_id=None) -> str:
+        if conversation_id is not None:
+            from dovideo.application.follow_up import GroundedFollowUpService, FollowUpFailure
+            service = GroundedFollowUpService(self.checkpoint, _LocalFollowUpRetrieval(self),
+                _LocalGroundedFollowUpModel(), memory=self.conversation_memory,
+                access_check=self.media.require_owned)
+            try:
+                return await service.answer(media_id, question, goal, mode, user_id=user_id,
+                    conversation_id=conversation_id, request_id=request_id)
+            except FollowUpFailure as error:
+                status = 409 if error.category in {"conversation_conflict", "context_not_ready"} else 422
+                raise R1ServiceError(error.safe_message, status_code=status) from None
         del mode
         context = self.contexts.get(media_id)
         if context is None:
@@ -1017,6 +1077,9 @@ class LocalR1Services:
             f"针对“{question}”，基于目标“{selected_goal}”可先回看 "
             f"{segment.start_ms}ms 的时间戳证据：{segment.transcript}"
         )
+
+    async def follow_up_history(self, media_id, user_id, goal, mode, conversation_id):
+        return await read_follow_up_history(self, media_id, user_id, goal, mode, conversation_id)
 
     def route(self, goal: str) -> tuple[AnalysisMode, str]:
         """Legacy deterministic route retained for local development only."""
@@ -1160,6 +1223,7 @@ class LocalR1Services:
 
     async def delete_media(self, media_id: int, user_id: int) -> None:
         await self.media.delete_owned(media_id, user_id)
+        await self.conversation_memory.store.delete_media(media_id)
         self.contexts.pop(media_id, None)
         self.transcripts.pop(media_id, None)
         for key in tuple(self.checkpoint.revisions):

@@ -532,6 +532,8 @@ def create_app(
         question: str = Query(...),
         goal: str | None = Query(None),
         mode: str | None = Query(None),
+        conversationId: str | None = Query(None, max_length=36),
+        requestId: str | None = Query(None, max_length=36),
         user: dict[str, Any] = Depends(require_user),
     ) -> JSONResponse:
         question = _goal(question, "追问内容")
@@ -539,11 +541,40 @@ def create_app(
         resolved_mode = _mode(mode)
         await selected_services.media.require_owned(id, int(user["id"]))
         await enforce_ai_interaction(user, "follow-up")
+        from dovideo.application.conversation_memory import canonical_uuid
+        try:
+            if conversationId is not None:
+                conversationId = canonical_uuid(conversationId)
+            if requestId is not None:
+                requestId = canonical_uuid(requestId)
+        except (ValueError, TypeError, AttributeError):
+            raise R1ServiceError("会话或请求标识必须为 UUID", status_code=400) from None
         return _ok(
             await selected_services.follow_up(
-                id, question, selected_goal, resolved_mode
+                id, question, selected_goal, resolved_mode,
+                **({"user_id": int(user["id"]), "conversation_id": conversationId,
+                    "request_id": requestId} if conversationId is not None else {}),
             )
         )
+
+    @app.get("/analysis/follow-up/history")
+    async def follow_up_history(
+        id: int = Query(...),
+        conversationId: str = Query(..., max_length=36),
+        goal: str | None = Query(None),
+        mode: str | None = Query(None),
+        user: dict[str, Any] = Depends(require_user),
+    ) -> JSONResponse:
+        from dovideo.application.conversation_memory import canonical_uuid
+        selected_goal = None if goal is None else _goal(goal, "原始分析目标")
+        resolved_mode = _mode(mode)
+        await selected_services.media.require_owned(id, int(user["id"]))
+        try:
+            conversation_id = canonical_uuid(conversationId)
+        except (ValueError, TypeError, AttributeError):
+            raise R1ServiceError("会话标识必须为 UUID", status_code=400) from None
+        return _ok(await selected_services.follow_up_history(
+            id, int(user["id"]), selected_goal, resolved_mode, conversation_id))
 
     @app.get("/analysis/evidence-search")
     async def evidence_search(

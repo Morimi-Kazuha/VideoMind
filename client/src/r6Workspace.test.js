@@ -117,6 +117,7 @@ test('late metadata JSON cannot overwrite new revision', async () => {
 test('logout/login switch rejects follow-up response even with unchanged workspace identity', async () => {
   const { workspace: w, pending } = await setup()
   setAuthToken('A')
+  await w.openAgent({ id: 1, filename: 'one.mp4' })
   const late = deferred()
   pending.set('/analysis/follow-up', late)
   w.sidebar.value.followUp = 'query'
@@ -124,7 +125,8 @@ test('logout/login switch rejects follow-up response even with unchanged workspa
   setAuthToken('B')
   late.resolve(response('OLD'))
   await request
-  assert.equal(w.sidebar.value.content, 'V1')
+  assert.equal(w.sidebar.value.content, '')
+  assert.equal(w.sidebar.value.visible, false)
 })
 
 test('double rerun cannot invalidate the accepted revision response', async () => {

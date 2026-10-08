@@ -251,6 +251,9 @@ class OpenAICompatibleChatClient:
         payload.update(self.request_settings.request_fields())
         if stage == "FOLLOW_UP":
             payload["max_tokens"] = min(int(payload.get("max_tokens", 4096)), 4096)
+        elif stage in {"QUERY_REWRITE", "ROLLING_SUMMARY"}:
+            cap = 512 if stage == "QUERY_REWRITE" else 2048
+            payload["max_tokens"] = min(int(payload.get("max_tokens", cap)), cap)
         if self.config.transport == "openrouter":
             payload["provider"] = {
                 "only": list(self.config.provider_only),
@@ -415,7 +418,9 @@ class OpenAICompatibleChatClient:
             model=self.config.model,
             messages=messages,
             attempt=attempt,
-            max_output_tokens=self.request_settings.max_tokens,
+            max_output_tokens=(min(self.request_settings.max_tokens or cap, cap)
+                if (cap := {"FOLLOW_UP": 4096, "QUERY_REWRITE": 512, "ROLLING_SUMMARY": 2048}.get(stage))
+                else self.request_settings.max_tokens),
         )
 
     def _finish_model_call(

@@ -227,11 +227,20 @@ class ProductionR4Services(ProductionR2Services):
         question: str,
         goal: str | None,
         mode: AnalysisMode,
+        *, user_id: int | None = None, conversation_id: str | None = None,
+        request_id: str | None = None,
     ) -> str:
+        from dovideo.application.conversation_memory import ConversationMemoryService
+        from dovideo.infrastructure.providers.conversation_memory import ConversationModelAdapter
+        memory = getattr(self, "conversation_memory", None)
+        if memory is not None:
+            memory = ConversationMemoryService(memory.store, ConversationModelAdapter(self.providers.chat_client))
         service = GroundedFollowUpService(
             self.checkpoint,
             self.providers.long_context,
             GroundedFollowUpModelAdapter(self.providers.chat_client),
+            memory=memory,
+            access_check=self.media.require_owned,
         )
         statuses = {
             "invalid_request": 400,
@@ -245,12 +254,16 @@ class ProductionR4Services(ProductionR2Services):
             "retrieval_failure": 503,
             "checkpoint_failure": 503,
             "unexpected": 503,
+            "conversation_conflict": 409,
+            "memory_unavailable": 503,
         }
         try:
             capture = getattr(self.providers.telemetry, "capture_chat_usage", None)
             with self.providers.telemetry.isolated_metrics(), (capture() if callable(capture) else nullcontext([])) as usage:
                 try:
-                    return await service.answer(media_id, question, goal, mode)
+                    return await service.answer(media_id, question, goal, mode,
+                                                user_id=user_id, conversation_id=conversation_id,
+                                                request_id=request_id)
                 finally:
                     reported_tokens = [item["totalTokens"] for item in usage if item.get("totalTokens") is not None]
                     logging.getLogger("dovideo.follow_up").info(

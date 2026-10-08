@@ -9,6 +9,7 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
+from uuid import uuid4
 
 from dovideo.domain import (
     AgentState,
@@ -27,6 +28,10 @@ from .mode_profiles import mode_profile_for
 from .ports.checkpoint import ContextCheckpointPort
 from .value_objects import TaskKey
 from .execution_budget import AgentExecutionBudget
+from .conversation_memory import (
+    ConversationMemoryService, ConversationIdentity, ConversationState,
+    MemoryConflict, QueryRewrite, canonical_uuid, source_revision, needs_rewrite, question_digest,
+)
 
 
 MAX_FOLLOW_UP_CANDIDATES = 8
@@ -43,6 +48,8 @@ _ALLOWED_METRICS = {
     "latency_ms",
     "candidate_source_refs",
     "verified_source_refs",
+    "memory_turns",
+    "summary_turns",
 }
 
 
@@ -94,6 +101,7 @@ class FollowUpModelPort(Protocol):
         prior_analysis: Mapping[str, Any] | None,
         sources: Sequence[VideoEvidenceHit],
         observations: Sequence[TemporalObservation] = (),
+        conversation_context: Mapping[str, Any] | None = None,
     ) -> GroundedFollowUpAnswer:
         ...
 
@@ -125,26 +133,98 @@ class GroundedFollowUpService:
         verifier: EvidenceVerificationService | None = None,
         observer: FollowUpObserver | Any | None = None,
         max_wall_seconds: float = 60.0,
+        memory: ConversationMemoryService | None = None,
+        access_check: Any | None = None,
     ) -> None:
         self._checkpoint = checkpoint
         self._retrieval = retrieval
         self._model = model
         self._verifier = verifier or EvidenceVerificationService()
         self._observer = observer
+        self._memory = memory
+        self._access_check = access_check
         if not math.isfinite(max_wall_seconds) or max_wall_seconds <= 0:
             raise ValueError("follow-up deadline must be finite and positive")
         self._max_wall_seconds = max_wall_seconds
 
     async def answer(
         self, media_id: int, question: str, original_goal: str | None, mode: AnalysisMode,
+        *, user_id: int | None = None, conversation_id: str | None = None,
+        request_id: str | None = None,
     ) -> str:
         self._validate_request(media_id, question, original_goal, mode)
         with AgentExecutionBudget.open(self._max_wall_seconds * 1000):
             try:
                 async with asyncio.timeout(AgentExecutionBudget.remaining_seconds()):
-                    return await self._answer(media_id, question, original_goal, mode)
+                    if conversation_id is None:
+                        return await self._answer(media_id, question, original_goal, mode)
+                    return await self._with_memory(media_id, question, original_goal, mode,
+                                                   user_id, conversation_id, request_id)
             except TimeoutError:
                 raise FollowUpFailure("timeout", "追问超过执行时限，请缩小问题后重试") from None
+
+    async def _with_memory(
+        self, media_id: int, question: str, goal: str | None, mode: AnalysisMode,
+        user_id: int | None, conversation_id: str, request_id: str | None,
+    ) -> str:
+        try:
+            conversation_id = canonical_uuid(conversation_id)
+            request_id = canonical_uuid(request_id) if request_id else str(uuid4())
+            if user_id is None:
+                raise ValueError("authenticated user required")
+            context = await self._checkpoint.load_context(media_id)
+            if not isinstance(context, VideoContext):
+                raise FollowUpFailure("context_not_ready", "视频分析证据尚未准备完成")
+            identity = ConversationIdentity.create(user_id, media_id, goal or context.user_goal,
+                                                    mode, conversation_id, context)
+        except (ValueError, TypeError):
+            raise FollowUpFailure("invalid_request", "会话标识无效") from None
+        except FollowUpFailure:
+            raise
+        except Exception:
+            raise FollowUpFailure("checkpoint_failure", "视频分析上下文暂不可用，请稍后重试") from None
+        memory = self._memory
+        if memory is None:
+            raise FollowUpFailure("memory_unavailable", "当前运行模式尚未启用会话记忆")
+        token = uuid4().hex
+        acquired = False
+        try:
+            try:
+                async with asyncio.timeout(2):
+                    acquired = await memory.store.acquire(identity, token)
+                    if not acquired:
+                        raise MemoryConflict("conversation busy")
+                    state = await memory.store.load(identity)
+            except MemoryConflict:
+                raise FollowUpFailure("conversation_conflict", "会话正在处理其他请求或已失效，请稍后重试") from None
+            except Exception:
+                self._record("memory_read_failed", media_id=media_id, mode=mode, category="store_unavailable")
+                # No history guess on an unavailable store. The stateless
+                # path remains usable for self-contained questions.
+                if needs_rewrite(question):
+                    return "请明确你指的是哪个对象或方案；当前会话上下文暂不可用。"
+                return await self._answer(media_id, question, goal, mode)
+            for receipt in state.receipts:
+                if receipt.request_id == request_id:
+                    if receipt.question_digest != question_digest(question):
+                        raise FollowUpFailure("conversation_conflict", "同一请求标识不能用于不同问题")
+                    for turn in state.turns:
+                        if turn.turn_id == request_id:
+                            if self._access_check is not None:
+                                await self._access_check(media_id, identity.user_id)
+                            return turn.answer
+                    raise FollowUpFailure("conversation_conflict", "该请求已经完成并压缩，请使用新的请求标识")
+            self._record("memory_loaded", media_id=media_id, mode=mode,
+                         memory_turns=min(6, len(state.turns)))
+            return await self._answer(media_id, question, goal, mode,
+                                      memory_session=(identity, state, token, request_id))
+        finally:
+            if acquired:
+                try:
+                    async with asyncio.timeout(2):
+                        await memory.store.release(identity, token)
+                except Exception:
+                    self._record("memory_release_failed", media_id=media_id, mode=mode, category="store_unavailable")
 
     async def _answer(
         self,
@@ -152,6 +232,7 @@ class GroundedFollowUpService:
         question: str,
         original_goal: str | None,
         mode: AnalysisMode,
+        *, memory_session: tuple[ConversationIdentity, ConversationState, str, str] | None = None,
     ) -> str:
         """Return a formatted answer only after source-level verification."""
 
@@ -211,6 +292,8 @@ class GroundedFollowUpService:
                 chunk_count=0,
             )
         durable_chunks = tuple(chunks)
+        if memory_session and source_revision(context) != memory_session[0].source_revision:
+            raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
         selected_goal = (original_goal or context.user_goal or "")[:500]
         self._record(
             "context_recovery_succeeded",
@@ -225,7 +308,28 @@ class GroundedFollowUpService:
             selected_goal,
             mode,
         )
-        retrieval_context = context.model_copy(update={"user_goal": question})
+        standalone_query = question
+        conversation_context = None
+        if memory_session:
+            identity, state, token, request_id = memory_session
+            conversation_context = state.prompt_context()
+            if needs_rewrite(question):
+                if not state.turns and not state.summary:
+                    return "请明确你指的是哪个对象或方案，当前会话还没有足够的上下文。"
+                try:
+                    if self._memory.model is None:
+                        raise ValueError("rewrite unavailable")
+                    self._record("query_rewrite_attempted", media_id=media_id, mode=mode)
+                    async with asyncio.timeout(8):
+                        rewritten = await self._memory.model.rewrite(question, conversation_context)
+                    rewritten = QueryRewrite.model_validate(rewritten.model_dump())
+                    if rewritten.needs_clarification:
+                        return rewritten.clarification_question
+                    standalone_query = rewritten.standalone_query
+                except Exception:
+                    self._record("query_rewrite_failed", media_id=media_id, mode=mode, category="invalid_or_unavailable")
+                    return "请明确你指的是哪个对象或方案；上下文改写暂不可用。"
+        retrieval_context = context.model_copy(update={"user_goal": standalone_query})
         retrieval_started = time.perf_counter()
         self._record("retrieval_reached", media_id=media_id, mode=mode)
         try:
@@ -287,6 +391,7 @@ class GroundedFollowUpService:
                 prior_analysis=prior_analysis,
                 sources=tuple(item.prompt_hit for item in candidates),
                 observations=context.observations,
+                **({"conversation_context": conversation_context} if memory_session else {}),
             )
         except FollowUpModelFailure as error:
             self._record(
@@ -388,6 +493,38 @@ class GroundedFollowUpService:
             verified_source_refs=sum(len(item.evidence.source_item_ids) for item in verified),
         )
         rendered = _render_answer(response.answer, verified)
+        if memory_session:
+            # Recheck durable ownership and version after the provider call;
+            # deleted/re-extracted videos must never acquire successful turns.
+            if self._access_check is not None:
+                await self._access_check(media_id, identity.user_id)
+            latest = await self._checkpoint.load_context(media_id)
+            if not isinstance(latest, VideoContext) or source_revision(latest) != identity.source_revision:
+                raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
+            try:
+                async def before_commit():
+                    if self._access_check is not None:
+                        await self._access_check(media_id, identity.user_id)
+                    current = await self._checkpoint.load_context(media_id)
+                    if not isinstance(current, VideoContext) or source_revision(current) != identity.source_revision:
+                        raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
+
+                remaining = AgentExecutionBudget.remaining_seconds()
+                summarize = remaining is None or remaining > 12
+                if len(state.turns) + 1 >= 10 and summarize:
+                    self._record("summary_attempted", media_id=media_id, mode=mode, summary_turns=4)
+                async with asyncio.timeout(10 if summarize else 2):
+                    saved = await self._memory.save_verified(identity, state, token, request_id, question,
+                        rendered, summarize=summarize, before_commit=before_commit)
+                self._record("memory_saved", media_id=media_id, mode=mode, memory_turns=len(saved.turns))
+                if len(state.turns) + 1 >= 10 and summarize:
+                    self._record("summary_" + saved.summary_status, media_id=media_id, mode=mode)
+            except FollowUpFailure:
+                raise
+            except Exception:
+                # Verified response remains useful on optional memory failure.
+                self._record("memory_update_failed", media_id=media_id, mode=mode, category="store_or_summary_failure")
+                rendered += "\n\n> 本轮对话暂未保存；下次提问请明确对象。"
         self._record(
             "follow_up_succeeded",
             media_id=media_id,

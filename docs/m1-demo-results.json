@@ -1,0 +1,76 @@
+{
+  "provenance": "SYNTHETIC ASR fixture + deterministic Mock provider + actual M1 service and Evidence Guard",
+  "case_a": {
+    "recent_context_loaded": {
+      "rollingSummary": null,
+      "recentTurns": [
+        {
+          "question": "视频中作者为什么选择 Redis？",
+          "answer": "作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。\n\n视频证据\n- [00:00–00:10] ASR（支持：作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。）：“作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。”"
+        }
+      ]
+    },
+    "original_question": "它和 MySQL 相比有什么不同？",
+    "standalone_query": "视频中 Redis 和 MySQL 相比有什么不同？",
+    "actual_retrieval_query": "视频中 Redis 和 MySQL 相比有什么不同？",
+    "verified_answer": "作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。\n\n视频证据\n- [00:00–00:10] ASR（支持：作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。）：“作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。”",
+    "evidence_guard": "PASS"
+  },
+  "case_b": {
+    "before_turn_count": 9,
+    "trigger_turn": 10,
+    "compressed_questions": [
+      "请解释存储数据库问题 1",
+      "请解释存储数据库问题 2",
+      "请解释存储数据库问题 3",
+      "请解释存储数据库问题 4"
+    ],
+    "rolling_summary": {
+      "topics": [
+        "Redis 与 MySQL"
+      ],
+      "entities": [
+        "它指 Redis"
+      ],
+      "key_points": [
+        "作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。"
+      ],
+      "unresolved_questions": [],
+      "summary_text": "早期讨论了 Redis 与 MySQL 的存储差异"
+    },
+    "recent_six": [
+      "请解释存储数据库问题 5",
+      "请解释存储数据库问题 6",
+      "请解释存储数据库问题 7",
+      "请解释存储数据库问题 8",
+      "请解释存储数据库问题 9",
+      "请解释存储数据库问题 10"
+    ],
+    "follow_up_used_summary": true,
+    "summary_calls_at_trigger": 1
+  },
+  "case_c": {
+    "deliberately_injected_history": {
+      "rollingSummary": null,
+      "recentTurns": [
+        {
+          "question": "Redis 使用什么保存数据？",
+          "answer": "错误历史：Redis 使用磁盘保存数据。"
+        }
+      ]
+    },
+    "current_video_evidence": [
+      {
+        "candidateIndex": 0,
+        "startMs": 0,
+        "endMs": 10000,
+        "source": "ASR",
+        "asrExcerpt": "作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。",
+        "ocrExcerpts": []
+      }
+    ],
+    "forged_citation_result": "evidence_rejected",
+    "turn_count_after_rejection": 1,
+    "corrected_verified_answer": "作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。\n\n视频证据\n- [00:00–00:10] ASR（支持：作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。）：“作者选择 Redis 是因为它使用内存保存数据；MySQL 使用磁盘保存数据。”"
+  }
+}

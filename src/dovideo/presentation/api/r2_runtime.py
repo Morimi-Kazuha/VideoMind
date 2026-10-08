@@ -176,6 +176,9 @@ class ProductionR2Services:
         self.media = ProductionMediaStore(infrastructure)
         self.uploads = ProductionUploadFacade(infrastructure)
         self.checkpoint = AgentCheckpointService(infrastructure.checkpoint_repository)
+        from dovideo.application.conversation_memory import ConversationMemoryService
+        from dovideo.infrastructure.conversation_memory import RedisConversationMemoryStore
+        self.conversation_memory = ConversationMemoryService(RedisConversationMemoryStore(infrastructure.redis_client))
         self.trace = RedisAgentTelemetry(infrastructure.redis_client)
         self.playback_grants: dict[str, tuple[int, int, float]] = {}
 
@@ -251,6 +254,11 @@ class ProductionR2Services:
 
     async def delete_media(self, media_id: int, user_id: int) -> None:
         await self.media.delete_owned(media_id, user_id)
+        await self.conversation_memory.store.delete_media(media_id)
+
+    async def follow_up_history(self, media_id, user_id, goal, mode, conversation_id):
+        from .runtime import read_follow_up_history
+        return await read_follow_up_history(self, media_id, user_id, goal, mode, conversation_id)
 
     def route(self, goal: str) -> tuple[AnalysisMode, str]:
         """Legacy keyword route for R2-compatible dev/test compositions.
@@ -277,7 +285,8 @@ class ProductionR2Services:
             status_code=501,
         )
 
-    async def follow_up(self, media_id: int, question: str, goal: str | None, mode: AnalysisMode) -> str:
+    async def follow_up(self, media_id: int, question: str, goal: str | None, mode: AnalysisMode,
+                        *, user_id=None, conversation_id=None, request_id=None) -> str:
         del question, goal, mode
         await self.media.get(media_id)
         raise R1ServiceError("production Agent worker 尚未启用", status_code=501)

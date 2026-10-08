@@ -1,5 +1,5 @@
-import { computed, ref } from 'vue'
-import { apiRequest, captureAuthSession } from './api.js'
+import { computed, ref, onScopeDispose, getCurrentScope } from 'vue'
+import { apiRequest, captureAuthSession, onAuthSessionChange } from './api.js'
 import {
   DEMO_EVALUATION,
   DEMO_ITEM,
@@ -83,6 +83,11 @@ function createSidebarState() {
     playbackError: '',
     followUp: '',
     followUpLoading: false,
+    conversationId: null,
+    conversationScope: '',
+    conversationHistoryLoading: false,
+    conversationError: '',
+    analysisContent: '',
     evidenceQuery: '',
     evidenceLoading: false,
     evidenceResults: [],
@@ -111,15 +116,19 @@ export function useAnalysisWorkspace({
   let workspaceGeneration = 0
   let metadataGeneration = 0
   let playbackRequest = 0
+  let historyGeneration = 0
+  let pendingFollowUp = null
   const invalidateWorkspace = () => {
     workspaceGeneration += 1
     evidenceRequestVersion += 1
     metadataGeneration += 1
+    historyGeneration += 1
     sidebar.value.generation = workspaceGeneration
     sidebar.value.followUpLoading = false
     sidebar.value.feedbackLoading = false
     sidebar.value.evidenceLoading = false
     sidebar.value.rerunLoading = false
+    sidebar.value.conversationHistoryLoading = false
   }
   const captureWorkspace = () => {
     const generation = workspaceGeneration
@@ -142,6 +151,72 @@ export function useAnalysisWorkspace({
     return Object.entries(durations).map(([phase, duration]) => [STAGE_LABELS[phase], formatDuration(duration)])
   })
   const renderedMarkdown = computed(() => renderMarkdown(sidebar.value.content))
+  const userId = () => {
+    try {
+      if (!captureAuthSession().token) return null
+      const id = JSON.parse(localStorage.getItem('user') || 'null')?.id
+      return Number.isSafeInteger(id) && id > 0 ? id : null
+    } catch { return null }
+  }
+  const conversationStorageKey = () => {
+    const id = userId()
+    if (!id || !sidebar.value.mediaId || sidebar.value.analysisMode === 'AUTO') return null
+    return `videomind:conversation:${id}:${sidebar.value.mediaId}:${sidebar.value.analysisMode}:${encodeURIComponent(sidebar.value.goal.trim())}`
+  }
+  const ensureConversation = (fresh = false) => {
+    const scope = conversationStorageKey()
+    if (!scope) return null
+    if (!fresh && sidebar.value.conversationScope === scope && sidebar.value.conversationId)
+      return sidebar.value.conversationId
+    let id
+    try { if (!fresh) id = localStorage.getItem(scope) } catch { /* storage is optional */ }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || ''))
+      id = globalThis.crypto.randomUUID()
+    sidebar.value.conversationScope = scope
+    sidebar.value.conversationId = id
+    pendingFollowUp = null
+    try { localStorage.setItem(scope, id) } catch { /* in-memory session still works */ }
+    return id
+  }
+  const restoreConversation = async () => {
+    const id = ensureConversation()
+    if (!id || demoMode) return
+    const current = captureWorkspace()
+    const request = ++historyGeneration
+    sidebar.value.conversationHistoryLoading = true
+    sidebar.value.conversationError = ''
+    try {
+      const params = new URLSearchParams({ id: String(sidebar.value.mediaId),
+        goal: sidebar.value.goal, mode: sidebar.value.analysisMode, conversationId: id })
+      const response = await apiRequest(`/analysis/follow-up/history?${params}`)
+      if (!response.ok) throw new Error(await response.text())
+      const history = await response.json()
+      if (!current() || request !== historyGeneration || sidebar.value.conversationId !== id) return
+      const turns = Array.isArray(history.turns) ? history.turns : []
+      const summary = history.summary?.summary_text
+      // Rebuild from the original analysis once; repeated restoration must
+      // not append identical history or damage timestamp Markdown links.
+      sidebar.value.content = sidebar.value.analysisContent
+        + (summary ? `\n\n## 较早对话摘要\n${summary}` : '')
+        + turns.map(turn => `\n\n## 追问\n${turn.question}\n\n${turn.answer}`).join('')
+    } catch (error) {
+      if (current() && request === historyGeneration && sidebar.value.conversationId === id)
+        sidebar.value.conversationError = error.message || '会话历史暂不可用'
+    } finally {
+      if (current() && request === historyGeneration && sidebar.value.conversationId === id)
+        sidebar.value.conversationHistoryLoading = false
+    }
+  }
+  const startNewConversation = () => {
+    invalidateWorkspace()
+    ensureConversation(true)
+    sidebar.value.content = sidebar.value.analysisContent
+    sidebar.value.followUp = ''
+    sidebar.value.conversationError = ''
+  }
+  captureAuthSession()
+  const stopAuthListener = onAuthSessionChange(() => resetWorkspace())
+  if (getCurrentScope()) onScopeDispose(stopAuthListener)
   const isCurrentWorkspace = (id, type, goal = null, analysisMode = null) =>
     sidebar.value.mediaId === id &&
     sidebar.value.type === type &&
@@ -254,6 +329,10 @@ export function useAnalysisWorkspace({
       const watching = sidebar.value.visible && isCurrentTask()
       if (watching) {
         sidebar.value.content = failed ? retained : result
+        if (type === 'ai' && !failed) {
+          sidebar.value.analysisContent = result
+          void restoreConversation()
+        }
         sidebar.value.loading = false
         sidebar.value.statusMessage = ''
         sidebar.value.streamOffline = false
@@ -505,7 +584,9 @@ export function useAnalysisWorkspace({
       if (status.state === 'COMPLETED') {
         sidebar.value.mode = 'result'
         sidebar.value.content = status.result || ''
+        sidebar.value.analysisContent = status.result || ''
         sidebar.value.loading = false
+        await restoreConversation()
         await refreshAgentMeta(item.id, goal, true, analysisMode)
       } else if (status.state === 'QUEUED' || status.state === 'PROCESSING') {
         sidebar.value.mode = 'result'
@@ -694,7 +775,7 @@ export function useAnalysisWorkspace({
 
   const submitFollowUp = async () => {
     const question = sidebar.value.followUp.trim()
-    if (!question || sidebar.value.followUpLoading) return
+    if (!question || sidebar.value.followUpLoading || sidebar.value.conversationHistoryLoading) return
     if (demoMode) {
       sidebar.value.content += `\n\n## 追问\n${question}\n\n根据 08:42 的讲解，迭代写法使用显式栈保存待访问节点，时间复杂度仍为 O(n)，额外空间复杂度为 O(h)。`
       sidebar.value.followUp = ''
@@ -707,6 +788,9 @@ export function useAnalysisWorkspace({
     const goal = sidebar.value.goal
     const analysisMode = sidebar.value.analysisMode || 'GENERAL'
     sidebar.value.followUpLoading = true
+    const conversationId = ensureConversation()
+    if (conversationId && (!pendingFollowUp || pendingFollowUp.question !== question || pendingFollowUp.conversationId !== conversationId))
+      pendingFollowUp = { question, conversationId, requestId: globalThis.crypto.randomUUID() }
     try {
       const params = new URLSearchParams({
         id: String(mediaId),
@@ -714,14 +798,21 @@ export function useAnalysisWorkspace({
         goal,
         mode: analysisMode,
       })
+      if (conversationId) {
+        params.set('conversationId', conversationId)
+        params.set('requestId', pendingFollowUp.requestId)
+      }
       const response = await apiRequest(`/analysis/follow-up?${params}`, {
         method: 'POST',
       })
       const answer = await response.text()
       if (!response.ok) throw new Error(answer || '追问失败')
-      if (current()) {
+      if (current() && sidebar.value.conversationId === conversationId) {
+        historyGeneration += 1
+        sidebar.value.conversationHistoryLoading = false
         sidebar.value.content += `\n\n## 追问\n${question}\n\n${answer}`
         sidebar.value.followUp = ''
+        pendingFollowUp = null
         // 答案追加在长文末尾，主动带用户滚过去，否则会以为“点了没反应”。
         onAnswerAppended()
       }
@@ -850,6 +941,7 @@ export function useAnalysisWorkspace({
     invalidateWorkspace()
     evidenceRequestVersion += 1
     sidebar.value = { ...createSidebarState(), generation: workspaceGeneration }
+    pendingFollowUp = null
   }
 
   const discardMediaWorkspace = (mediaId) => {
@@ -857,6 +949,11 @@ export function useAnalysisWorkspace({
     try {
       localStorage.removeItem(goalDraftKey(mediaId))
       localStorage.removeItem(modeDraftKey(mediaId))
+      const prefix = `videomind:conversation:${userId()}:${mediaId}:`
+      for (let index = localStorage.length - 1; index >= 0; index--) {
+        const key = localStorage.key(index)
+        if (key?.startsWith(prefix)) localStorage.removeItem(key)
+      }
     } catch {
       // Storage being unavailable should not block media deletion.
     }
@@ -881,6 +978,8 @@ export function useAnalysisWorkspace({
     removePlanTask,
     rerunWithPlan,
     submitFollowUp,
+    startNewConversation,
+    restoreConversation,
     searchEvidence,
     sendFeedback,
     retryPlayback,

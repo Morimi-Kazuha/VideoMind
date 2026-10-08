@@ -548,6 +548,10 @@
             </details>
             <div class="analysis-follow-up">
               <label for="analysis-follow-up">继续追问</label>
+              <button type="button" :disabled="sidebar.followUpLoading || sidebar.conversationHistoryLoading"
+                @click="actions.startNewConversation">新建对话</button>
+              <p v-if="sidebar.conversationHistoryLoading" role="status">正在恢复对话…</p>
+              <p v-if="sidebar.conversationError" role="status">{{ sidebar.conversationError }}</p>
               <textarea
                 id="analysis-follow-up"
                 v-model="sidebar.followUp"
@@ -558,7 +562,7 @@
               ></textarea>
               <button
                 type="button"
-                :disabled="sidebar.followUpLoading || !sidebar.followUp.trim()"
+                :disabled="sidebar.followUpLoading || sidebar.conversationHistoryLoading || !sidebar.followUp.trim()"
                 @click="actions.submitFollowUp"
               >
                 {{ sidebar.followUpLoading ? "分析中…" : "发送追问" }}
