@@ -47,6 +47,23 @@ function setup() {
 const open = workspace => workspace.openAgent({ id: 42, filename: 'memory.mp4' })
 const ask = async (workspace, text = 'Redis 的特点是什么？') => { workspace.sidebar.value.followUp = text; await workspace.submitFollowUp() }
 
+test('first ordinal follow-up sends original question after restoring empty history', async () => {
+  const h = setup()
+  try {
+    const w = h.create()
+    await open(w)
+    const conversationId = w.sidebar.value.conversationId
+    assert.equal(w.sidebar.value.content, '原始分析 [00:01] ASR')
+    await ask(w, '第二点呢？')
+    assert.equal(h.posts.length, 1)
+    assert.equal(h.posts[0].question, '第二点呢？')
+    assert.equal(h.posts[0].conversationId, conversationId)
+    assert.match(h.posts[0].requestId, /^[0-9a-f-]{36}$/)
+    assert.ok(w.sidebar.value.content.startsWith('原始分析 [00:01] ASR'))
+    assert.equal(w.sidebar.value.content.split('## 追问').length - 1, 1)
+  } finally { h.dispose() }
+})
+
 test('close reopen and fresh workspace restore server history once and keep timestamp links', async () => {
   const h = setup()
   try {

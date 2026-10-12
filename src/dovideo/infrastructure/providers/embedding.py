@@ -21,6 +21,7 @@ from .errors import (
     ProviderTransientError,
 )
 from .http import AsyncJsonPostClient, StdlibAsyncJsonPostClient, post_json, response_parts
+from dovideo.application.follow_up_budget import record_request_component
 
 
 class OpenAICompatibleEmbeddingAdapter(EmbeddingPort):
@@ -59,6 +60,7 @@ class OpenAICompatibleEmbeddingAdapter(EmbeddingPort):
         last_error: ProviderTransientError | None = None
         for attempt in range(self.config.max_attempts):
             try:
+                record_request_component("embedding")
                 response = await post_json(
                     self._client,
                     self.config.embeddings_url,
@@ -67,6 +69,7 @@ class OpenAICompatibleEmbeddingAdapter(EmbeddingPort):
                     timeout=self.config.timeout_seconds,
                 )
                 status, body = response_parts(response)
+                record_request_component("embedding", attempt=False, usage=body.get("usage") if isinstance(body, Mapping) else None)
                 if status in (401, 403):
                     raise ProviderAuthenticationError(
                         "embedding provider authentication failed"

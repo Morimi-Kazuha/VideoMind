@@ -1,0 +1,606 @@
+{
+  "version": "public-synthetic-r36",
+  "cases": [
+    {
+      "id": "complete",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "作者选 B，因为它减少内存占用。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "明确 B 的选择原因"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "related",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者怎样处理 Redis 缓存失效？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "Redis 是内存数据库，作者使用 Redis。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "TOPIC_RELATED_BUT_NOT_ANSWERABLE",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "Redis 缓存失效的处理方法"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "cause",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "作者采用 B。A 和 B 均使用内存。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_CAUSAL_EVIDENCE",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "选择 B 的原因，不能用采用 B 的结果代替"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "comparison",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者比较 A 和 B 的内存开销如何？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "A 使用 10MB 内存。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_COMPARISON_SIDE",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "A 与 B 各自的内存开销"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "temporal",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "方案在初期、中期和后期如何变化？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "初期使用 A，后期使用 C。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_TEMPORAL_CONTEXT",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "初期、中期、后期的方案"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "multi",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者在开头和结尾分别推荐什么？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "开头推荐 A。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "PARTIAL_FACT_COVERAGE",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "开头与结尾各自的推荐对象"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "clipped",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "INSUFFICIENT_SOURCE_TEXT",
+      "raw_segment_tail_only": "作者选择 B 因为减少内存。",
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "B 的选择原因必须在裁剪后的文本中"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "empty",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [],
+        "mixed": false
+      },
+      "expected_status": "UNKNOWN",
+      "expected_gap": null,
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "当前没有供生成使用的证据；不能断言整个视频缺失"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "mixed",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者对 Redis 的解释正确吗？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "作者解释：Redis 使用内存存储数据，可用于缓存。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": true
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "视频中被评价的 Redis 解释内容；通用知识正确性不要求来自视频"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "legal_unrelated",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者如何实现红黑树删除旋转？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "我们今天讨论时间复杂度。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "TOPIC_RELATED_BUT_NOT_ANSWERABLE",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "红黑树删除旋转的具体实现"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_CALIBRATION"
+    },
+    {
+      "id": "tc-17-partial-cache",
+      "label_origin": "SYNTHETIC_DRAFT_CONTROL_NOT_REAL_VIDEO",
+      "human_approved": false,
+      "input": {
+        "question": "请定位第一次写出3n+3和后来写出3n+1003的两个画面。",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "OCR",
+            "asrExcerpt": "",
+            "ocrExcerpts": [
+              "演示公式：3n+3。"
+            ]
+          }
+        ]
+      },
+      "expected_status": null,
+      "expected_gap": null,
+      "review": {
+        "kind": "SYNTHETIC_CONTROL",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "Only the explicitly supplied synthetic excerpt is evidence."
+        ]
+      }
+    },
+    {
+      "id": "tc-18-partial-cache",
+      "label_origin": "SYNTHETIC_DRAFT_CONTROL_NOT_REAL_VIDEO",
+      "human_approved": false,
+      "input": {
+        "question": "比较四个演示版本的复杂度。",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "OCR",
+            "asrExcerpt": "",
+            "ocrExcerpts": [
+              "演示公式：3n+3。"
+            ]
+          }
+        ]
+      },
+      "expected_status": null,
+      "expected_gap": null,
+      "review": {
+        "kind": "SYNTHETIC_CONTROL",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "Only the explicitly supplied synthetic excerpt is evidence."
+        ]
+      }
+    },
+    {
+      "id": "tc-20-partial-cache",
+      "label_origin": "SYNTHETIC_DRAFT_CONTROL_NOT_REAL_VIDEO",
+      "human_approved": false,
+      "input": {
+        "question": "作者如何实现红黑树删除旋转？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "OCR",
+            "asrExcerpt": "",
+            "ocrExcerpts": [
+              "演示公式：3n+3。"
+            ]
+          }
+        ]
+      },
+      "expected_status": null,
+      "expected_gap": null,
+      "review": {
+        "kind": "SYNTHETIC_CONTROL",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "Only the explicitly supplied synthetic excerpt is evidence."
+        ]
+      }
+    },
+    {
+      "id": "h-comparison-complete",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+      "human_approved": false,
+      "input": {
+        "question": "讲者给出的甲和乙的内存开销分别是多少？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "讲者给出：甲占用2 GB内存，乙占用5 GB内存。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "甲为2 GB",
+          "乙为5 GB"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "h-causal-result-only",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+      "human_approved": false,
+      "input": {
+        "question": "视频中团队为什么采用方案乙？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "团队采用方案乙，并在第二阶段上线。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_CAUSAL_EVIDENCE",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "采用方案乙的原因，采用及上线时机不能替代原因"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "h-temporal-middle-missing",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+      "human_approved": false,
+      "input": {
+        "question": "讲者在初期、中期、末期各采用什么索引？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "初期采用索引甲；末期改用索引丙。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_TEMPORAL_CONTEXT",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "初期索引甲",
+          "中期索引未出现在当前候选",
+          "末期索引丙"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "h-multifacts-complete",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+      "human_approved": false,
+      "input": {
+        "question": "视频开头和结尾推荐的监控指标分别是什么？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "开头推荐观察吞吐量。结尾推荐关注请求延迟。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "开头吞吐量",
+          "结尾请求延迟"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "h-mixed-video-boundary",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+      "human_approved": false,
+      "input": {
+        "question": "评价视频中的缓存查询流程是否合理，并解释一般的缓存命中和未命中原理。",
+        "mixed": true,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "讲者描述：命中时直接返回缓存值；未命中时查询数据库，并把结果写入缓存。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "视频中被评价的命中和未命中流程都出现",
+          "一般原理与合理性判断由通用知识给出，不要求视频提供"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "h-ocr-clipped-cause",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+      "human_approved": false,
+      "input": {
+        "question": "讲者为什么选择方案甲？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "OCR",
+            "asrExcerpt": "",
+            "ocrExcerpts": [
+              "画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示"
+            ]
+          }
+        ]
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "INSUFFICIENT_SOURCE_TEXT",
+      "raw_segment_tail_only": "方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。画面显示方案甲的步骤。选择方案甲是因为延迟更低。",
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "方案甲的选择原因不在裁剪后的OCR400字符内"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    }
+  ],
+  "public_fixture_note": "Synthetic contract inputs, not original private cache or independent Gold."
+}

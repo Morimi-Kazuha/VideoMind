@@ -14,6 +14,8 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dovideo.application.follow_up_budget import estimate_chat_input, record_request_component
+from dovideo.infrastructure.evidence_reflection import reflection_request_settings_from_environment
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
@@ -190,12 +192,7 @@ class R4AgentTelemetry:
         config = self._budget_config
         if key is None or config is None or self._scoped_counters.get() is not None:
             return None
-        input_bytes = sum(
-            len(str(message.get("role", "")).encode("utf-8"))
-            + len(str(message.get("content", "")).encode("utf-8"))
-            for message in messages
-        )
-        input_estimate = max(1, (input_bytes + 1) // 2)
+        input_estimate = estimate_chat_input(messages)
         reserves = {
             "CHUNK_SUMMARY": 4096,
             "RETRIEVAL_PLANNER": 1024,
@@ -816,12 +813,22 @@ class _StrictChunkingService(VideoChunkingService):
         return chunks
 
 
+class _ObservedSparse:
+    def __init__(self, inner):
+        self.inner = inner
+
+    def rank(self, *args, **kwargs):
+        record_request_component("bm25")
+        return self.inner.rank(*args, **kwargs)
+
+
 class _StrictRetrievalService(VideoEvidenceRetrievalService):
     """Use hybrid candidates while rejecting canonical component fallbacks."""
 
     def __init__(self, *args: Any, telemetry: R4AgentTelemetry, **kwargs: Any) -> None:
         super().__init__(*args, telemetry=telemetry, **kwargs)
         self._r4_telemetry = telemetry
+        self._sparse = _ObservedSparse(self._sparse)
 
     async def index(self, media_id: int | None, chunks: Any) -> None:
         before = self._r4_telemetry.counter_value("vectorStoreFallbacks")
@@ -1033,6 +1040,7 @@ def create_r4_provider_stack(
     chat_client = OpenAICompatibleChatClient(
         effective_balanced_config,
         request_settings=balanced_request_settings,
+        reflection_request_settings=reflection_request_settings_from_environment(),
         client=_model_client_for(model_http_clients, ModelRouteLane.BALANCED),
         usage_sink=telemetry,
         response_observer=telemetry,

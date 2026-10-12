@@ -46,7 +46,7 @@ def _endpoint(app, path: str):
 
 
 @pytest.mark.asyncio
-async def test_production_route_uses_r4_model_router_then_submits_its_concrete_mode(
+async def test_production_auto_compatibility_never_calls_router_and_submits_general(
     monkeypatch,
 ) -> None:
     services = ProductionR4Services.__new__(ProductionR4Services)
@@ -85,9 +85,9 @@ async def test_production_route_uses_r4_model_router_then_submits_its_concrete_m
     )
     route_data = json.loads(route_response.body)["data"]
 
-    assert model_router.goals == [goal]
-    assert route_data["mode"] == AnalysisMode.CREATION.value
-    assert route_data["reason"] == "面向后续内容创作"
+    assert model_router.goals == []
+    assert route_data["mode"] == AnalysisMode.GENERAL.value
+    assert "AUTO" in route_data["reason"]
 
     analysis_response = await analysis_endpoint(
         id=7,
@@ -96,10 +96,10 @@ async def test_production_route_uses_r4_model_router_then_submits_its_concrete_m
         user={"id": 19},
     )
 
-    expected_key = TaskKey(7, goal, AnalysisMode.CREATION)
+    expected_key = TaskKey(7, goal, AnalysisMode.GENERAL)
     assert analysis_response.status_code == 202
     assert services.checkpoint.keys == [expected_key]
-    assert submissions == [(7, 19, goal, AnalysisMode.CREATION)]
+    assert submissions == [(7, 19, goal, AnalysisMode.GENERAL)]
     assert services.media.owned_calls == [(7, 19)]
 
     with pytest.raises(R1ServiceError) as error:
@@ -111,3 +111,24 @@ async def test_production_route_uses_r4_model_router_then_submits_its_concrete_m
         )
     assert error.value.status_code == 400
     assert len(submissions) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", list(AnalysisMode))
+async def test_manual_modes_keep_task_key_and_submission(mode) -> None:
+    services = ProductionR4Services.__new__(ProductionR4Services)
+    services.media = _FakeMedia()
+    services.checkpoint = _FakeCheckpoint()
+    submissions = []
+
+    async def submit_analysis(media_id, user_id, goal, selected):
+        submissions.append((media_id, user_id, goal, selected))
+        return DispatchDisposition.ACCEPTED
+
+    services.submit_analysis = submit_analysis
+    app = create_app(services=services)
+    endpoint = _endpoint(app, "/analysis/ai")
+    result = await endpoint(id=7, goal="manual goal", mode=mode.value, user={"id": 19})
+    assert result.status_code == 202
+    assert services.checkpoint.keys == [TaskKey(7, "manual goal", mode)]
+    assert submissions == [(7, 19, "manual goal", mode)]

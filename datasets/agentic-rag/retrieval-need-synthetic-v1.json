@@ -1,0 +1,583 @@
+{
+  "version": "retrieval-need-public-synthetic-v1",
+  "frozen": true,
+  "frozen_date": "2026-10-10 Asia/Shanghai",
+  "human_reviewed_cases": 0,
+  "label_semantics": "Synthetic developer contract controls, not independent Gold or real user quality.",
+  "cases": [
+    {
+      "id": "r1-01",
+      "cohort": "synthetic_contract",
+      "expected": "DIRECT_LLM",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "不考虑当前视频，解释一下 Redis 是什么。",
+        "standalone_query": "不考虑当前视频，解释一下 Redis 是什么。",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-02",
+      "cohort": "synthetic_contract",
+      "expected": "DIRECT_LLM",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "从一般计算机知识角度解释 B+ 树。",
+        "standalone_query": "从一般计算机知识角度解释 B+ 树。",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-03",
+      "cohort": "synthetic_contract",
+      "expected": "DIRECT_LLM",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "脱离当前视频，介绍时间复杂度。",
+        "standalone_query": "脱离当前视频，介绍时间复杂度。",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-04",
+      "cohort": "synthetic_contract",
+      "expected": "DIRECT_LLM",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "仅从通用知识角度说明数据库范式。",
+        "standalone_query": "仅从通用知识角度说明数据库范式。",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-05",
+      "cohort": "synthetic_contract",
+      "expected": "DIRECT_LLM",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "不考虑视频，解释 Redis 和 MySQL 的区别。",
+        "standalone_query": "不考虑视频，解释 Redis 和 MySQL 的区别。",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-06",
+      "cohort": "synthetic_contract",
+      "expected": "DIRECT_LLM",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "Independent of this video, explain Redis.",
+        "standalone_query": "Independent of this video, explain Redis.",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-07",
+      "cohort": "synthetic_contract",
+      "expected": "DIRECT_LLM",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "From general computer knowledge, describe B+ trees.",
+        "standalone_query": "From general computer knowledge, describe B+ trees.",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-08",
+      "cohort": "synthetic_contract",
+      "expected": "DIRECT_LLM",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "从一般知识角度解释哈希表。",
+        "standalone_query": "从一般知识角度解释哈希表。",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-09",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "视频中作者如何解释 Redis？",
+        "standalone_query": "视频中作者如何解释 Redis？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-10",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "总结作者的数据库优化方案。",
+        "standalone_query": "总结作者的数据库优化方案。",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-11",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "第十分钟讲了什么？",
+        "standalone_query": "第十分钟讲了什么？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-12",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "12:30 的例子有什么结论？",
+        "standalone_query": "12:30 的例子有什么结论？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-13",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "视频中的方案选择依据是什么？",
+        "standalone_query": "视频中的方案选择依据是什么？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-14",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "作者为什么这么做？",
+        "standalone_query": "作者为什么这么做？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-15",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "作者如何对比 Redis 和 MySQL？",
+        "standalone_query": "作者如何对比 Redis 和 MySQL？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-16",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "视频中说了哪些优缺点？",
+        "standalone_query": "视频中说了哪些优缺点？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-17",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "What did the speaker say about Redis?",
+        "standalone_query": "What did the speaker say about Redis?",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-18",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "不考虑当前视频，解释作者的方案。",
+        "standalone_query": "不考虑当前视频，解释作者的方案。",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-19",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "从一般计算机知识角度解释 Redis；再总结当前视频。",
+        "standalone_query": "从一般计算机知识角度解释 Redis；再总结当前视频。",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-20",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "作者讲的 Redis 持久化机制正确吗？",
+        "standalone_query": "作者讲的 Redis 持久化机制正确吗？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-21",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "视频中这个方案有什么技术问题？",
+        "standalone_query": "视频中这个方案有什么技术问题？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-22",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "作者的方法和标准做法相比有什么不足？",
+        "standalone_query": "作者的方法和标准做法相比有什么不足？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-23",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "作者对 Redis 和 MySQL 的区别解释正确吗？",
+        "standalone_query": "作者对 Redis 和 MySQL 的区别解释正确吗？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-24",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "根据视频内容分析技术取舍。",
+        "standalone_query": "根据视频内容分析技术取舍。",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-25",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "Is the author's explanation technically correct?",
+        "standalone_query": "Is the author's explanation technically correct?",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-26",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "作者的设计是否合理？",
+        "standalone_query": "作者的设计是否合理？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-27",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "",
+      "input": {
+        "original_question": "视频中的结论与标准知识一致吗？",
+        "standalone_query": "视频中的结论与标准知识一致吗？",
+        "was_rewritten": false,
+        "has_discussion_context": false
+      }
+    },
+    {
+      "id": "r1-28",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "Application-derived successful M1 rewrite fixture; no history text input.",
+      "input": {
+        "original_question": "第二个方案呢？",
+        "standalone_query": "解释 Redis 缓存方案",
+        "was_rewritten": true,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-29",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "Application-derived successful M1 rewrite fixture; no history text input.",
+      "input": {
+        "original_question": "它为什么更快？",
+        "standalone_query": "Redis 为什么比磁盘存储更快？",
+        "was_rewritten": true,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-30",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "Application-derived successful M1 rewrite fixture; no history text input.",
+      "input": {
+        "original_question": "刚才作者的解释正确吗？",
+        "standalone_query": "评价作者关于 Redis 内存存储的解释",
+        "was_rewritten": true,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-31",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_RAG",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "Application-derived successful M1 rewrite fixture; no history text input.",
+      "input": {
+        "original_question": "第二点为什么成立？",
+        "standalone_query": "解释视频中的第二种方案 Redis",
+        "was_rewritten": true,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-32",
+      "cohort": "synthetic_contract",
+      "expected": "VIDEO_PLUS_KNOWLEDGE",
+      "ambiguity": false,
+      "annotation_status": "AUTHOR_DEFINED_CONTRACT",
+      "note": "Application-derived successful M1 rewrite fixture; no history text input.",
+      "input": {
+        "original_question": "第二个方案是否合理？",
+        "standalone_query": "评价 Redis 缓存方案是否合理",
+        "was_rewritten": true,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-33",
+      "cohort": "ambiguous_safety",
+      "expected": "VIDEO_RAG",
+      "ambiguity": true,
+      "annotation_status": "UNREVIEWED",
+      "note": "Safety expectation only; underlying intent may require VIDEO or MIXED. DIRECT is unsafe without more context.",
+      "input": {
+        "original_question": "Redis 是什么？",
+        "standalone_query": "Redis 是什么？",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-34",
+      "cohort": "ambiguous_safety",
+      "expected": "VIDEO_RAG",
+      "ambiguity": true,
+      "annotation_status": "UNREVIEWED",
+      "note": "Safety expectation only; underlying intent may require VIDEO or MIXED. DIRECT is unsafe without more context.",
+      "input": {
+        "original_question": "Redis 和 MySQL 有什么区别？",
+        "standalone_query": "Redis 和 MySQL 有什么区别？",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-35",
+      "cohort": "ambiguous_safety",
+      "expected": "VIDEO_RAG",
+      "ambiguity": true,
+      "annotation_status": "UNREVIEWED",
+      "note": "Safety expectation only; underlying intent may require VIDEO or MIXED. DIRECT is unsafe without more context.",
+      "input": {
+        "original_question": "这个方案有什么缺点？",
+        "standalone_query": "这个方案有什么缺点？",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-36",
+      "cohort": "ambiguous_safety",
+      "expected": "VIDEO_RAG",
+      "ambiguity": true,
+      "annotation_status": "UNREVIEWED",
+      "note": "Safety expectation only; underlying intent may require VIDEO or MIXED. DIRECT is unsafe without more context.",
+      "input": {
+        "original_question": "这样设计好吗？",
+        "standalone_query": "这样设计好吗？",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-37",
+      "cohort": "ambiguous_safety",
+      "expected": "VIDEO_RAG",
+      "ambiguity": true,
+      "annotation_status": "UNREVIEWED",
+      "note": "Safety expectation only; underlying intent may require VIDEO or MIXED. DIRECT is unsafe without more context.",
+      "input": {
+        "original_question": "数据库设计怎么优化？",
+        "standalone_query": "数据库设计怎么优化？",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-38",
+      "cohort": "ambiguous_safety",
+      "expected": "VIDEO_RAG",
+      "ambiguity": true,
+      "annotation_status": "UNREVIEWED",
+      "note": "Safety expectation only; underlying intent may require VIDEO or MIXED. DIRECT is unsafe without more context.",
+      "input": {
+        "original_question": "缓存有哪些优缺点？",
+        "standalone_query": "缓存有哪些优缺点？",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-39",
+      "cohort": "ambiguous_safety",
+      "expected": "VIDEO_RAG",
+      "ambiguity": true,
+      "annotation_status": "UNREVIEWED",
+      "note": "Safety expectation only; underlying intent may require VIDEO or MIXED. DIRECT is unsafe without more context.",
+      "input": {
+        "original_question": "为什么会更快？",
+        "standalone_query": "为什么会更快？",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-40",
+      "cohort": "ambiguous_safety",
+      "expected": "VIDEO_RAG",
+      "ambiguity": true,
+      "annotation_status": "UNREVIEWED",
+      "note": "Safety expectation only; underlying intent may require VIDEO or MIXED. DIRECT is unsafe without more context.",
+      "input": {
+        "original_question": "继续说明 Redis 的作用。",
+        "standalone_query": "继续说明 Redis 的作用。",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    },
+    {
+      "id": "r1-41",
+      "cohort": "ambiguous_safety",
+      "expected": "VIDEO_RAG",
+      "ambiguity": true,
+      "annotation_status": "UNREVIEWED",
+      "note": "Safety expectation only; underlying intent may require VIDEO or MIXED. DIRECT is unsafe without more context.",
+      "input": {
+        "original_question": "作者的暗示与业界经验是否冲突？",
+        "standalone_query": "作者的暗示与业界经验是否冲突？",
+        "was_rewritten": false,
+        "has_discussion_context": true
+      }
+    }
+  ]
+}

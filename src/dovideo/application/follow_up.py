@@ -24,10 +24,20 @@ from dovideo.domain import (
 )
 
 from .evidence import EvidenceVerificationService, normalize_evidence_text
+from .evidence_reflection import EvidenceReflection, ReflectionMode
+from .evidence_projection import source_payload, MAX_FOLLOW_UP_SOURCE_CHARS, MAX_FOLLOW_UP_OCR_EXCERPTS
 from .mode_profiles import mode_profile_for
 from .ports.checkpoint import ContextCheckpointPort
 from .value_objects import TaskKey
 from .execution_budget import AgentExecutionBudget
+from .errors import BudgetExceededError, DeadlineExceededError
+from .follow_up_budget import FollowUpBudgetSettings, FollowUpBudgetExceededError, follow_up_budget_scope
+from .follow_up_outcome import video_outcome, direct_outcome, DirectFollowUpAnswer, KnowledgeBlock, MixedFollowUpAnswer, mixed_outcome, render_outcome
+from .retrieval_need import (
+    NeedInput, RetrievalNeed, RetrievalNeedMode, RetrievalNeedPolicy, RetrievalNeedSettings, observe_shadow,
+)
+from .retrieval_repair import FeedbackRetrievalMode, repair_evidence, validate_feedback_configuration
+from .retrieval_budget import retrieval_budget_scope
 from .conversation_memory import (
     ConversationMemoryService, ConversationIdentity, ConversationState,
     MemoryConflict, QueryRewrite, canonical_uuid, source_revision, needs_rewrite, question_digest,
@@ -35,9 +45,8 @@ from .conversation_memory import (
 
 
 MAX_FOLLOW_UP_CANDIDATES = 8
-MAX_FOLLOW_UP_SOURCE_CHARS = 400
-MAX_FOLLOW_UP_OCR_EXCERPTS = 2
 MAX_FOLLOW_UP_PRIOR_ITEMS = 4
+MAX_FOLLOW_UP_PRIOR_SECTIONS = 2
 _LOGGER = logging.getLogger("dovideo.follow_up")
 _ALLOWED_METRICS = {
     "context_segments",
@@ -102,7 +111,18 @@ class FollowUpModelPort(Protocol):
         sources: Sequence[VideoEvidenceHit],
         observations: Sequence[TemporalObservation] = (),
         conversation_context: Mapping[str, Any] | None = None,
+        fact_only: bool = False,
     ) -> GroundedFollowUpAnswer:
+        ...
+
+
+class DirectFollowUpModelPort(Protocol):
+    async def answer(self, question: str) -> DirectFollowUpAnswer:
+        ...
+
+
+class MixedKnowledgeModelPort(Protocol):
+    async def analyze(self, question: str, facts: tuple[str, ...]) -> tuple[KnowledgeBlock, ...]:
         ...
 
 
@@ -135,14 +155,36 @@ class GroundedFollowUpService:
         max_wall_seconds: float = 60.0,
         memory: ConversationMemoryService | None = None,
         access_check: Any | None = None,
+        retrieval_need_settings: RetrievalNeedSettings | None = None,
+        retrieval_need_policy: RetrievalNeedPolicy | None = None,
+        budget_settings: FollowUpBudgetSettings | None = None,
+        direct_model: DirectFollowUpModelPort | None = None,
+        mixed_knowledge_model: MixedKnowledgeModelPort | None = None,
+        mixed_enabled: bool = False,
+        reflection_model=None,
+        reflection_mode: ReflectionMode = ReflectionMode.OFF,
+        feedback_mode: FeedbackRetrievalMode = FeedbackRetrievalMode.OFF,
     ) -> None:
+        self._reflection = EvidenceReflection(reflection_model, reflection_mode)
         self._checkpoint = checkpoint
         self._retrieval = retrieval
         self._model = model
+        self._direct_model = direct_model
+        if type(mixed_enabled) is not bool:
+            raise ValueError("mixed flag must be boolean")
+        self._mixed_enabled = mixed_enabled
+        self._mixed_knowledge_model = mixed_knowledge_model
         self._verifier = verifier or EvidenceVerificationService()
         self._observer = observer
         self._memory = memory
         self._access_check = access_check
+        self._retrieval_need_settings = retrieval_need_settings or RetrievalNeedSettings()
+        self._retrieval_need_policy = retrieval_need_policy or RetrievalNeedPolicy()
+        self._budget_settings = budget_settings or FollowUpBudgetSettings()
+        validate_feedback_configuration(feedback_mode, reflection_mode, self._budget_settings,
+            model_available=reflection_model is not None,
+            metered_retrieval=getattr(retrieval, "supports_feedback_retrieval_budget", False))
+        self._feedback_mode = feedback_mode
         if not math.isfinite(max_wall_seconds) or max_wall_seconds <= 0:
             raise ValueError("follow-up deadline must be finite and positive")
         self._max_wall_seconds = max_wall_seconds
@@ -153,13 +195,25 @@ class GroundedFollowUpService:
         request_id: str | None = None,
     ) -> str:
         self._validate_request(media_id, question, original_goal, mode)
-        with AgentExecutionBudget.open(self._max_wall_seconds * 1000):
+        with AgentExecutionBudget.open(self._max_wall_seconds * 1000), follow_up_budget_scope(self._budget_settings), retrieval_budget_scope(
+            self._feedback_mode != FeedbackRetrievalMode.OFF,
+            enforced=self._feedback_mode == FeedbackRetrievalMode.ENABLED,
+        ):
             try:
                 async with asyncio.timeout(AgentExecutionBudget.remaining_seconds()):
+                    if (self._retrieval_need_settings.mode == RetrievalNeedMode.ENABLED
+                            and self._access_check is not None and user_id is not None):
+                        await self._access_check(media_id, user_id)
                     if conversation_id is None:
-                        return await self._answer(media_id, question, original_goal, mode)
+                        result = await self._answer(media_id, question, original_goal, mode)
+                        if (self._retrieval_need_settings.mode == RetrievalNeedMode.ENABLED
+                                and self._access_check is not None and user_id is not None):
+                            await self._access_check(media_id, user_id)
+                        return result
                     return await self._with_memory(media_id, question, original_goal, mode,
                                                    user_id, conversation_id, request_id)
+            except FollowUpBudgetExceededError:
+                raise FollowUpFailure("budget_exceeded", "追问超过模型用量预算，请缩小问题后重试") from None
             except TimeoutError:
                 raise FollowUpFailure("timeout", "追问超过执行时限，请缩小问题后重试") from None
 
@@ -181,6 +235,8 @@ class GroundedFollowUpService:
             raise FollowUpFailure("invalid_request", "会话标识无效") from None
         except FollowUpFailure:
             raise
+        except (BudgetExceededError, DeadlineExceededError):
+            raise
         except Exception:
             raise FollowUpFailure("checkpoint_failure", "视频分析上下文暂不可用，请稍后重试") from None
         memory = self._memory
@@ -197,13 +253,15 @@ class GroundedFollowUpService:
                     state = await memory.store.load(identity)
             except MemoryConflict:
                 raise FollowUpFailure("conversation_conflict", "会话正在处理其他请求或已失效，请稍后重试") from None
+            except (BudgetExceededError, DeadlineExceededError):
+                raise
             except Exception:
                 self._record("memory_read_failed", media_id=media_id, mode=mode, category="store_unavailable")
                 # No history guess on an unavailable store. The stateless
                 # path remains usable for self-contained questions.
                 if needs_rewrite(question):
                     return "请明确你指的是哪个对象或方案；当前会话上下文暂不可用。"
-                return await self._answer(media_id, question, goal, mode)
+                return await self._answer(media_id, question, goal, mode, allow_direct=False)
             for receipt in state.receipts:
                 if receipt.request_id == request_id:
                     if receipt.question_digest != question_digest(question):
@@ -233,6 +291,7 @@ class GroundedFollowUpService:
         original_goal: str | None,
         mode: AnalysisMode,
         *, memory_session: tuple[ConversationIdentity, ConversationState, str, str] | None = None,
+        allow_direct: bool = True,
     ) -> str:
         """Return a formatted answer only after source-level verification."""
 
@@ -242,8 +301,9 @@ class GroundedFollowUpService:
 
         try:
             context = await self._checkpoint.load_context(media_id)
-            chunks = await self._checkpoint.load_chunks(media_id)
-        except TimeoutError:
+            chunks = (await self._checkpoint.load_chunks(media_id)
+                      if self._retrieval_need_settings.mode != RetrievalNeedMode.ENABLED else None)
+        except (BudgetExceededError, TimeoutError):
             raise
         except Exception:
             self._record(
@@ -275,6 +335,102 @@ class GroundedFollowUpService:
                 started,
                 context_segments=0,
             )
+        if self._retrieval_need_settings.mode != RetrievalNeedMode.ENABLED:
+            if not chunks:
+                self._record(
+                    "context_recovery_failed",
+                    media_id=media_id,
+                    mode=mode,
+                    category="chunks_not_ready",
+                )
+                raise self._failure(
+                    media_id,
+                    mode,
+                    "context_not_ready",
+                    "视频分析证据尚未准备完成",
+                    started,
+                    context_segments=len(context.segments),
+                    chunk_count=0,
+                )
+            durable_chunks = tuple(chunks)
+        if memory_session and source_revision(context) != memory_session[0].source_revision:
+            raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
+        selected_goal = (original_goal or context.user_goal or "")[:500]
+        self._record(
+            "context_recovery_succeeded",
+            media_id=media_id,
+            mode=mode,
+            context_segments=len(context.segments),
+            chunk_count=len(chunks or ()),
+        )
+
+        rewrite_required = needs_rewrite(question)
+        prior_analysis = await self._load_bounded_prior_analysis(
+            media_id,
+            selected_goal,
+            mode,
+            rewrite_context=context if rewrite_required else None,
+        )
+        standalone_query = question
+        conversation_context = None
+        if memory_session:
+            identity, state, token, request_id = memory_session
+            conversation_context = state.prompt_context()
+        if rewrite_required:
+            rewrite_context = dict(conversation_context or {"rollingSummary": None, "recentTurns": []})
+            if prior_analysis is not None:
+                rewrite_context["priorAnalysisContext"] = prior_analysis
+            if not rewrite_context["recentTurns"] and not rewrite_context["rollingSummary"] and prior_analysis is None:
+                return "请明确你指的是哪个对象或方案，当前会话还没有足够的上下文。"
+            try:
+                if self._memory is None or self._memory.model is None:
+                    raise ValueError("rewrite unavailable")
+                self._record("query_rewrite_attempted", media_id=media_id, mode=mode)
+                async with asyncio.timeout(8):
+                    rewritten = await self._memory.model.rewrite(question, rewrite_context)
+                rewritten = QueryRewrite.model_validate(rewritten.model_dump())
+                if rewritten.needs_clarification:
+                    return rewritten.clarification_question
+                standalone_query = rewritten.standalone_query
+            except (BudgetExceededError, DeadlineExceededError):
+                raise
+            except Exception:
+                self._record("query_rewrite_failed", media_id=media_id, mode=mode, category="invalid_or_unavailable")
+                return "请明确你指的是哪个对象或方案；上下文改写暂不可用。"
+        mixed = False
+        if self._retrieval_need_settings.mode != RetrievalNeedMode.OFF:
+            need_input = NeedInput(
+                original_question=question,
+                standalone_query=standalone_query,
+                was_rewritten=rewrite_required,
+                has_discussion_context=bool(prior_analysis or (conversation_context and (
+                    conversation_context["recentTurns"] or conversation_context["rollingSummary"]))),
+            )
+            decision = observe_shadow(need_input, self._retrieval_need_policy).decision
+            if self._retrieval_need_settings.mode == RetrievalNeedMode.ENABLED:
+                # Independently retain the R1 rule gate even for an injected policy.
+                approved = RetrievalNeedPolicy().decide(need_input).need == RetrievalNeed.DIRECT_LLM
+                if decision.need == RetrievalNeed.DIRECT_LLM and approved and allow_direct:
+                    writer_ready = not memory_session or getattr(self._memory.store, "write_sources", False)
+                    if writer_ready and self._direct_model is not None:
+                        return await self._answer_direct(media_id, question, mode, context, memory_session)
+                    self._record("direct_deferred", media_id=media_id, mode=mode,
+                                 category="source_writer_or_adapter_unavailable")
+                elif decision.need == RetrievalNeed.VIDEO_PLUS_KNOWLEDGE:
+                    mixed_approved = RetrievalNeedPolicy().decide(need_input).need == RetrievalNeed.VIDEO_PLUS_KNOWLEDGE
+                    writer_ready = not memory_session or getattr(self._memory.store, "write_sources", False)
+                    mixed = (self._mixed_enabled and mixed_approved and allow_direct
+                             and writer_ready and self._mixed_knowledge_model is not None)
+                    if not mixed:
+                        self._record("mixed_deferred", media_id=media_id, mode=mode,
+                                     category="mixed_disabled_or_unavailable")
+        if self._retrieval_need_settings.mode == RetrievalNeedMode.ENABLED:
+            try:
+                chunks = await self._checkpoint.load_chunks(media_id)
+            except (BudgetExceededError, TimeoutError):
+                raise
+            except Exception:
+                raise FollowUpFailure("checkpoint_failure", "视频分析上下文暂不可用，请稍后重试") from None
         if not chunks:
             self._record(
                 "context_recovery_failed",
@@ -292,43 +448,6 @@ class GroundedFollowUpService:
                 chunk_count=0,
             )
         durable_chunks = tuple(chunks)
-        if memory_session and source_revision(context) != memory_session[0].source_revision:
-            raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
-        selected_goal = (original_goal or context.user_goal or "")[:500]
-        self._record(
-            "context_recovery_succeeded",
-            media_id=media_id,
-            mode=mode,
-            context_segments=len(context.segments),
-            chunk_count=len(durable_chunks),
-        )
-
-        prior_analysis = await self._load_bounded_prior_analysis(
-            media_id,
-            selected_goal,
-            mode,
-        )
-        standalone_query = question
-        conversation_context = None
-        if memory_session:
-            identity, state, token, request_id = memory_session
-            conversation_context = state.prompt_context()
-            if needs_rewrite(question):
-                if not state.turns and not state.summary:
-                    return "请明确你指的是哪个对象或方案，当前会话还没有足够的上下文。"
-                try:
-                    if self._memory.model is None:
-                        raise ValueError("rewrite unavailable")
-                    self._record("query_rewrite_attempted", media_id=media_id, mode=mode)
-                    async with asyncio.timeout(8):
-                        rewritten = await self._memory.model.rewrite(question, conversation_context)
-                    rewritten = QueryRewrite.model_validate(rewritten.model_dump())
-                    if rewritten.needs_clarification:
-                        return rewritten.clarification_question
-                    standalone_query = rewritten.standalone_query
-                except Exception:
-                    self._record("query_rewrite_failed", media_id=media_id, mode=mode, category="invalid_or_unavailable")
-                    return "请明确你指的是哪个对象或方案；上下文改写暂不可用。"
         retrieval_context = context.model_copy(update={"user_goal": standalone_query})
         retrieval_started = time.perf_counter()
         self._record("retrieval_reached", media_id=media_id, mode=mode)
@@ -340,7 +459,7 @@ class GroundedFollowUpService:
                     chunks=durable_chunks,
                 )
             )
-        except TimeoutError:
+        except (BudgetExceededError, TimeoutError):
             raise
         except Exception:
             raise self._failure(
@@ -368,6 +487,31 @@ class GroundedFollowUpService:
             ocr_candidates=ocr_count,
             latency_ms=_elapsed_ms(retrieval_started),
         )
+        assessment = None
+        downstream_attempts = getattr(getattr(getattr(self._reflection.model, "chat", None), "config", None), "max_attempts", 3)
+        downstream_reserve = downstream_attempts * (30000 + (8000 if mixed else 0) + (12000 if memory_session else 0))
+        if self._reflection.mode == ReflectionMode.SHADOW:
+            projection = tuple(source_payload(i, item.prompt_hit, context.observations)
+                               for i, item in enumerate(candidates))
+            # Resolved M1 question describes the actual fact requirements; never
+            # send history/prior analysis as evidence. No query mutation follows.
+            reflection_question = standalone_query
+            messages = None
+            try:
+                if self._reflection.model is not None:
+                    messages = self._reflection.model.messages(reflection_question, projection, mixed=mixed)
+            except (ValueError, TypeError):
+                pass
+            assessment = await self._reflection.observe(reflection_question, projection, mixed=mixed,
+                messages=messages, answer_reserve=downstream_reserve,
+                time_reserve=35 + (15 if mixed else 0), return_assessment=self._feedback_mode != FeedbackRetrievalMode.OFF)
+        if self._feedback_mode != FeedbackRetrievalMode.OFF:
+            merged_hits = await repair_evidence(self._feedback_mode, assessment, question=standalone_query,
+                media_id=media_id, context=context, chunks=durable_chunks,
+                initial=tuple(c.source_hit for c in candidates), retrieval=self._retrieval,
+                mixed=mixed, downstream_reserve=downstream_reserve, planner_attempts=downstream_attempts)
+            if self._feedback_mode == FeedbackRetrievalMode.ENABLED:
+                candidates = self._prepare_candidates(context, merged_hits)
         if not candidates:
             raise self._failure(
                 media_id,
@@ -386,13 +530,16 @@ class GroundedFollowUpService:
         try:
             response = await self._model.answer(
                 question,
-                original_goal=selected_goal,
+                original_goal="" if mixed else selected_goal,
                 profile=profile,
-                prior_analysis=prior_analysis,
+                prior_analysis=None if mixed else prior_analysis,
                 sources=tuple(item.prompt_hit for item in candidates),
                 observations=context.observations,
-                **({"conversation_context": conversation_context} if memory_session else {}),
+                **({"fact_only": True} if mixed else
+                   ({"conversation_context": conversation_context} if memory_session else {})),
             )
+        except (BudgetExceededError, DeadlineExceededError):
+            raise
         except FollowUpModelFailure as error:
             self._record(
                 "provider_call_failed",
@@ -452,6 +599,10 @@ class GroundedFollowUpService:
                 started,
             ) from None
 
+        try:
+            response = GroundedFollowUpAnswer.model_validate(response.model_dump())
+        except (ValueError, TypeError):
+            raise self._failure(media_id, mode, "invalid_response", "追问响应暂不可用，请稍后重试", started) from None
         verified = self._verify_response(context, candidates, response)
         if verified is None:
             self._record(
@@ -493,7 +644,72 @@ class GroundedFollowUpService:
             verified_source_refs=sum(len(item.evidence.source_item_ids) for item in verified),
         )
         rendered = _render_answer(response.answer, verified)
+        outcome = video_outcome(response, rendered, tuple(item.evidence for item in verified), context, self._verifier)
+        if mixed:
+            # Stronger MIXED extraction boundary: all prose must be verified quotes.
+            # This does not claim semantic sufficiency or whole-video coverage.
+            facts = tuple(dict.fromkeys(item.claim for item in response.evidence))
+            if (any(normalize_evidence_text(item.claim) != normalize_evidence_text(item.content)
+                    for item in response.evidence)
+                    or normalize_evidence_text(response.answer) != normalize_evidence_text("\n".join(facts))):
+                raise FollowUpFailure("evidence_rejected", "混合问答需要完整可核验的视频引文，请调整问题后重试")
+            # video_outcome above has already validated source provenance.
+            try:
+                blocks = await self._mixed_knowledge_model.analyze(question, facts)
+                proposal = MixedFollowUpAnswer(video=response, knowledge_blocks=blocks)
+                outcome = mixed_outcome(proposal, rendered, tuple(item.evidence for item in verified), context, self._verifier)
+            except (BudgetExceededError, DeadlineExceededError, TimeoutError):
+                raise
+            except FollowUpModelFailure as error:
+                raise FollowUpFailure(error.category, "混合问答的知识分析暂不可用，请稍后重试") from None
+            except (ValueError, TypeError):
+                raise FollowUpFailure("invalid_response", "混合问答的知识分析格式无效，请稍后重试") from None
+            except Exception:
+                raise FollowUpFailure("unexpected", "混合问答暂不可用，请稍后重试") from None
+            if not memory_session:
+                latest = await self._checkpoint.load_context(media_id)
+                if not isinstance(latest, VideoContext) or source_revision(latest) != source_revision(context):
+                    raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
+        rendered = render_outcome(outcome)
+        rendered = await self._save_outcome(media_id, question, mode, outcome, memory_session)
+        self._record(
+            "follow_up_succeeded",
+            media_id=media_id,
+            mode=mode,
+            category="completed",
+            retrieval_candidates=len(candidates),
+            asr_candidates=asr_count,
+            ocr_candidates=ocr_count,
+            latency_ms=_elapsed_ms(started),
+        )
+        return rendered
+
+    async def _answer_direct(self, media_id, question, mode, context, memory_session):
+        self._record("direct_provider_call_attempted", media_id=media_id, mode=mode)
+        try:
+            response = await self._direct_model.answer(question)
+            if not isinstance(response, DirectFollowUpAnswer):
+                raise FollowUpModelFailure("invalid_response")
+            outcome = direct_outcome(response)
+        except (BudgetExceededError, DeadlineExceededError, TimeoutError):
+            raise
+        except FollowUpModelFailure as error:
+            raise FollowUpFailure(error.category, "通用知识回答暂不可用，请稍后重试") from None
+        except (ValueError, TypeError):
+            raise FollowUpFailure("invalid_response", "通用知识回答格式无效，请稍后重试") from None
+        except Exception:
+            raise FollowUpFailure("unexpected", "通用知识回答暂不可用，请稍后重试") from None
+        # Stateless requests also reject extraction changes while generating.
+        if not memory_session:
+            latest = await self._checkpoint.load_context(media_id)
+            if not isinstance(latest, VideoContext) or source_revision(latest) != source_revision(context):
+                raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
+        return await self._save_outcome(media_id, question, mode, outcome, memory_session)
+
+    async def _save_outcome(self, media_id, question, mode, outcome, memory_session):
+        rendered = render_outcome(outcome)
         if memory_session:
+            identity, state, token, request_id = memory_session
             # Recheck durable ownership and version after the provider call;
             # deleted/re-extracted videos must never acquire successful turns.
             if self._access_check is not None:
@@ -501,6 +717,8 @@ class GroundedFollowUpService:
             latest = await self._checkpoint.load_context(media_id)
             if not isinstance(latest, VideoContext) or source_revision(latest) != identity.source_revision:
                 raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
+            if outcome.answer_kind.value in {"MODEL_KNOWLEDGE", "MIXED"} and not getattr(self._memory.store, "write_sources", False):
+                raise FollowUpFailure("memory_unavailable", "通用知识回答的来源保存暂不可用，请稍后重试")
             try:
                 async def before_commit():
                     if self._access_check is not None:
@@ -515,26 +733,20 @@ class GroundedFollowUpService:
                     self._record("summary_attempted", media_id=media_id, mode=mode, summary_turns=4)
                 async with asyncio.timeout(10 if summarize else 2):
                     saved = await self._memory.save_verified(identity, state, token, request_id, question,
-                        rendered, summarize=summarize, before_commit=before_commit)
+                        rendered, summarize=summarize, before_commit=before_commit,
+                        answer_kind=(outcome.answer_kind.value if getattr(self._memory.store, "write_sources", False)
+                                     else "LEGACY_UNKNOWN"))
                 self._record("memory_saved", media_id=media_id, mode=mode, memory_turns=len(saved.turns))
                 if len(state.turns) + 1 >= 10 and summarize:
                     self._record("summary_" + saved.summary_status, media_id=media_id, mode=mode)
             except FollowUpFailure:
                 raise
+            except (BudgetExceededError, DeadlineExceededError):
+                raise
             except Exception:
                 # Verified response remains useful on optional memory failure.
                 self._record("memory_update_failed", media_id=media_id, mode=mode, category="store_or_summary_failure")
                 rendered += "\n\n> 本轮对话暂未保存；下次提问请明确对象。"
-        self._record(
-            "follow_up_succeeded",
-            media_id=media_id,
-            mode=mode,
-            category="completed",
-            retrieval_candidates=len(candidates),
-            asr_candidates=asr_count,
-            ocr_candidates=ocr_count,
-            latency_ms=_elapsed_ms(started),
-        )
         return rendered
 
     async def _load_bounded_prior_analysis(
@@ -542,12 +754,15 @@ class GroundedFollowUpService:
         media_id: int,
         goal: str,
         mode: AnalysisMode,
+        *, rewrite_context: VideoContext | None = None,
     ) -> Mapping[str, Any] | None:
         loader = getattr(self._checkpoint, "load_result", None)
         if not goal or not callable(loader):
             return None
         try:
             state = await loader(TaskKey(media_id, goal, mode))
+        except (BudgetExceededError, DeadlineExceededError):
+            raise
         except Exception:
             # Prior results improve continuity only; source context remains
             # authoritative and a missing optional result does not fail P3.
@@ -565,6 +780,17 @@ class GroundedFollowUpService:
         ):
             return None
         result = state.result
+        if rewrite_context is not None:
+            # AgentState has no result-level revision. Use its evidence only
+            # to reject stale/unknown continuity, never as current candidates.
+            # A legacy result cannot prove which extraction it belongs to;
+            # recent turns can still resolve references in that case.
+            if not rewrite_context.source_revision or not result.evidence:
+                return None
+            if any(item.source_revision != rewrite_context.source_revision for item in result.evidence):
+                return None
+            if any(not self._verifier.supported(rewrite_context, item) for item in result.evidence):
+                return None
         return {
             "title": _bounded_text(result.title, 160),
             "conclusions": tuple(
@@ -575,6 +801,19 @@ class GroundedFollowUpService:
                 _bounded_text(value, 160)
                 for value in result.suggestions[:2]
             ),
+            # Keep displayed list order and disclose clipping. A bounded
+            # prefix must not silently turn its fourth item into "the last".
+            "listBounds": {
+                "conclusions": _prior_list_bounds(result.conclusions, MAX_FOLLOW_UP_PRIOR_ITEMS, 220),
+                "suggestions": _prior_list_bounds(result.suggestions, 2, 160),
+                "sectionsTotal": len(result.sections),
+            },
+            "sections": tuple({
+                "key": _bounded_text(section.key, 80),
+                "title": _bounded_text(section.title, 80),
+                "items": tuple(_bounded_text(value, 160) for value in section.items[:MAX_FOLLOW_UP_PRIOR_ITEMS]),
+                "listBounds": _prior_list_bounds(section.items, MAX_FOLLOW_UP_PRIOR_ITEMS, 160),
+            } for section in result.sections[:MAX_FOLLOW_UP_PRIOR_SECTIONS]),
         }
 
     @staticmethod
@@ -834,6 +1073,13 @@ def _bounded_text(value: str, limit: int) -> str:
         for character in value[:limit]
         if character.isprintable() or character in "\n\t"
     ).strip()
+
+
+def _prior_list_bounds(items: Sequence[str], count: int, chars: int) -> dict[str, Any]:
+    return {
+        "totalItems": len(items),
+        "clippedPositions": tuple(index + 1 for index, value in enumerate(items[:count]) if len(value) > chars),
+    }
 
 
 def _elapsed_ms(started: float) -> float:

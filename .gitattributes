@@ -1,0 +1,5 @@
+# These fixtures include raw-byte SHA256 checks. Keep checkout bytes identical
+# across Windows and POSIX instead of inheriting core.autocrlf.
+datasets/**/*.json text eol=lf
+datasets/**/*.sha256 text eol=lf
+tests/fixtures/**/*.json text eol=lf

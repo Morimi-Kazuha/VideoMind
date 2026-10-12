@@ -50,3 +50,25 @@ tesseract.exe
 *.pt
 *.pth
 *.safetensors
+
+# Real-media evaluation inputs and derived audio/subtitles belong in work/.
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.srt
+*.vtt
+
+# Private agentic-RAG experiments: publish synthetic fixtures and the guide,
+# not raw prompts, cached source excerpts, machine-local snapshots or reports.
+/docs/agentic-rag/*validation*/
+/docs/agentic-rag/R*_*.md
+/docs/agentic-rag/GITHUB_FINALIZATION.md
+/datasets/agentic-rag/retrieval-need-r1-v1.json
+/datasets/agentic-rag/retrieval-need-r1-v1.sha256
+/datasets/v1-wangdao-pilot/

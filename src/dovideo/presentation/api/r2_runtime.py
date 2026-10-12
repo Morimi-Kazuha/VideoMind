@@ -177,8 +177,9 @@ class ProductionR2Services:
         self.uploads = ProductionUploadFacade(infrastructure)
         self.checkpoint = AgentCheckpointService(infrastructure.checkpoint_repository)
         from dovideo.application.conversation_memory import ConversationMemoryService
-        from dovideo.infrastructure.conversation_memory import RedisConversationMemoryStore
-        self.conversation_memory = ConversationMemoryService(RedisConversationMemoryStore(infrastructure.redis_client))
+        from dovideo.infrastructure.conversation_memory import RedisConversationMemoryStore, memory_source_write_enabled_from_environment
+        self.conversation_memory = ConversationMemoryService(RedisConversationMemoryStore(infrastructure.redis_client,
+            write_sources=memory_source_write_enabled_from_environment()))
         self.trace = RedisAgentTelemetry(infrastructure.redis_client)
         self.playback_grants: dict[str, tuple[int, int, float]] = {}
 
@@ -261,19 +262,8 @@ class ProductionR2Services:
         return await read_follow_up_history(self, media_id, user_id, goal, mode, conversation_id)
 
     def route(self, goal: str) -> tuple[AnalysisMode, str]:
-        """Legacy keyword route for R2-compatible dev/test compositions.
-
-        Production R4 overrides this method with the bounded model router.
-        """
-
-        normalized = goal.casefold()
-        if any(word in normalized for word in ("学习", "教程", "笔记", "知识点", "learn")):
-            return AnalysisMode.LEARNING, "目标包含学习/知识整理意图"
-        if any(word in normalized for word in ("审查", "审核", "风险", "review", "漏洞")):
-            return AnalysisMode.REVIEW, "目标包含审查或风险识别意图"
-        if any(word in normalized for word in ("创作", "脚本", "标题", "creation", "script")):
-            return AnalysisMode.CREATION, "目标包含创作产物意图"
-        return AnalysisMode.GENERAL, "按通用模式处理分析目标"
+        """Resolve legacy AUTO clients consistently with production."""
+        return AnalysisMode.GENERAL, "AUTO compatibility: automatic analysis mode selection retired; select a manual mode."
 
     def key(self, media_id: int, goal: str, mode: AnalysisMode) -> TaskKey:
         return TaskKey(media_id, goal, mode)

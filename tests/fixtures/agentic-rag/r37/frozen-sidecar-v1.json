@@ -1,0 +1,494 @@
+{
+  "version": "public-synthetic-r37",
+  "prompt_fixed_before_new_holdout": true,
+  "independent_human_review": false,
+  "cases": [
+    {
+      "id": "mixed",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者对 Redis 的解释正确吗？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "作者解释：Redis 使用内存存储数据，可用于缓存。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": true
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "视频中被评价的 Redis 解释内容；通用知识正确性不要求来自视频"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_PREVIOUSLY_SEEN_NOT_HOLDOUT"
+    },
+    {
+      "id": "h-mixed-video-boundary",
+      "split": "DEVELOPMENT_PREVIOUSLY_SEEN_NOT_HOLDOUT",
+      "label_origin": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+      "human_approved": false,
+      "input": {
+        "question": "评价视频中的缓存查询流程是否合理，并解释一般的缓存命中和未命中原理。",
+        "mixed": true,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "讲者描述：命中时直接返回缓存值；未命中时查询数据库，并把结果写入缓存。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "视频中被评价的命中和未命中流程都出现",
+          "一般原理与合理性判断由通用知识给出，不要求视频提供"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "d-mixed-incomplete",
+      "split": "DEVELOPMENT_REVERSE_MIXED_REGRESSION",
+      "label_origin": "DEVELOPER_LITERAL_CHECK_NOT_INDEPENDENT_HUMAN",
+      "human_approved": false,
+      "input": {
+        "question": "作者描述的缓存命中、未命中及回填流程合理吗？",
+        "mixed": true,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "作者说命中就返回缓存值；未命中就查询数据库。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "PARTIAL_FACT_COVERAGE",
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "命中时的动作",
+          "未命中时的动作",
+          "查询数据库后的回填步骤（当前缺失）"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "h-comparison-complete",
+      "split": "DEVELOPMENT_PREVIOUSLY_SEEN_NOT_HOLDOUT",
+      "label_origin": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+      "human_approved": false,
+      "input": {
+        "question": "讲者给出的甲和乙的内存开销分别是多少？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "讲者给出：甲占用2 GB内存，乙占用5 GB内存。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "甲为2 GB",
+          "乙为5 GB"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "tc-17-partial-cache",
+      "label_origin": "SYNTHETIC_DRAFT_CONTROL_NOT_REAL_VIDEO",
+      "human_approved": false,
+      "input": {
+        "question": "请定位第一次写出3n+3和后来写出3n+1003的两个画面。",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "OCR",
+            "asrExcerpt": "",
+            "ocrExcerpts": [
+              "演示公式：3n+3。"
+            ]
+          }
+        ]
+      },
+      "expected_status": null,
+      "expected_gap": null,
+      "review": {
+        "kind": "SYNTHETIC_CONTROL",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "Only the explicitly supplied synthetic excerpt is evidence."
+        ]
+      },
+      "split": "SYNTHETIC_CONTRACT_CONTROL"
+    },
+    {
+      "id": "related",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者怎样处理 Redis 缓存失效？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "Redis 是内存数据库，作者使用 Redis。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "TOPIC_RELATED_BUT_NOT_ANSWERABLE",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "Redis 缓存失效的处理方法"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_PREVIOUSLY_SEEN_NOT_HOLDOUT"
+    },
+    {
+      "id": "cause",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "作者采用 B。A 和 B 均使用内存。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_CAUSAL_EVIDENCE",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "选择 B 的原因，不能用采用 B 的结果代替"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_PREVIOUSLY_SEEN_NOT_HOLDOUT"
+    },
+    {
+      "id": "multi",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者在开头和结尾分别推荐什么？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "开头推荐 A。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "PARTIAL_FACT_COVERAGE",
+      "raw_segment_tail_only": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "开头与结尾各自的推荐对象"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_PREVIOUSLY_SEEN_NOT_HOLDOUT"
+    },
+    {
+      "id": "clipped",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "INSUFFICIENT_SOURCE_TEXT",
+      "raw_segment_tail_only": "作者选择 B 因为减少内存。",
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "B 的选择原因必须在裁剪后的文本中"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "split": "DEVELOPMENT_PREVIOUSLY_SEEN_NOT_HOLDOUT"
+    },
+    {
+      "id": "n-tripod-cause",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_CHECK_NOT_INDEPENDENT_HUMAN",
+      "human_approved": false,
+      "input": {
+        "question": "讲者为什么给相机加三脚架？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "讲者用了三脚架，照片随后变清晰。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_CAUSAL_EVIDENCE",
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "讲者明确描述加三脚架的原因，结果不能代替原因"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "n-panel-comparison",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_CHECK_NOT_INDEPENDENT_HUMAN",
+      "human_approved": false,
+      "input": {
+        "question": "讲者给出的单晶和薄膜的转换率分别是多少？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "讲者说单晶转换率为百分之二十，薄膜转换率为百分之十。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "单晶转换率百分之二十",
+          "薄膜转换率百分之十；允许共用完整比较句 span"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "n-film-temporal",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_CHECK_NOT_INDEPENDENT_HUMAN",
+      "human_approved": false,
+      "input": {
+        "question": "讲者在拍摄前、拍摄中和拍摄后分别怎样校准颜色？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "拍摄前用灰卡设白平衡，拍摄后用色卡做校色。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_TEMPORAL_CONTEXT",
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "拍摄前校准",
+          "拍摄中校准（缺失）",
+          "拍摄后校准"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "n-bread-mixed-full",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_CHECK_NOT_INDEPENDENT_HUMAN",
+      "human_approved": false,
+      "input": {
+        "question": "讲者先称面粉和水、再混合、最后盖住静置的做法合理吗？",
+        "mixed": true,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "讲者先称面粉和水，再混合，最后盖住静置。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "称面粉和水",
+          "混合",
+          "盖住静置；无需视频给出合理性 verdict 或烘焙通用原理"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "n-photo-mixed-gap",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_CHECK_NOT_INDEPENDENT_HUMAN",
+      "human_approved": false,
+      "input": {
+        "question": "讲者测光、设定曝光再拍摄的流程正确吗？",
+        "mixed": true,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "讲者设定曝光后按快门拍摄。",
+            "ocrExcerpts": []
+          }
+        ]
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "PARTIAL_FACT_COVERAGE",
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "测光步骤（缺失）",
+          "设定曝光",
+          "拍摄；不要求视频给正确性 verdict"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      }
+    },
+    {
+      "id": "n-ocr-clipped",
+      "split": "HOLDOUT_NOT_FOR_PARAMETER_SELECTION",
+      "label_origin": "DEVELOPER_LITERAL_CHECK_NOT_INDEPENDENT_HUMAN",
+      "human_approved": false,
+      "input": {
+        "question": "讲者为什么把灯调到低档？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "讲者把灯调到低档。",
+            "ocrExcerpts": [
+              "设置说明：灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。灯光设置。"
+            ]
+          }
+        ]
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "INSUFFICIENT_SOURCE_TEXT",
+      "review": {
+        "kind": "DEVELOPER_LITERAL_PROJECTION_CHECK",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "低档选择的原因必须出现在有界 OCR/ASR；裁剪后没有原因"
+        ],
+        "scope": "provided bounded candidates only",
+        "reviewed_before_model": true
+      },
+      "raw_segment_tail_only": "因为高档使样品反光。此尾部不在模型输入，禁止发送。"
+    }
+  ],
+  "public_fixture_note": "Synthetic contract inputs, not original private cache or independent Gold."
+}

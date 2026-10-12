@@ -3,11 +3,47 @@ from __future__ import annotations
 
 import asyncio
 import time
+import os
 from typing import Any
 
 from dovideo.application.conversation_memory import (
     ConversationIdentity, ConversationState, MEMORY_TTL_SECONDS, MemoryConflict,
 )
+
+
+def memory_source_write_enabled_from_environment(environ=None):
+    values = os.environ if environ is None else environ
+    raw = values.get("DOVIDEO_MEMORY_SOURCE_WRITE_ENABLED", "false").strip().lower()
+    if raw not in {"false", "true", "0", "1"}:
+        raise ValueError("invalid memory source write flag")
+    return raw in {"true", "1"}
+
+
+def encode_conversation_state(state, *, write_sources=False):
+    # JSON revalidation also protects strict enums on model_construct/copy.
+    state = ConversationState.model_validate_json(state.model_dump_json())
+    tagged = any(t.answer_kind != "LEGACY_UNKNOWN" for t in state.turns) or bool(state.summary and state.summary.source_kinds)
+    if tagged and not write_sources:
+        raise MemoryConflict("source-tag writing disabled; preserve existing record")
+    return state.model_dump_json()
+
+
+def legacy_reader_projection(state):
+    """Explicit rollback projection for video-only records, never knowledge.
+
+    Caller must use the original lease/CAS if applying this offline projection.
+    No migration is run automatically and no identity or receipts are changed.
+    """
+    state = ConversationState.model_validate_json(state.model_dump_json())
+    kinds = [t.answer_kind for t in state.turns] + (state.summary.source_kinds if state.summary else [])
+    if any(kind in {"MODEL_KNOWLEDGE", "MIXED"} for kind in kinds):
+        raise ValueError("knowledge history requires a compatible rollback reader")
+    payload = state.model_dump()
+    for turn in payload["turns"]:
+        turn.pop("answer_kind", None)
+    if payload["summary"]:
+        payload["summary"].pop("source_kinds", None)
+    return ConversationState.model_validate(payload).model_dump_json()
 
 
 def memory_key(identity: ConversationIdentity) -> str:
@@ -50,8 +86,11 @@ return #members
 
 
 class RedisConversationMemoryStore:
-    def __init__(self, client: Any):
+    def __init__(self, client: Any, *, write_sources: bool = False):
         self.client = client
+        if type(write_sources) is not bool:
+            raise ValueError("source write flag must be boolean")
+        self.write_sources = write_sources
 
     @staticmethod
     def _registry(media_id):
@@ -91,11 +130,11 @@ class RedisConversationMemoryStore:
         if state.version != expected_version + 1:
             raise ValueError("invalid memory version")
         # Validate even model_copy-created state before storing it.
-        state = ConversationState.model_validate_json(state.model_dump_json())
+        encoded = encode_conversation_state(state, write_sources=self.write_sources)
         key = memory_key(identity)
         return bool(await asyncio.to_thread(self.client.eval, _COMMIT, 4,
                      key, key + ":lease", self._registry(identity.media_id), self._deleted(identity.media_id),
-                     expected_version, state.model_dump_json(), MEMORY_TTL_SECONDS, token))
+                     expected_version, encoded, MEMORY_TTL_SECONDS, token))
 
     async def delete_media(self, media_id):
         await asyncio.to_thread(self.client.eval, _DELETE, 2, self._registry(media_id),
@@ -104,11 +143,14 @@ class RedisConversationMemoryStore:
 
 class InMemoryConversationMemoryStore:
     """Local/test only; bounded per-session storage with TTL and CAS."""
-    def __init__(self, *, clock=time.monotonic):
+    def __init__(self, *, clock=time.monotonic, write_sources: bool = False):
         self.clock = clock
         self.states = {}
         self.leases = {}
         self.deleted = {}
+        if type(write_sources) is not bool:
+            raise ValueError("source write flag must be boolean")
+        self.write_sources = write_sources
 
     def _check(self, identity):
         now = self.clock()
@@ -144,8 +186,8 @@ class InMemoryConversationMemoryStore:
             return False
         if state.version != expected_version + 1:
             raise ValueError("invalid memory version")
-        ConversationState.model_validate_json(state.model_dump_json())
-        self.states[identity] = (state.model_dump_json(), self.clock() + MEMORY_TTL_SECONDS)
+        encoded = encode_conversation_state(state, write_sources=self.write_sources)
+        self.states[identity] = (encoded, self.clock() + MEMORY_TTL_SECONDS)
         return True
 
     async def delete_media(self, media_id):

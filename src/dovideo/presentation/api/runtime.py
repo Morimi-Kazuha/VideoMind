@@ -1082,16 +1082,8 @@ class LocalR1Services:
         return await read_follow_up_history(self, media_id, user_id, goal, mode, conversation_id)
 
     def route(self, goal: str) -> tuple[AnalysisMode, str]:
-        """Legacy deterministic route retained for local development only."""
-
-        normalized = goal.casefold()
-        if any(word in normalized for word in ("学习", "教程", "笔记", "知识点", "learn")):
-            return AnalysisMode.LEARNING, "目标包含学习/知识整理意图"
-        if any(word in normalized for word in ("审查", "审核", "风险", "review", "漏洞")):
-            return AnalysisMode.REVIEW, "目标包含审查或风险识别意图"
-        if any(word in normalized for word in ("创作", "脚本", "标题", "creation", "script")):
-            return AnalysisMode.CREATION, "目标包含创作产物意图"
-        return AnalysisMode.GENERAL, "按通用模式处理分析目标"
+        """Resolve legacy AUTO clients consistently with production."""
+        return AnalysisMode.GENERAL, "AUTO compatibility: automatic analysis mode selection retired; select a manual mode."
 
     async def save_feedback(self, feedback: Any) -> None:
         self.feedback[feedback.media_id].append(feedback)

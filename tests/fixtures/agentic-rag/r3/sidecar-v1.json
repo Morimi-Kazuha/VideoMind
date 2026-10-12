@@ -1,0 +1,307 @@
+{
+  "version": "public-synthetic-r3",
+  "cases": [
+    {
+      "id": "complete",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "作者选 B，因为它减少内存占用。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null
+    },
+    {
+      "id": "related",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者怎样处理 Redis 缓存失效？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "Redis 是内存数据库，作者使用 Redis。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "TOPIC_RELATED_BUT_NOT_ANSWERABLE",
+      "raw_segment_tail_only": null
+    },
+    {
+      "id": "cause",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "作者采用 B。A 和 B 均使用内存。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_CAUSAL_EVIDENCE",
+      "raw_segment_tail_only": null
+    },
+    {
+      "id": "comparison",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者比较 A 和 B 的内存开销如何？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "A 使用 10MB 内存。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_COMPARISON_SIDE",
+      "raw_segment_tail_only": null
+    },
+    {
+      "id": "temporal",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "方案在初期、中期和后期如何变化？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "初期使用 A，后期使用 C。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "MISSING_TEMPORAL_CONTEXT",
+      "raw_segment_tail_only": null
+    },
+    {
+      "id": "multi",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者在开头和结尾分别推荐什么？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "开头推荐 A。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "PARTIAL_FACT_COVERAGE",
+      "raw_segment_tail_only": null
+    },
+    {
+      "id": "clipped",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。方案介绍。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "INSUFFICIENT_SOURCE_TEXT",
+      "raw_segment_tail_only": "作者选择 B 因为减少内存。"
+    },
+    {
+      "id": "empty",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者为什么选 B？",
+        "candidates": [],
+        "mixed": false
+      },
+      "expected_status": "UNKNOWN",
+      "expected_gap": null,
+      "raw_segment_tail_only": null
+    },
+    {
+      "id": "mixed",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者对 Redis 的解释正确吗？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "作者解释：Redis 使用内存存储数据，可用于缓存。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": true
+      },
+      "expected_status": "SUFFICIENT",
+      "expected_gap": null,
+      "raw_segment_tail_only": null
+    },
+    {
+      "id": "legal_unrelated",
+      "label_origin": "DEVELOPER_SEMANTIC_JUDGMENT",
+      "human_approved": false,
+      "input": {
+        "question": "作者如何实现红黑树删除旋转？",
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "ASR",
+            "asrExcerpt": "我们今天讨论时间复杂度。",
+            "ocrExcerpts": []
+          }
+        ],
+        "mixed": false
+      },
+      "expected_status": "INSUFFICIENT",
+      "expected_gap": "TOPIC_RELATED_BUT_NOT_ANSWERABLE",
+      "raw_segment_tail_only": null
+    },
+    {
+      "id": "tc-17-partial-cache",
+      "label_origin": "SYNTHETIC_DRAFT_CONTROL_NOT_REAL_VIDEO",
+      "human_approved": false,
+      "input": {
+        "question": "请定位第一次写出3n+3和后来写出3n+1003的两个画面。",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "OCR",
+            "asrExcerpt": "",
+            "ocrExcerpts": [
+              "演示公式：3n+3。"
+            ]
+          }
+        ]
+      },
+      "expected_status": null,
+      "expected_gap": null,
+      "review": {
+        "kind": "SYNTHETIC_CONTROL",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "Only the explicitly supplied synthetic excerpt is evidence."
+        ]
+      }
+    },
+    {
+      "id": "tc-18-partial-cache",
+      "label_origin": "SYNTHETIC_DRAFT_CONTROL_NOT_REAL_VIDEO",
+      "human_approved": false,
+      "input": {
+        "question": "比较四个演示版本的复杂度。",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "OCR",
+            "asrExcerpt": "",
+            "ocrExcerpts": [
+              "演示公式：3n+3。"
+            ]
+          }
+        ]
+      },
+      "expected_status": null,
+      "expected_gap": null,
+      "review": {
+        "kind": "SYNTHETIC_CONTROL",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "Only the explicitly supplied synthetic excerpt is evidence."
+        ]
+      }
+    },
+    {
+      "id": "tc-20-partial-cache",
+      "label_origin": "SYNTHETIC_DRAFT_CONTROL_NOT_REAL_VIDEO",
+      "human_approved": false,
+      "input": {
+        "question": "作者如何实现红黑树删除旋转？",
+        "mixed": false,
+        "candidates": [
+          {
+            "candidateIndex": 0,
+            "startMs": 0,
+            "endMs": 10000,
+            "source": "OCR",
+            "asrExcerpt": "",
+            "ocrExcerpts": [
+              "演示公式：3n+3。"
+            ]
+          }
+        ]
+      },
+      "expected_status": null,
+      "expected_gap": null,
+      "review": {
+        "kind": "SYNTHETIC_CONTROL",
+        "independent_human_review": false,
+        "necessary_facts": [
+          "Only the explicitly supplied synthetic excerpt is evidence."
+        ]
+      }
+    }
+  ],
+  "public_fixture_note": "Synthetic contract inputs, not original private cache or independent Gold."
+}

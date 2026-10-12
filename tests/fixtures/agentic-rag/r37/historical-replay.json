@@ -1,0 +1,144 @@
+{
+  "mode": "DETERMINISTIC_NO_NETWORK_NO_SEMANTIC_REGRADING",
+  "historical_wire_hashes_match": true,
+  "strict_valid": 13,
+  "invalid": 2,
+  "rows": [
+    {
+      "id": "complete",
+      "old_prediction": "SUFFICIENT",
+      "replay": "SUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "92034d86e1d02165b55df074473cf0e3e6b8eea7f23e94d1e7e9b49960a1362f"
+    },
+    {
+      "id": "cause",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "7e7bce83e98dea955d03c8c9a9cf04981dc35e560f1027aa4e3d8f764a9117ab"
+    },
+    {
+      "id": "comparison",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "c6945ee6cfda1bc1957833c6621d4e64a9703cfe42a498f176da8455460e9ad1"
+    },
+    {
+      "id": "mixed",
+      "old_prediction": "UNKNOWN",
+      "replay": "UNKNOWN",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "754ecefe48c218c6e390e7ee6c342fc9456269ac18e952639130cb559446a0b1"
+    },
+    {
+      "id": "multi",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "00eb7f23245e47190ab6e8a7ac075f1d53cb4594d5ca1da7624f7483504d6657"
+    },
+    {
+      "id": "clipped",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "ccc1430ded8ebd6a8c0f278ec1d1b9e1bf5c3ff910d252a299f7ea0364b1e2c8"
+    },
+    {
+      "id": "tc-17-partial-cache",
+      "old_prediction": "UNKNOWN",
+      "replay": "INVALID_RESPONSE",
+      "error": "1 validation error for AssessmentSuggestion\n  Value error, reference union mismatch [type=value_error, input_value={'status': 'INSUFFICIENT'...ING_TEMPORAL_CONTEXT'}]}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "2737f9606bbb62903cb0e6ef2a791738428ce5c8912f447518e19ff2b1d3d670"
+    },
+    {
+      "id": "tc-18-partial-cache",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "261bb92e3810b56dbe015a12269409acce1c630834e59810f70d325d5fc3e5ce"
+    },
+    {
+      "id": "tc-20-partial-cache",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "b5084c0774c892f04a5735be90bfe5143b7a918e83d180587f1ce5f493d120e6"
+    },
+    {
+      "id": "h-comparison-complete",
+      "old_prediction": "UNKNOWN",
+      "replay": "INVALID_RESPONSE",
+      "error": "requirement not anchored in question",
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "8dc6d780b781be950a725acca2ae2aabd8b0e517951efab005858f6d08fe9383"
+    },
+    {
+      "id": "h-causal-result-only",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "1b6d96f4a966ec85298546647f8b8ca5dc6c9155f02ce611fbba281f8bf6745b"
+    },
+    {
+      "id": "h-temporal-middle-missing",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "ae972c8884d4545452f7fe257f3137532e38778148c3929d03c655a97547fb63"
+    },
+    {
+      "id": "h-multifacts-complete",
+      "old_prediction": "SUFFICIENT",
+      "replay": "SUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "1a135137984d2cd5ea74f2ef8e271c89c37ff486d14a3e9ec063edd073b8ce2f"
+    },
+    {
+      "id": "h-mixed-video-boundary",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "5d49d2100e3b1d961bcf7b2eccb8fce2470640b034b5b8c738c07f8e14a5119c"
+    },
+    {
+      "id": "h-ocr-clipped-cause",
+      "old_prediction": "INSUFFICIENT",
+      "replay": "INSUFFICIENT",
+      "error": null,
+      "fixture_calls": 1,
+      "network_calls": 0,
+      "raw_sha256": "c9983d322656fafd4c5381b7c6b3e2835423965bb4727bed5e49884f33b601dd"
+    }
+  ],
+  "note": "Prompt changes cannot retroactively fix old semantic output. Same strict DTO rejects the same two failures."
+}

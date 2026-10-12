@@ -1,0 +1,196 @@
+{
+  "status": "SYNTHETIC_TEST_PLAN_NOT_LIVE_AUTHORIZATION",
+  "calibration_ids": [
+    "complete",
+    "cause",
+    "comparison",
+    "mixed",
+    "multi",
+    "clipped"
+  ],
+  "holdout_ids": [
+    "h-comparison-complete",
+    "h-causal-result-only",
+    "h-temporal-middle-missing",
+    "h-multifacts-complete",
+    "h-mixed-video-boundary",
+    "h-ocr-clipped-cause"
+  ],
+  "draft_ids": [
+    "tc-17-partial-cache",
+    "tc-18-partial-cache",
+    "tc-20-partial-cache"
+  ],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "provider_tag": "siliconflow/fp8",
+  "reasoning_effort": "none",
+  "completion_cap": 1024,
+  "offline_timeout_seconds": 20,
+  "production_parameters_changed": false,
+  "prompt_sha256": "04cdefe840b910e50b82f008496e5aa097755b0b379aff040c82044f21203e09",
+  "frozen_sidecar_sha256": "b00cc5ce06647b3804791eddf49ab3dc7ce6af21eec60d58512b63ff1e0a22bd",
+  "max_proposed_attempts": 15,
+  "proposed_token_ceiling": 45000,
+  "planned_cases": [
+    {
+      "id": "complete",
+      "input_sha256": "85c0b079407fad2679742468bab222fca6773a6a62b153a8713c66407f1e05c6",
+      "messages_sha256": "8ba521dd104e9adcb23708d7eb61cad8fd5c7b6a270e35eabb3ffa922f1d4a29",
+      "estimated_input_tokens": 1835,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2859
+    },
+    {
+      "id": "related",
+      "input_sha256": "0e8139cdabdee18fde8d755daeb4bb41e238bd15ec42e9ce7ef67b4e51b28d37",
+      "messages_sha256": "633a75074e47bbedf3807c595a47a1000b138e7f5b2422f8094a8430a074dc2e",
+      "estimated_input_tokens": 1846,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2870
+    },
+    {
+      "id": "cause",
+      "input_sha256": "196eb70fde2d3a53f1bb69a252da2e423d62f87e35e5d474aee8eddb2010c56d",
+      "messages_sha256": "ef40c8e91df251f01a591fb90b4d5e9eaede3bf8957ac1162a6f672e99238f70",
+      "estimated_input_tokens": 1835,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2859
+    },
+    {
+      "id": "comparison",
+      "input_sha256": "8b024f7ccdc758965da605c4b71e7c1e2e0e9937d98fcf25270b5cf1d3ddf443",
+      "messages_sha256": "ac2a87b1f0f409c46df75b17cc9eee8a70ebf339c484083d2a9bfe12dd11be42",
+      "estimated_input_tokens": 1836,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2860
+    },
+    {
+      "id": "temporal",
+      "input_sha256": "b8bbaa500301002ff0ccf812ffc4c5f1f108984a620a636d6133415cb4bbb0b2",
+      "messages_sha256": "519e66d751082e47c3fbfbf5b3c41e6e7e30044cd05afeacf89c5cfb448cac62",
+      "estimated_input_tokens": 1843,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2867
+    },
+    {
+      "id": "multi",
+      "input_sha256": "a15553601fb819f32cb45cc3f510ba14e19627e313dfb1108a82fae17bb14351",
+      "messages_sha256": "2ddeb595d32723d9fceb968659321ebc7910a10c51a603ba8c3a52dc6b26d76d",
+      "estimated_input_tokens": 1833,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2857
+    },
+    {
+      "id": "clipped",
+      "input_sha256": "530475a0bb73f944a3f60d9d00e3f2330e3b818e610d820619947ec157fe07a4",
+      "messages_sha256": "b87b291b8b63c096139174c84e6724254f105c041a4dd391278d4223e608e0f2",
+      "estimated_input_tokens": 2413,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 3437
+    },
+    {
+      "id": "empty",
+      "input_sha256": "94d67776cc529c96b9676493ed1e23b0adb7dacd00107471b62bf6411a7101e2",
+      "messages_sha256": "54ed4a3fb1824c49b43398cf16c8e6a53d2e8dd1b6f9da454987bed313234d11",
+      "estimated_input_tokens": 1766,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2790
+    },
+    {
+      "id": "mixed",
+      "input_sha256": "f9491161a7d028171863ca5ed29d31d975dca472e569a2d691c785e5aa1bcec5",
+      "messages_sha256": "dbc1d075134022f2846895f6eb86627f68356f1d5a9611f9178bca641e3de774",
+      "estimated_input_tokens": 1859,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2883
+    },
+    {
+      "id": "legal_unrelated",
+      "input_sha256": "b40ace74332ea20a8c2d7fd89e1f3150f7f0d4672e499ffac41386c8205e6d0f",
+      "messages_sha256": "879b63ce1fdb9ecdc55e966694fa7b29a3aa55b78deb078b2fe8cda3a1e46751",
+      "estimated_input_tokens": 1841,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2865
+    },
+    {
+      "id": "tc-17-partial-cache",
+      "input_sha256": "f7784b6abbc2535d4303a537a2868758a445ef6c3d2704058aeb26b4b1afed19",
+      "messages_sha256": "5ccf442296222fc42845cbc4fc4485faf07c8d3625914d74e17e13d86535a213",
+      "estimated_input_tokens": 1848,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2872
+    },
+    {
+      "id": "tc-18-partial-cache",
+      "input_sha256": "d644f1da8b1500ce3ae9b271d944c39a9450f0d6a751b94ba9bfdde10ed322a2",
+      "messages_sha256": "acb7c1c39ff675a201f53494cc09e6b7bcfc94ddbddf71d03af2f4ad45f7848f",
+      "estimated_input_tokens": 1833,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2857
+    },
+    {
+      "id": "tc-20-partial-cache",
+      "input_sha256": "5bec918d27f67fec826fd1bd44c0466619dd2d795b8aa073857ea5147000a6e8",
+      "messages_sha256": "c3aaf47aa4d8b8a4627ec1cf9cb17b3cafede42a72ce438dc794f1b126276301",
+      "estimated_input_tokens": 1835,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2859
+    },
+    {
+      "id": "h-comparison-complete",
+      "input_sha256": "3f73a1846ae6bd60aaedd68a88f33b1dcb8576075e4bc476568d0439ba3613b7",
+      "messages_sha256": "633222a49ea7bb10743a9206f835eccf79c549116d636f5e9449ef4d101ef7c4",
+      "estimated_input_tokens": 1860,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2884
+    },
+    {
+      "id": "h-causal-result-only",
+      "input_sha256": "c3b12deb28316617119ebb0416cb0b1fb2fb3e1584bac60860f849aa4f07da70",
+      "messages_sha256": "cb3db0d1d19ac1bd4a9f84519ce304c862cb089ad0fa1e1b1a7a4ae18c420e1c",
+      "estimated_input_tokens": 1848,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2872
+    },
+    {
+      "id": "h-temporal-middle-missing",
+      "input_sha256": "6aafea9550a69a6bb6f156e7842065facae4e49fbc23ac7ce8371f2a4812aa22",
+      "messages_sha256": "c6391161928af211e24ebe68513438646b5902062e02d2196469d75df127d869",
+      "estimated_input_tokens": 1854,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2878
+    },
+    {
+      "id": "h-multifacts-complete",
+      "input_sha256": "f9add3b206740acd297f51e066eb8e65cd31866d37c4199bc1a19d050a8cd69a",
+      "messages_sha256": "3c9c2ff5c689b96a84ad34f2a60bc7714574e6a0f1338d1c58fcbb6755c6fcda",
+      "estimated_input_tokens": 1863,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2887
+    },
+    {
+      "id": "h-mixed-video-boundary",
+      "input_sha256": "7523116796064ab0822e79417b34e611e5029c00a0da4889b1b6972250c824ba",
+      "messages_sha256": "03d9ff05dd74ee9e73f6073c1370b959aea640b62546b0a30385c55f6fdfdc4c",
+      "estimated_input_tokens": 1911,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 2935
+    },
+    {
+      "id": "h-ocr-clipped-cause",
+      "input_sha256": "bb9aca2c62af2d27a87d6424be60c5d3c328417e59eb3ca373006ac133bb3040",
+      "messages_sha256": "8c9219834b820503eb2fc748faae80d32e4e52d3de0579861e759e489737287c",
+      "estimated_input_tokens": 2419,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 3443
+    }
+  ],
+  "all_unreported_estimate_tokens": 55634,
+  "stop_conditions": [
+    "HTTP parameter/auth/routing rejection stops cohort; no fallback or retry",
+    "reasoning_tokens>0 with none stops; missing reasoning numeric detail stops before holdout",
+    "two consecutive unavailable assessments stop cohort; no budget or timeout relaxation",
+    "holdout never used to select effort or prompt",
+    "B/C require separate evidence-based decision; no baseline rerun"
+  ]
+}

@@ -1,10 +1,10 @@
 # VideoMind
 
-> 面向长视频理解的 AI 视频分析工作台
+> 面向长视频理解与深度分析的 Video Agent 平台
 
 VideoMind 将视频语音与画面文字转换为带时间、来源身份和版本的 VideoContext，通过 Hybrid RAG 为 Planner → Executor → Critic 提供证据。应用层校验模型引用的原文、来源 ID、revision 与时间范围，工作台把结构化结论关联到已校验的答案级 Citation，并允许点击返回原片。
 
-当前 `main` 包含 M1 多轮记忆、默认关闭的 M2 受限多查询检索和 F1 结论证据展示。**F1 状态：CODE FREEZE READY — LIVE GATE PENDING**。代码回归与真实 Redis 验证完成；当前工作区缺少模型配置与测试媒体，最新 Agent/M1 真实视频链路尚未验收。历史已发布的 v0.1.0 与当前 main 分别记录，见 [最终验收报告](docs/FINAL_FREEZE_REPORT.md)。
+当前实现包含 M1 多轮记忆与来源隔离、M2 受限多查询检索、F1 结论证据展示，以及 R1–R5 Bounded Agentic RAG。**CODE FREEZE READY — LIVE GATE PENDING**：确定性工程验证通过，R6 真实完整端到端验收仍待完成。Reflection 与 Feedback 默认关闭，尚未证明生产准确率或成本收益。历史 v0.1.0 与当前实现分别记录；新模块、配置、测试和回滚边界见 [Bounded Agentic RAG 指南](docs/agentic-rag/README.md)。
 
 ![VideoMind 分析工作台：视频、时间轴、证据与 AI 回答](docs/assets/videomind-workspace.png)
 
@@ -39,6 +39,8 @@ Retry-After。默认用户容量 60、全局容量 600，60 秒完整补充。�
 | 分层分析         | Planner 制定任务，Executor 生成分析，Critic 检查结果；应用层负责确定性约束。                 |
 | 多轮追问         | M1 保留最近六轮完整问答与滚动摘要，指代改写先进入检索，历史不能充当视频来源。                |
 | 受限复杂检索     | M2 提议 2–3 条抽取式子查询，Harness 限制执行、来源、合并与预算；默认关闭。                    |
+| 三路线追问       | Retrieval Need 保守区分 DIRECT_LLM、VIDEO_RAG 和 MIXED；通用知识与视频事实使用独立来源标签。 |
+| 有界证据反馈     | 可选 Reflection 提议缺口，应用验证后至多执行一次基础 Hybrid 补检索；默认关闭。 |
 | 预算与遥测       | 累计 token 预算在模型请求前准入，按阶段记录用量，压缩重复的 Prompt 内容。                    |
 | 中文操作界面     | 媒体库、分析工作台与 Pixel Future Academy 视觉体系。                                         |
 
@@ -93,7 +95,7 @@ Planner 产出受控计划，Executor 生成结构化结果，Critic 检查目�
 
 Redis 保存最近六轮完整问答及七天 TTL；原始待压缩问答达到十轮时，真实模型配置下由 LLM 合并最早四轮与旧摘要。需要指代消解时先生成 `standalone_query` 用于检索，回答模型仍收到原始问题。成功 Guard 后才写入记忆，并在提交前再次检查媒体权限与来源版本。用户、媒体、目标、模式、会话和 revision 隔离，Lua 租约/CAS 防止并发覆盖；页面重开可恢复近期对话。
 
-本轮真实 Redis 四项集成测试通过；M1 改写、摘要及错误历史隔离通过确定性测试，**真实 Provider 两轮追问和十轮摘要为 NOT_RUN**。见 [记忆设计](docs/CONVERSATION_MEMORY.md) 与 [F1 验收](docs/FINAL_FREEZE_REPORT.md)。
+历史 F1 验收记录真实 Redis 四项测试通过；当前 M1 首轮列表指代、改写、摘要、来源标签与错误历史隔离通过确定性测试。最新完整 Provider 多轮链路仍 PENDING，历史记录见 [记忆设计](docs/CONVERSATION_MEMORY.md) 与 [F1 验收](docs/FINAL_FREEZE_REPORT.md)。
 
 ## M2 自适应检索（默认关闭）
 
@@ -143,7 +145,9 @@ npm test
 npm run build
 ```
 
-## 测试与验收（2026-10-08）
+## 测试与验收
+
+R0–R5 工程回归覆盖 Need、三路线、来源契约、预算、Reflection、一次 Repair、手动模式、M1/M2、Guard、Jev 与任务恢复。公开测试使用合成 fixtures，不依赖私有视频或实验目录；live/opt-in 测试的跳过不能算通过。正式真实模型与基础设施验收仍 PENDING，fixture 恢复次数不代表用户问答准确率。
 
 F1 完整后端 **1235 passed / 36 skipped**；前端 **100 passed**，生产构建通过；另行运行真实 Redis M1 测试 **4 passed**。36 项是显式 opt-in 的基础设施测试，不能计入完整回归通过数。Python compileall、差异和用户文件完整性检查结果见 [最终报告](docs/FINAL_FREEZE_REPORT.md)。本轮没有发起真实模型调用，Agent 视频分析、M1 两轮改写及真实摘要均 NOT_RUN，未宣称完整真实端到端验收通过。
 
@@ -153,7 +157,7 @@ F1 完整后端 **1235 passed / 36 skipped**；前端 **100 passed**，生产构
 
 ## 项目状态
 
-**v0.1.0 是历史公开发布版本；当前 main 包含后续 M1/M2/F1，未创建新的 Release。** 当前为 **CODE FREEZE READY — LIVE GATE PENDING**，尚不能宣布正式封板。最小剩余门槛是准备本项目获准的 Provider 配置、媒体工具和一段测试视频，完成一次生产 Agent 分析、两轮 M1 追问及真实引用跳转；M2 可继续作为默认关闭的实验能力。
+**v0.1.0 是历史公开发布版本；当前实现包含后续 M1/M2/F1 与 R0–R5，未创建新的 Release。** 当前为 **CODE FREEZE READY — LIVE GATE PENDING**。R6 需另行授权真实 Provider 与基础设施验收，核对三路线质量、自然检索与事实恢复、完整请求成本/时延以及 Memory 恢复；M2、Reflection 和 Feedback 继续默认关闭。
 
 暂停新增功能；真实门槛通过后仅接受明确缺陷修复、必要依赖维护和面试展示材料修改。项目适合技术审阅与作品集展示，尚未发布托管服务；引用为答案级来源绑定，不提供完全确定性的自然语言蕴含证明。
 

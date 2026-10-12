@@ -9,10 +9,11 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator, model_serializer
 
 from dovideo.domain import AnalysisMode, VideoContext
 from .analysis_task_keys import goal_digest
+from .errors import BudgetExceededError, DeadlineExceededError
 
 RECENT_TURNS = 6
 SUMMARY_THRESHOLD = 10
@@ -22,13 +23,14 @@ MEMORY_TTL_SECONDS = 7 * 24 * 60 * 60
 CONTEXT_CHARS = 80_000
 SUMMARY_CHARS = 1600
 TextItem = Annotated[str, Field(min_length=1, max_length=160)]
+MemoryAnswerKind = Literal["LEGACY_UNKNOWN", "VIDEO_GROUNDED", "MODEL_KNOWLEDGE", "MIXED"]
 
 
 class MemoryDTO(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
 
-class RollingSummary(MemoryDTO):
+class SummaryContent(MemoryDTO):
     topics: Annotated[list[TextItem], Field(max_length=6)]
     entities: Annotated[list[TextItem], Field(max_length=8)]
     key_points: Annotated[list[TextItem], Field(max_length=8)]
@@ -42,6 +44,18 @@ class RollingSummary(MemoryDTO):
         if size + len(self.summary_text) > SUMMARY_CHARS:
             raise ValueError("summary too large")
         return self
+
+
+class RollingSummary(SummaryContent):
+    # App-derived union of contributing history sources, not model testimony.
+    source_kinds: Annotated[list[MemoryAnswerKind], Field(max_length=4)] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def omit_legacy_source_field(self, handler):
+        data = handler(self)
+        if not self.source_kinds:
+            data.pop("source_kinds", None)
+        return data
 
 
 class QueryRewrite(MemoryDTO):
@@ -65,6 +79,18 @@ class ConversationTurn(MemoryDTO):
     answer: Annotated[str, Field(min_length=1, max_length=12_000)]
     created_at: Annotated[str, Field(max_length=40)]
     source_revision: Annotated[str, Field(min_length=1, max_length=128)]
+    answer_kind: MemoryAnswerKind = "LEGACY_UNKNOWN"
+
+    @model_serializer(mode="wrap")
+    def omit_legacy_source_field(self, handler):
+        data = handler(self)
+        if self.answer_kind == "LEGACY_UNKNOWN":
+            data.pop("answer_kind", None)
+        return data
+
+    def continuity_payload(self):
+        return {"question": self.question, "answer": self.answer,
+                **({"answer_kind": self.answer_kind} if self.answer_kind != "LEGACY_UNKNOWN" else {})}
 
 
 class RequestReceipt(MemoryDTO):
@@ -84,8 +110,7 @@ class ConversationState(MemoryDTO):
         # The bound follows from per-turn limits; do not silently clip history.
         result = {
             "rollingSummary": self.summary.model_dump() if self.summary else None,
-            "recentTurns": [{"question": t.question, "answer": t.answer}
-                            for t in self.turns[-RECENT_TURNS:]],
+            "recentTurns": [t.continuity_payload() for t in self.turns[-RECENT_TURNS:]],
         }
         if len(json.dumps(result, ensure_ascii=False)) > CONTEXT_CHARS:
             raise ValueError("conversation context too large")
@@ -143,16 +168,32 @@ class ConversationModelPort(Protocol):
 
 
 def needs_rewrite(question: str) -> bool:
-    return bool(re.search(r"它|他们|它们|这(?:个|种|些|样)|那(?:个|种|些|样)|刚才|之前|上述|前者|后者|第[一二三四五六七八九十\d]+(?:个|种)|^那|\b(it|they|that|those|second|former|latter)\b", question, re.I))
+    # Chapter/section numbers alone identify video locations, not referents.
+    # For list positions, match elliptical uses or generic list nouns. An
+    # explicit topic immediately following a position remains self-contained.
+    position = r"(?:第[一二三四五六七八九十百两零〇\d]+(?:个|种|点|条|步|项)|[上下]一(?:个|种|点|条|步|项)|最后(?:一)?(?:个|种|点|条|步|项))"
+    list_reference = position + r"\s*(?:方案|方法|观点|建议|结论|步骤|内容|为什么|怎么|如何|是否|有何|有什么|能否|应该|可以|与|和|相比|的(?:原因|优缺点|细节|证据)|[呢啊呀吗？?，,。!！]|$)"
+    return bool(re.search(
+        r"它|他们|它们|这(?:个|种|些|样)|那(?:个|种|些|样)|刚才|之前|上述|前者|后者|前面(?:那个|提到的)|^那|\b(it|they|that|those|second|former|latter)\b|"
+        + list_reference, question.strip(), re.I,
+    ))
 
 
 def question_digest(question: str) -> str:
     return hashlib.sha256(question.encode()).hexdigest()
 
 
-def successful_turn(request_id: str, question: str, answer: str, revision: str) -> ConversationTurn:
+def successful_turn(request_id: str, question: str, answer: str, revision: str,
+                    answer_kind: MemoryAnswerKind = "LEGACY_UNKNOWN") -> ConversationTurn:
     return ConversationTurn(turn_id=request_id, question=question, answer=answer,
-                            created_at=datetime.now(timezone.utc).isoformat(), source_revision=revision)
+                            created_at=datetime.now(timezone.utc).isoformat(), source_revision=revision,
+                            answer_kind=answer_kind)
+
+
+def summary_source_kinds(previous: RollingSummary | None, turns: list[ConversationTurn]) -> list[MemoryAnswerKind]:
+    values = ([*(previous.source_kinds or ["LEGACY_UNKNOWN"])] if previous else []) + [t.answer_kind for t in turns]
+    # Legacy-only production remains byte/shape compatible with old readers.
+    return list(dict.fromkeys(values)) if any(v != "LEGACY_UNKNOWN" for v in values) else []
 
 
 class ConversationMemoryService:
@@ -164,7 +205,8 @@ class ConversationMemoryService:
 
     async def save_verified(self, identity: ConversationIdentity, state: ConversationState,
                             token: str, request_id: str, question: str, answer: str,
-                            *, summarize: bool = False, before_commit=None) -> ConversationState:
+                            *, summarize: bool = False, before_commit=None,
+                            answer_kind: MemoryAnswerKind = "LEGACY_UNKNOWN") -> ConversationState:
         expected_version = state.version
         summary_prepared = False
         if len(state.turns) >= MAX_PENDING_TURNS:
@@ -181,7 +223,7 @@ class ConversationMemoryService:
             raise MemoryConflict("memory capacity reached")
         updated = state.model_copy(update={
             "version": state.version + 1,
-            "turns": [*state.turns, successful_turn(request_id, question, answer, identity.source_revision)],
+            "turns": [*state.turns, successful_turn(request_id, question, answer, identity.source_revision, answer_kind)],
             "receipts": [*state.receipts, RequestReceipt(request_id=request_id,
                            question_digest=question_digest(question))][-64:],
         })
@@ -218,9 +260,13 @@ class ConversationMemoryService:
                 # already exists even if compression fails or times out.
                 async with asyncio.timeout(8):
                     candidate = await self.model.summarize(summary, turns[:4])
+                source_kinds = summary_source_kinds(summary, turns[:4])
                 summary = RollingSummary.model_validate(candidate.model_dump())
+                summary = summary.model_copy(update={"source_kinds": source_kinds})
                 turns = turns[4:]
                 status = "completed"
+            except (BudgetExceededError, DeadlineExceededError):
+                raise
             except Exception:
                 pass  # only status is persisted; never log private content
         return state.model_copy(update={"summary": summary, "turns": turns, "summary_status": status})

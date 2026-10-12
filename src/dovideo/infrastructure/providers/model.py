@@ -10,6 +10,7 @@ silently coerced.
 from __future__ import annotations
 
 import asyncio
+import sys
 import json
 import math
 from collections.abc import Mapping, Sequence
@@ -32,6 +33,7 @@ from dovideo.domain import (
 from dovideo.application.tool_contracts import ExecutorTurn, ToolResult
 from dovideo.application.errors import BudgetExceededError
 from dovideo.application.execution_budget import AgentExecutionBudget
+from dovideo.application.follow_up_budget import admit_request_model_call, finish_request_model_call, check_request_deadline
 
 from .config import ModelRequestSettings, ProviderConfig
 from .errors import (
@@ -214,6 +216,7 @@ class OpenAICompatibleChatClient:
         config: ProviderConfig,
         *,
         request_settings: ModelRequestSettings | None = None,
+        reflection_request_settings: ModelRequestSettings | None = None,
         client: AsyncJsonPostClient | object | None = None,
         http_client: AsyncJsonPostClient | object | None = None,
         sleeper: Any | None = None,
@@ -228,6 +231,15 @@ class OpenAICompatibleChatClient:
             raise TypeError("request_settings must be ModelRequestSettings")
         self.config = config
         self.request_settings = request_settings or ModelRequestSettings()
+        if reflection_request_settings is not None:
+            if (not isinstance(reflection_request_settings, ModelRequestSettings)
+                    or reflection_request_settings.reasoning_effort != "none"
+                    or reflection_request_settings.max_tokens is not None):
+                raise ValueError("Reflection override only supports validated reasoning_effort=none; output cap is unchanged")
+            if (config.transport != "openrouter" or config.model != "deepseek/deepseek-v4.1-flash"
+                    or config.provider_only != ("siliconflow/fp8",)):
+                raise ValueError("Reflection override requires the validated model and pinned SiliconFlow endpoint")
+        self.reflection_request_settings = reflection_request_settings
         self._client = client if client is not None else http_client
         if self._client is None:
             self._client = StdlibAsyncJsonPostClient()
@@ -248,11 +260,11 @@ class OpenAICompatibleChatClient:
             "temperature": 0,
             "response_format": {"type": "json_object"},
         }
-        payload.update(self.request_settings.request_fields())
+        payload.update(self._request_settings_for_stage(stage).request_fields())
         if stage == "FOLLOW_UP":
             payload["max_tokens"] = min(int(payload.get("max_tokens", 4096)), 4096)
-        elif stage in {"QUERY_REWRITE", "ROLLING_SUMMARY", "ADAPTIVE_RETRIEVAL_PLANNER"}:
-            cap = {"QUERY_REWRITE": 512, "ROLLING_SUMMARY": 2048,
+        elif stage in {"EVIDENCE_REFLECTION", "MIXED_KNOWLEDGE", "DIRECT_FOLLOW_UP", "QUERY_REWRITE", "ROLLING_SUMMARY", "ADAPTIVE_RETRIEVAL_PLANNER"}:
+            cap = {"EVIDENCE_REFLECTION": 1024, "MIXED_KNOWLEDGE": 2048, "DIRECT_FOLLOW_UP": 2048, "QUERY_REWRITE": 512, "ROLLING_SUMMARY": 2048,
                    "ADAPTIVE_RETRIEVAL_PLANNER": 1024}[stage]
             payload["max_tokens"] = min(int(payload.get("max_tokens", cap)), cap)
         if self.config.transport == "openrouter":
@@ -264,14 +276,16 @@ class OpenAICompatibleChatClient:
                 "zdr": self.config.provider_zdr,
             }
         last_error: ProviderTransientError | None = None
-        max_attempts = 1 if stage == "ADAPTIVE_RETRIEVAL_PLANNER" else self.config.max_attempts
+        max_attempts = 1 if stage in {"EVIDENCE_REFLECTION", "ADAPTIVE_RETRIEVAL_PLANNER"} else self.config.max_attempts
         for attempt in range(max_attempts):
-            AgentExecutionBudget.check(stage)
+            check_request_deadline(stage)
             admission = self._admit_model_call(normalized, stage, attempt + 1)
+            request_admission = admit_request_model_call(normalized, stage, payload.get("max_tokens"))
             sent = False
             response_status: int | None = None
             response_chars = 0
             reported_usage = None
+            body = None
             try:
                 sent = True
                 response = await post_json(
@@ -334,39 +348,44 @@ class OpenAICompatibleChatClient:
                     f"{stage} provider transport failed"
                 ) from exc
             finally:
-                if sent and admission is not None:
-                    if reported_usage is not None and reported_usage[2] is not None:
-                        self._finish_model_call(admission, reported_usage, "provider")
-                    elif reported_usage is not None or (
-                        response_status is None
-                        or response_status in (408, 429)
-                        or response_status >= 500
-                        or 200 <= response_status < 300
-                    ):
-                        estimated_input = int(admission["inputEstimate"])
-                        estimated_output = (response_chars + 1) // 2
-                        self._record_unreported_usage(
-                            stage,
-                            estimated_input,
-                            estimated_output,
-                            provider_reported_cost=(
-                                None if reported_usage is None else reported_usage[3]
-                            ),
-                        )
-                        self._finish_model_call(
-                            admission,
-                            (
+                try:
+                    if sent and admission is not None:
+                        if reported_usage is not None and reported_usage[2] is not None:
+                            self._finish_model_call(admission, reported_usage, "provider")
+                        elif reported_usage is not None or (
+                            response_status is None
+                            or response_status in (408, 429)
+                            or response_status >= 500
+                            or 200 <= response_status < 300
+                        ):
+                            estimated_input = int(admission["inputEstimate"])
+                            estimated_output = (response_chars + 1) // 2
+                            self._record_unreported_usage(
+                                stage,
                                 estimated_input,
                                 estimated_output,
-                                estimated_input + estimated_output,
-                                None if reported_usage is None else reported_usage[3],
-                            ),
-                            (
-                                "heuristic_tokens_provider_cost"
-                                if reported_usage is not None
-                                else "heuristic"
-                            ),
-                        )
+                                provider_reported_cost=(
+                                    None if reported_usage is None else reported_usage[3]
+                                ),
+                            )
+                            self._finish_model_call(
+                                admission,
+                                (
+                                    estimated_input,
+                                    estimated_output,
+                                    estimated_input + estimated_output,
+                                    None if reported_usage is None else reported_usage[3],
+                                ),
+                                (
+                                    "heuristic_tokens_provider_cost"
+                                    if reported_usage is not None
+                                    else "heuristic"
+                                ),
+                            )
+                finally:
+                    finish_request_model_call(request_admission, sent=sent,
+                        usage=(body.get("usage") if isinstance(body, Mapping) and isinstance(body.get("usage"), Mapping) else None),
+                        preserve_termination=isinstance(sys.exception(), (asyncio.CancelledError, BudgetExceededError, TimeoutError)))
         if last_error is not None:
             raise last_error
         raise ProviderResponseError(f"{stage} provider returned no response")
@@ -395,6 +414,12 @@ class OpenAICompatibleChatClient:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
         return headers
 
+    def _request_settings_for_stage(self, stage: str) -> ModelRequestSettings:
+        if stage == "EVIDENCE_REFLECTION" and self.reflection_request_settings is not None:
+            # Preserve the selected profile's max_tokens and every other stage.
+            return ModelRequestSettings(reasoning_effort="none", max_tokens=self.request_settings.max_tokens)
+        return self.request_settings
+
     async def _sleep_before_retry(self, attempt: int) -> None:
         delay = self.config.retry_delay_seconds * (2**attempt)
         value = self._sleeper(delay)
@@ -414,15 +439,16 @@ class OpenAICompatibleChatClient:
         admit = getattr(self._usage_sink, "admit_model_call", None)
         if not callable(admit):
             return None
+        request_settings = self._request_settings_for_stage(stage)
         return admit(
             stage=stage,
             model=self.config.model,
             messages=messages,
             attempt=attempt,
-            max_output_tokens=(min(self.request_settings.max_tokens or cap, cap)
-                if (cap := {"FOLLOW_UP": 4096, "QUERY_REWRITE": 512, "ROLLING_SUMMARY": 2048,
+            max_output_tokens=(min(request_settings.max_tokens or cap, cap)
+                if (cap := {"EVIDENCE_REFLECTION": 1024, "MIXED_KNOWLEDGE": 2048, "DIRECT_FOLLOW_UP": 2048, "FOLLOW_UP": 4096, "QUERY_REWRITE": 512, "ROLLING_SUMMARY": 2048,
                             "ADAPTIVE_RETRIEVAL_PLANNER": 1024}.get(stage))
-                else self.request_settings.max_tokens),
+                else request_settings.max_tokens),
         )
 
     def _finish_model_call(

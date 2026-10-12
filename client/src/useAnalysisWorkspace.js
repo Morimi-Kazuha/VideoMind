@@ -14,10 +14,7 @@ const DEFAULT_GOAL =
   '理解视频核心内容，提炼关键结论，并给出带时间戳的证据和可执行建议'
 
 // 分析模式选项。GENERAL/LEARNING/REVIEW/CREATION 与后端 AnalysisMode 枚举一一对应,value 直接作为 mode 参数;
-// AUTO 是纯前端选项:提交前先调 /analysis/route 让 AI 判定出具体模式,再据此发起分析——
-// AUTO 本身绝不会作为 mode 发到任何带 key 的后端接口,从根上避免读写端 key 不对称。
 const ANALYSIS_MODES = [
-  { value: 'AUTO', title: '自动', description: 'AI 按目标智能选择模式' },
   { value: 'GENERAL', title: '通用', description: '结论 · 时间戳证据 · 建议' },
   {
     value: 'LEARNING',
@@ -620,18 +617,6 @@ export function useAnalysisWorkspace({
     sidebar.value.evaluation = DEMO_EVALUATION
   }
 
-  // AUTO 模式的意图路由:仅凭目标文本让后端 AI 判定出具体模式。apiRequest 已解包信封,
-  // response.json() 直接就是 { mode, reason }。失败由调用方兜底,这里只负责发起请求。
-  const routeMode = async (goal) => {
-    const response = await apiRequest('/analysis/route', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ goal }),
-    })
-    if (!response.ok) throw new Error(await response.text())
-    return response.json()
-  }
-
   const submitAgent = async () => {
     const goal = sidebar.value.goal.trim()
     if (!goal || sidebar.value.loading) return
@@ -651,36 +636,9 @@ export function useAnalysisWorkspace({
       return
     }
     let mode = sidebar.value.analysisMode || 'GENERAL'
-    if (mode === 'AUTO') {
-      // 先把 AUTO 落定成具体模式,再提交。落定结果写回 sidebar.analysisMode,
-      // 之后的状态查询 / 重跑 / 元信息刷新都用它,确保与提交端 key 完全一致。
-      sidebar.value.mode = 'result'
-      sidebar.value.loading = true
-      sidebar.value.content = ''
-      sidebar.value.statusMessage = '正在识别分析意图…'
-      let decision = null
-      try {
-        decision = await routeMode(goal)
-      } catch (error) {
-        console.warn('intent routing failed', error)
-      }
-      // 路由是异步的,用户可能已切到别的视频或改了目标;仅当仍停留在同一任务时才落定并继续。
-      if (
-        !current() || sidebar.value.mediaId !== mediaId ||
-        sidebar.value.goal.trim() !== goal
-      )
-        return
-      if (decision && decision.mode) {
-        mode = decision.mode
-        showMessage(
-          `AI 已识别为「${modeTitle(mode)}」模式：${decision.reason || ''}`.trim(),
-        )
-      } else {
-        mode = 'GENERAL'
-        showMessage('意图识别暂不可用，已按通用模式分析', true)
-      }
-      sidebar.value.analysisMode = mode
-    }
+    // Normalize stale transient AUTO before using a concrete task key.
+    if (mode === 'AUTO') mode = 'GENERAL'
+    sidebar.value.analysisMode = mode
     // 记住这次实际使用的具体模式,重开面板时据此恢复,保证能查回本次分析结果。
     saveModeDraft(mediaId, mode)
     return analyze(mediaId, goal, mode)

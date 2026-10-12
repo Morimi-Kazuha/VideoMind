@@ -23,7 +23,6 @@ from dovideo.application import (
     EXECUTION_CONTRACT_VERSION_V2,
     HistoricalAgentReplayService,
     HistoricalReplayAccessService,
-    ModeRouter,
     TaskDispatchService,
     TaskKey,
 )
@@ -62,9 +61,18 @@ from dovideo.infrastructure.r4_runtime import (
     create_r4_provider_stack,
 )
 from dovideo.infrastructure.x1_config import X1ToolCallingSettings
+from dovideo.infrastructure.evidence_reflection import reflection_mode_from_environment
+from dovideo.infrastructure.providers.evidence_reflection import EvidenceReflectionModelAdapter
+from dovideo.application.evidence_reflection import ReflectionMode
+from dovideo.application.retrieval_repair import FeedbackRetrievalMode, validate_feedback_configuration
+from dovideo.infrastructure.retrieval_repair import feedback_mode_from_environment
+from dovideo.infrastructure.retrieval_need import retrieval_need_settings_from_environment, mixed_follow_up_enabled_from_environment
+from dovideo.infrastructure.providers.follow_up import DirectFollowUpModelAdapter, MixedKnowledgeModelAdapter
+from dovideo.application.retrieval_need import RetrievalNeedSettings
+from dovideo.application.follow_up_budget import FollowUpBudgetSettings
+from dovideo.infrastructure.follow_up_budget import follow_up_budget_settings_from_environment
 from dovideo.infrastructure.providers import (
     GroundedFollowUpModelAdapter,
-    ModeRouterModelAdapter,
 )
 from .r2_runtime import ProductionR2Services
 from .runtime import R1ServiceError
@@ -135,9 +143,16 @@ class ProductionR4Services(ProductionR2Services):
             execution_records=self.execution_records,
         )
         self.tool_settings = selected_tool_settings
-        self.mode_router = ModeRouter(
-            ModeRouterModelAdapter(self.providers.chat_client)
-        )
+        self.retrieval_need_settings = retrieval_need_settings_from_environment()
+        self.evidence_reflection_mode = reflection_mode_from_environment()
+        self.mixed_follow_up_enabled = mixed_follow_up_enabled_from_environment()
+        from dovideo.infrastructure.retrieval_need import validate_direct_memory_configuration
+        validate_direct_memory_configuration(self.retrieval_need_settings, self.conversation_memory.store)
+        self.follow_up_budget_settings = follow_up_budget_settings_from_environment()
+        self.feedback_retrieval_mode = feedback_mode_from_environment()
+        validate_feedback_configuration(self.feedback_retrieval_mode, self.evidence_reflection_mode, self.follow_up_budget_settings,
+            model_available=self.providers.chat_client is not None,
+            metered_retrieval=getattr(self.providers.long_context, "supports_feedback_retrieval_budget", False))
         self.dispatcher = TaskDispatchService(
             infrastructure.active_marker,
             completion=infrastructure.completion_marker,
@@ -160,16 +175,8 @@ class ProductionR4Services(ProductionR2Services):
         self._evaluator = AgentEvaluationService()
 
     async def route(self, goal: str) -> tuple[AnalysisMode, str]:
-        """Use the model router for the production AUTO resolution boundary."""
-
-        mode = await self.mode_router.route(goal)
-        reason = {
-            AnalysisMode.GENERAL: "使用通用分析模式",
-            AnalysisMode.LEARNING: "面向学习与知识整理",
-            AnalysisMode.REVIEW: "面向审查与风险识别",
-            AnalysisMode.CREATION: "面向后续内容创作",
-        }[mode]
-        return mode, reason
+        """Resolve legacy AUTO clients without a classification model call."""
+        return AnalysisMode.GENERAL, "AUTO 已停用；兼容使用通用分析模式，请手动选择具体模式"
 
     async def startup(self) -> None:
         await super().startup()
@@ -240,7 +247,15 @@ class ProductionR4Services(ProductionR2Services):
             self.providers.long_context,
             GroundedFollowUpModelAdapter(self.providers.chat_client),
             memory=memory,
+            direct_model=DirectFollowUpModelAdapter(self.providers.chat_client),
+            mixed_knowledge_model=MixedKnowledgeModelAdapter(self.providers.chat_client),
+            mixed_enabled=getattr(self, "mixed_follow_up_enabled", False),
+            reflection_model=EvidenceReflectionModelAdapter(self.providers.chat_client),
+            reflection_mode=getattr(self, "evidence_reflection_mode", ReflectionMode.OFF),
             access_check=self.media.require_owned,
+            retrieval_need_settings=getattr(self, "retrieval_need_settings", RetrievalNeedSettings()),
+            budget_settings=getattr(self, "follow_up_budget_settings", FollowUpBudgetSettings()),
+            feedback_mode=getattr(self, "feedback_retrieval_mode", FeedbackRetrievalMode.OFF),
         )
         statuses = {
             "invalid_request": 400,
@@ -256,6 +271,7 @@ class ProductionR4Services(ProductionR2Services):
             "unexpected": 503,
             "conversation_conflict": 409,
             "memory_unavailable": 503,
+            "budget_exceeded": 503,
         }
         try:
             capture = getattr(self.providers.telemetry, "capture_chat_usage", None)

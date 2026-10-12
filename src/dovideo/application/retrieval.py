@@ -23,6 +23,7 @@ from .rank_fusion import RankedCandidate, reciprocal_rank_fusion
 from .retrieval_documents import retrieval_document, segment_identity, normalize_text
 from .sparse_retrieval import BM25Retriever
 from .retrieval_observation import observe_retrieval
+from .retrieval_budget import admit_base_retrieval
 
 
 DENSE_CANDIDATE_K = 8
@@ -127,6 +128,9 @@ class VideoEvidenceRetrievalService:
         goal: str | None,
         chunks: Iterable[VideoChunk],
     ) -> tuple[_ScoredSegment, ...]:
+        # search/retrieve share this entry; failures count, delegation does not
+        # double-count. With no Follow-up R4 scope this is a no-op.
+        admit_base_retrieval(goal)
         intent = await self._retrieval_intent(goal)
         query_embedding = await self._embed(intent.semantic_query)
         # Materialize once; no sorting operation mutates the caller's list.

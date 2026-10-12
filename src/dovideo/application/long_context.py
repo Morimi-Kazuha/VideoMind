@@ -22,6 +22,7 @@ from .ports.checkpoint import ContextCheckpointPort
 from .ports.observability import TelemetryPort
 from .retrieval import VideoEvidenceRetrievalService
 from .adaptive_retrieval import baseline_retrieval
+from .adaptive_retrieval import AdaptiveRetrievalService
 
 
 CHUNK_MS = CHUNK_MILLISECONDS
@@ -108,6 +109,18 @@ class LongVideoContextService:
         if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
             raise ValueError("search evidence limit must be a non-negative integer")
         return hits[:limit]
+
+    @property
+    def supports_feedback_retrieval_budget(self):
+        baseline = self._retrieval.baseline if isinstance(self._retrieval, AdaptiveRetrievalService) else self._retrieval
+        # Unknown custom backends cannot claim their physical calls are metered.
+        return (isinstance(baseline, VideoEvidenceRetrievalService)
+                and type(baseline)._rank is VideoEvidenceRetrievalService._rank)
+
+    async def search_evidence_baseline(self, media_id, context, *, chunks):
+        """One existing Hybrid search; the same Critic/X1 M2 suppression scope."""
+        with baseline_retrieval():
+            return await self.search_evidence(media_id, context, chunks=chunks)
 
     async def refine_for_critique(
         self,

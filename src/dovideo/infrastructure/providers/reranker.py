@@ -21,6 +21,7 @@ from .config import ProviderConfigurationError
 from .errors import (ProviderAuthenticationError, ProviderRequestError,
                      ProviderResponseError, ProviderTransientError, ProviderTransportError)
 from .http import StdlibAsyncJsonPostClient, post_json, response_parts
+from dovideo.application.follow_up_budget import record_request_component
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,11 +88,13 @@ class SiliconFlowRerankerAdapter:
                    "return_documents": False}
         for attempt in range(self.config.max_attempts):
             try:
+                record_request_component("reranker")
                 async with asyncio.timeout(self.config.timeout_seconds):
                     response = await post_json(self._client, self.config.url,
                         headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.config.api_key}"},
                         payload=payload, timeout=self.config.timeout_seconds)
                 status, body = response_parts(response)
+                record_request_component("reranker", attempt=False, usage=body.get("usage") if isinstance(body, Mapping) else None)
                 if status in (401, 403):
                     raise ProviderAuthenticationError("reranker authentication failed")
                 if status in (408, 429) or status >= 500:

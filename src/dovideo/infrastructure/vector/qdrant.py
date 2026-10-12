@@ -22,6 +22,7 @@ from urllib.request import Request, urlopen
 
 from dovideo.application.value_objects import VectorHit
 from dovideo.application.errors import BudgetExceededError
+from dovideo.application.follow_up_budget import record_request_component
 from dovideo.domain import VideoChunk
 
 
@@ -252,6 +253,7 @@ class QdrantVectorIndex:
             for key, value in (("sourceRevision", source_revision), ("chunkingVersion", chunking_version)):
                 if value is not None:
                     body["filter"]["must"].append({"key": key, "match": {"value": value}})
+            record_request_component("qdrant_query")
             response = await self._send(
                 "POST",
                 f"/collections/{self.collection}/points/query",

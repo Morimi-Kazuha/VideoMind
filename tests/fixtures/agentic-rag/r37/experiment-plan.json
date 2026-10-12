@@ -1,0 +1,165 @@
+{
+  "status": "SYNTHETIC_TEST_PLAN_NOT_LIVE_AUTHORIZATION",
+  "calibration_ids": [
+    "mixed",
+    "h-mixed-video-boundary",
+    "d-mixed-incomplete",
+    "h-comparison-complete",
+    "tc-17-partial-cache",
+    "related",
+    "cause",
+    "multi",
+    "clipped"
+  ],
+  "holdout_ids": [
+    "n-tripod-cause",
+    "n-panel-comparison",
+    "n-film-temporal",
+    "n-bread-mixed-full",
+    "n-photo-mixed-gap",
+    "n-ocr-clipped"
+  ],
+  "draft_ids": [],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "provider_tag": "siliconflow/fp8",
+  "reasoning_effort": "none",
+  "completion_cap": 1024,
+  "offline_timeout_seconds": 20,
+  "production_parameters_changed": false,
+  "prompt_sha256": "52a6a7c136dcba9f1869bd1d797998edaa19818cd256661bef52ad92f30e7b73",
+  "full_system_sha256": "d0636d0dd2288376b572c97de3ed25f486873e1ade48f9f3d47b16c588b7a955",
+  "frozen_sidecar_sha256": "0f1badd535a96040d01ec3df73825e674c5e520a34f8b9cd4dd5f5fd43be0fc4",
+  "max_proposed_attempts": 15,
+  "proposed_token_ceiling": 50000,
+  "planned_cases": [
+    {
+      "id": "mixed",
+      "input_sha256": "f9491161a7d028171863ca5ed29d31d975dca472e569a2d691c785e5aa1bcec5",
+      "messages_sha256": "b5a2f81ab35e31576790222b2bccb0b4d117da5459bfbe75f714ea7d848a574a",
+      "estimated_input_tokens": 2977,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 4001
+    },
+    {
+      "id": "h-mixed-video-boundary",
+      "input_sha256": "7523116796064ab0822e79417b34e611e5029c00a0da4889b1b6972250c824ba",
+      "messages_sha256": "c451b11f66d511fa8f0cce408606b3e65da6bfd146167e1c0b827211b41998f1",
+      "estimated_input_tokens": 3029,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 4053
+    },
+    {
+      "id": "d-mixed-incomplete",
+      "input_sha256": "257a8ed010871d1931fbb0c7226fb832aeb3001ab84d4b309c6b08a14c811b14",
+      "messages_sha256": "20e9875a2e3f04b44d5c1163fc1f1cea710bd46a3a47cea9aa33afda751fa620",
+      "estimated_input_tokens": 2992,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 4016
+    },
+    {
+      "id": "h-comparison-complete",
+      "input_sha256": "3f73a1846ae6bd60aaedd68a88f33b1dcb8576075e4bc476568d0439ba3613b7",
+      "messages_sha256": "145d3b8551d5f19f95e8c3e8f287c1ae1871570fc20b4a08ec48d56ebfcd95b6",
+      "estimated_input_tokens": 2978,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 4002
+    },
+    {
+      "id": "tc-17-partial-cache",
+      "input_sha256": "f7784b6abbc2535d4303a537a2868758a445ef6c3d2704058aeb26b4b1afed19",
+      "messages_sha256": "9baeca29600d6a3878755a277e5a2d2240cdd6d71cfbf40991b6e8dbc2097bdd",
+      "estimated_input_tokens": 2966,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 3990
+    },
+    {
+      "id": "related",
+      "input_sha256": "0e8139cdabdee18fde8d755daeb4bb41e238bd15ec42e9ce7ef67b4e51b28d37",
+      "messages_sha256": "d6d96843c53cbb29df390d2d8efb1abb4bbf93e8f9231a36c4745dd28b183e52",
+      "estimated_input_tokens": 2964,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 3988
+    },
+    {
+      "id": "cause",
+      "input_sha256": "196eb70fde2d3a53f1bb69a252da2e423d62f87e35e5d474aee8eddb2010c56d",
+      "messages_sha256": "d3058bbf48b26cc402b2d16afd31031cf419187f266c3a8272f71b008fb66c47",
+      "estimated_input_tokens": 2953,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 3977
+    },
+    {
+      "id": "multi",
+      "input_sha256": "a15553601fb819f32cb45cc3f510ba14e19627e313dfb1108a82fae17bb14351",
+      "messages_sha256": "b3d54f2469d925a95793afa5d5a6b8c11d78f2b5932eb98f89e14e3951a03154",
+      "estimated_input_tokens": 2951,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 3975
+    },
+    {
+      "id": "clipped",
+      "input_sha256": "530475a0bb73f944a3f60d9d00e3f2330e3b818e610d820619947ec157fe07a4",
+      "messages_sha256": "8bc834abb805ffd0c8f30a36f6540c26a6fae622791089d903f048ca2aa87487",
+      "estimated_input_tokens": 3532,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 4556
+    },
+    {
+      "id": "n-tripod-cause",
+      "input_sha256": "56f63c257e1c6a2881773ca1823d7e40385502705600c17b01507414f8f25282",
+      "messages_sha256": "ce5c57e38d2bad30048986bc45ebe806af3fdfd32020b8e11104651458be2cda",
+      "estimated_input_tokens": 2964,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 3988
+    },
+    {
+      "id": "n-panel-comparison",
+      "input_sha256": "06ce91418e690856bd09a1954712811041090f75b26213c59833aca3b8e652b6",
+      "messages_sha256": "05dc3a5b2646c8b804b95d3a81992493df91caeeb530cfe36d1acf9bced60c17",
+      "estimated_input_tokens": 2989,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 4013
+    },
+    {
+      "id": "n-film-temporal",
+      "input_sha256": "1b4c70ea2d84b0cd213b9d61082557ee977b512054e3c9f423d4d8a8a51930c5",
+      "messages_sha256": "1e6ef34277dd10f96cc70ebddbd6d858fd981000f39a7829c01b698a122347ec",
+      "estimated_input_tokens": 2986,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 4010
+    },
+    {
+      "id": "n-bread-mixed-full",
+      "input_sha256": "8dfe6bf22df93a1fa6cc72e9ba3e0a7b9fd6639387f73489d942dffe2593010f",
+      "messages_sha256": "491b3b726dca6cc7a929a3e69c9044301e72d40b5c606c88dbb1592515891273",
+      "estimated_input_tokens": 2995,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 4019
+    },
+    {
+      "id": "n-photo-mixed-gap",
+      "input_sha256": "d4829323814f69fbe5d15fe10377fd0ddf966cd1812f84bcfc75ca3fd31f6bdb",
+      "messages_sha256": "844316caaf954f141a08f5b81e82247df3358aa30bdfc0c2736140328a81b774",
+      "estimated_input_tokens": 2974,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 3998
+    },
+    {
+      "id": "n-ocr-clipped",
+      "input_sha256": "5cdceec494b7845183aca4f3a9e5ab162d5969f2c38ae51f951889c1148f3250",
+      "messages_sha256": "c5ce9169aa06f379a41e889a947cc067bfbf016043d8f65e5b091a7e4fe6ece1",
+      "estimated_input_tokens": 3553,
+      "output_reserve": 1024,
+      "worst_unreported_charge": 4577
+    }
+  ],
+  "all_unreported_estimate_tokens": 61163,
+  "stop_conditions": [
+    "No retry/fallback; fixed provider/cap/effort",
+    "Provider rejection or reasoning>0 stops",
+    "Two consecutive unavailable results stop",
+    "Global calls/tokens include BOTH cohorts; skip if headroom missing",
+    "No prompt tuning from holdout; no output repair",
+    "No paid calls without NEW explicit approval"
+  ]
+}
