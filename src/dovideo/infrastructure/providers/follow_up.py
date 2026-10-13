@@ -189,6 +189,7 @@ class GroundedFollowUpModelAdapter:
             "modeGuidance": _MODE_GUIDANCE[profile.mode],
             "priorAnalysisContext": _bounded_prior(prior_analysis),
             "retrievedSourceCandidates": candidates,
+            "outputSchema": GroundedFollowUpAnswer.model_json_schema(by_alias=True),
         }
         if conversation_context is not None:
             from dovideo.application.conversation_memory import CONTEXT_CHARS
@@ -209,14 +210,32 @@ class GroundedFollowUpModelAdapter:
             "candidate's ASR/OCR excerpt, candidateIndex must identify that candidate, "
             "timestampMs must be inside its half-open [startMs,endMs) interval, and source "
             "must be exactly ASR, OCR, or ASR+OCR (the named channels must contain the quote). "
+            "Never relabel ASR text as OCR or OCR text as ASR. The candidate's aggregate "
+            "source only lists available channels; it is not the source of every excerpt. "
+            "For ASR use asrExcerpt and an ASR sourceObservations entry covering the quote; "
+            "for OCR use one ocrExcerpts slot and its non-null ocrObservationTimestamps slot. "
+            "Similar words, formulas with different operators, or another candidate's text "
+            "are not interchangeable sources. Ambiguous identity or time is not usable evidence. "
+            "Use at most five distinct evidence objects, never duplicate citations to fill slots. "
+            "Plan coverage of every required video fact within those five citations before "
+            "writing the answer. One quote can support multiple facts only when it actually "
+            "contains them. If coverage is incomplete, state that limitation and omit unsupported "
+            "conclusions; do not silently drop a sixth necessary citation or claim completeness. "
+            "Follow outputSchema, including maxItems, uniqueItems and all text limits. "
             "Do not invent timestamps, evidence, or source text. "
             "When sourceObservations are supplied, choose each quote from an observation's "
             "excerpt and use its exact timestampMs (OCR) or a timestamp inside its "
             "[timestampMs,endMs) ASR span, also inside the candidate interval. A segment "
             "start is not the timestamp of every observation. Do not join disjoint ASR "
             "observations into one quote with an unsupported timestamp. "
+            "For OCR, ocrObservationTimestamps is aligned with ocrExcerpts; each non-null "
+            "value is an exact frame timestamp for quotes from that excerpt. "
+            "Never substitute the candidate start for a frame or ASR observation time. "
             "Do not include a claim that "
-            "cannot be supported by the supplied source excerpts. Return exactly one JSON "
+            "cannot be supported by the supplied source excerpts. "
+            "Retrieved candidates do not prove whole-video absence or the first/earliest "
+            "occurrence in the full video; state this scope limit instead of asserting a "
+            "global first event from local candidate order. Return exactly one JSON "
             "object with exactly these top-level fields: answer (nonblank string), evidence "
             "(one to five objects). Each evidence object has exactly candidateIndex "
             "(integer), timestampMs (integer), source, content (verbatim string), and claim "

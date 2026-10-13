@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import ConfigDict, Field, StrictInt, field_validator
+from pydantic import ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from ._base import DomainModel
 
@@ -55,7 +55,7 @@ class GroundedFollowUpAnswer(DomainModel):
     answer: Annotated[str, Field(min_length=1, max_length=4_000)]
     evidence: Annotated[
         tuple[GroundedFollowUpEvidence, ...],
-        Field(min_length=1, max_length=5),
+        Field(min_length=1, max_length=5, json_schema_extra={"uniqueItems": True}),
     ]
 
     @field_validator("answer")
@@ -65,6 +65,13 @@ class GroundedFollowUpAnswer(DomainModel):
         if not normalized:
             raise ValueError("follow-up answer must be nonblank")
         return normalized
+
+    @model_validator(mode="after")
+    def _no_duplicate_citations(self):
+        identities = [item.model_dump_json() for item in self.evidence]
+        if len(set(identities)) != len(identities):
+            raise ValueError("duplicate follow-up citations")
+        return self
 
 
 __all__ = ["GroundedFollowUpAnswer", "GroundedFollowUpEvidence"]

@@ -150,7 +150,9 @@ class EvidenceReflection:
                 remaining = AgentExecutionBudget.remaining_seconds()
                 if remaining is not None and remaining < time_reserve + 5:
                     outcome = "SKIPPED_TIME"
-                elif messages is None or not optional_model_headroom(messages, "EVIDENCE_REFLECTION", 1024, answer_reserve):
+                elif messages is None:
+                    outcome = "INPUT_UNAVAILABLE"
+                elif not optional_model_headroom(messages, "EVIDENCE_REFLECTION", 1024, answer_reserve):
                     outcome = "SKIPPED_BUDGET"
                 else:
                     # Local timeout does not install a new global deadline frame.

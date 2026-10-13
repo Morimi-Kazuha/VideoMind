@@ -6,6 +6,8 @@ import logging
 import asyncio
 import math
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -23,9 +25,10 @@ from dovideo.domain import (
     TemporalObservation,
 )
 
-from .evidence import EvidenceVerificationService, normalize_evidence_text
+from .evidence import EvidenceVerificationService, normalize_evidence_text, _source_item_text
 from .evidence_reflection import EvidenceReflection, ReflectionMode
-from .evidence_projection import source_payload, MAX_FOLLOW_UP_SOURCE_CHARS, MAX_FOLLOW_UP_OCR_EXCERPTS
+from .evidence_projection import source_payload, bounded_source_hit, normalize_quote_text, MAX_FOLLOW_UP_SOURCE_CHARS, MAX_FOLLOW_UP_OCR_EXCERPTS
+from .temporal_location import first_location_literals, first_literal_observations, literal_location_hit
 from .mode_profiles import mode_profile_for
 from .ports.checkpoint import ContextCheckpointPort
 from .value_objects import TaskKey
@@ -48,6 +51,17 @@ MAX_FOLLOW_UP_CANDIDATES = 8
 MAX_FOLLOW_UP_PRIOR_ITEMS = 4
 MAX_FOLLOW_UP_PRIOR_SECTIONS = 2
 _LOGGER = logging.getLogger("dovideo.follow_up")
+_literal_location_capture = ContextVar("follow_up_literal_location_capture", default=None)
+
+
+@contextmanager
+def capture_literal_location():
+    records = []
+    token = _literal_location_capture.set(records)
+    try:
+        yield records
+    finally:
+        _literal_location_capture.reset(token)
 _ALLOWED_METRICS = {
     "context_segments",
     "chunk_count",
@@ -424,6 +438,10 @@ class GroundedFollowUpService:
                     if not mixed:
                         self._record("mixed_deferred", media_id=media_id, mode=mode,
                                      category="mixed_disabled_or_unavailable")
+        literal_locations = first_location_literals(standalone_query)
+        if literal_locations is not None and not mixed:
+            return await self._answer_literal_locations(media_id, question, mode, context,
+                memory_session, literal_locations)
         if self._retrieval_need_settings.mode == RetrievalNeedMode.ENABLED:
             try:
                 chunks = await self._checkpoint.load_chunks(media_id)
@@ -473,7 +491,7 @@ class GroundedFollowUpService:
                 latency_ms=_elapsed_ms(retrieval_started),
             ) from None
 
-        candidates = self._prepare_candidates(context, hits)
+        candidates = self._prepare_candidates(context, hits, question=standalone_query)
         asr_count = sum(bool(item.prompt_hit.transcript.strip()) for item in candidates)
         ocr_count = sum(bool(item.prompt_hit.ocr_texts) for item in candidates)
         self._record(
@@ -511,7 +529,7 @@ class GroundedFollowUpService:
                 initial=tuple(c.source_hit for c in candidates), retrieval=self._retrieval,
                 mixed=mixed, downstream_reserve=downstream_reserve, planner_attempts=downstream_attempts)
             if self._feedback_mode == FeedbackRetrievalMode.ENABLED:
-                candidates = self._prepare_candidates(context, merged_hits)
+                candidates = self._prepare_candidates(context, merged_hits, question=standalone_query)
         if not candidates:
             raise self._failure(
                 media_id,
@@ -649,9 +667,8 @@ class GroundedFollowUpService:
             # Stronger MIXED extraction boundary: all prose must be verified quotes.
             # This does not claim semantic sufficiency or whole-video coverage.
             facts = tuple(dict.fromkeys(item.claim for item in response.evidence))
-            if (any(normalize_evidence_text(item.claim) != normalize_evidence_text(item.content)
-                    for item in response.evidence)
-                    or normalize_evidence_text(response.answer) != normalize_evidence_text("\n".join(facts))):
+            if (any(item.claim != item.content for item in response.evidence)
+                    or response.answer != "\n".join(facts)):
                 raise FollowUpFailure("evidence_rejected", "混合问答需要完整可核验的视频引文，请调整问题后重试")
             # video_outcome above has already validated source provenance.
             try:
@@ -683,6 +700,47 @@ class GroundedFollowUpService:
             latency_ms=_elapsed_ms(started),
         )
         return rendered
+
+    async def _answer_literal_locations(self, media_id, question, mode, context, memory_session, literals):
+        matches = first_literal_observations(context, literals)
+        if not matches:
+            return "当前缓存没有可唯一核验的精确字面定位，无法确认全视频首次出现；请提供明确的字面目标或缩小问题范围。"
+        candidates, evidence, claims = [], [], []
+        for literal, observation in matches:
+            item = observation.source_item
+            source_hit, prompt_hit = literal_location_hit(context, literal, observation)
+            quote = prompt_hit.transcript if item.source_type == "ASR" else prompt_hit.ocr_texts[0]
+            # A spaced target may match the full text but fail bounded selection.
+            if literal not in "".join(quote.split()):
+                return "当前有界摘录不足以核验目标，无法确认全视频首次出现。"
+            claim = f"字面目标 {literal} 在当前缓存可核验观察中的最早匹配为 {item.timestamp_ms}ms（{item.source_type}观察起点）。"
+            evidence.append(dict(candidateIndex=len(candidates), timestampMs=item.timestamp_ms,
+                source=item.source_type, content=quote, claim=claim))
+            candidates.append(_FollowUpCandidate(source_hit, prompt_hit))
+            claims.append(claim)
+        response = GroundedFollowUpAnswer.model_validate(dict(
+            answer="仅按当前视频缓存中忽略空白的精确字面匹配定位，不能确认全视频首次出现、语义等价形式或额外事件条件。\n" + "\n".join(claims),
+            evidence=evidence))
+        verified = self._verify_response(context, candidates, response)
+        if verified is None:
+            raise FollowUpFailure("evidence_rejected", "缓存定位的来源核验失败，请重新提问")
+        latest = await self._checkpoint.load_context(media_id)
+        if (not isinstance(latest, VideoContext) or latest.source != context.source
+                or source_revision(latest) != source_revision(context)):
+            raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
+        rendered = _render_answer(response.answer, verified)
+        outcome = video_outcome(response, rendered, tuple(v.evidence for v in verified), context, self._verifier)
+        captured = _literal_location_capture.get()
+        if captured is not None:
+            captured.append(dict(scope="VALID_CACHED_LITERAL_OBSERVATIONS_ONLY", media_id=media_id,
+                source_revision=context.source_revision,
+                projection=[source_payload(i,c.prompt_hit,context.observations) for i,c in enumerate(candidates)],
+                response=response.model_dump(mode="json"),
+                verified_source_item_ids=[v.evidence.source_item_ids for v in verified]))
+        result = await self._save_outcome(media_id, question, mode, outcome, memory_session)
+        self._record("literal_location_succeeded", media_id=media_id, mode=mode,
+            category="CACHED_EXACT_MATCH_ONLY", verified_source_refs=len(verified))
+        return result
 
     async def _answer_direct(self, media_id, question, mode, context, memory_session):
         self._record("direct_provider_call_attempted", media_id=media_id, mode=mode)
@@ -820,6 +878,7 @@ class GroundedFollowUpService:
     def _prepare_candidates(
         context: VideoContext,
         hits: Sequence[VideoEvidenceHit],
+        *, question: str | None = None,
     ) -> tuple[_FollowUpCandidate, ...]:
         segments = {
             (segment.start_ms, segment.end_ms): segment
@@ -840,19 +899,8 @@ class GroundedFollowUpService:
             )
             if not transcript and not ocr_texts:
                 continue
-            prompt_hit = hit.model_copy(
-                update={
-                    "snippet": _bounded_text(hit.snippet, MAX_FOLLOW_UP_SOURCE_CHARS),
-                    "transcript": _bounded_text(
-                        transcript,
-                        MAX_FOLLOW_UP_SOURCE_CHARS,
-                    ),
-                    "ocr_texts": tuple(
-                        _bounded_text(value, MAX_FOLLOW_UP_SOURCE_CHARS)
-                        for value in ocr_texts
-                    ),
-                }
-            )
+            prompt_hit = bounded_source_hit(hit.model_copy(update={"transcript": transcript, "ocr_texts": ocr_texts}),
+                context.user_goal if question is None else question)
             prepared.append(_FollowUpCandidate(hit, prompt_hit))
         return tuple(prepared)
 
@@ -874,8 +922,8 @@ class GroundedFollowUpService:
                 return None
 
             source_text = _source_text_for(item.source, hit)
-            quote = normalize_evidence_text(item.content)
-            if not quote or quote not in normalize_evidence_text(source_text):
+            quote = normalize_quote_text(item.content)
+            if not quote or quote not in normalize_quote_text(source_text):
                 return None
 
             evidence = AnalysisEvidence(
@@ -894,6 +942,12 @@ class GroundedFollowUpService:
                     context, evidence, candidate.source_hit.source_item_ids,
                 )
                 if source_item_ids is None:
+                    return None
+                segment = next(s for s in context.segments if s.segment_id == hit.segment_id)
+                original_texts = [_source_item_text(segment, source_item)
+                    for source_item in segment.source_items if source_item.source_item_id in source_item_ids]
+                if (not original_texts or any(text is None for text in original_texts)
+                        or quote not in normalize_quote_text(" ".join(original_texts))):
                     return None
                 evidence = AnalysisEvidence(
                     timestamp_ms=item.timestamp_ms,

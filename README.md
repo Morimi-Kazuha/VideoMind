@@ -4,7 +4,7 @@
 
 VideoMind 将视频语音与画面文字转换为带时间、来源身份和版本的 VideoContext，通过 Hybrid RAG 为 Planner → Executor → Critic 提供证据。应用层校验模型引用的原文、来源 ID、revision 与时间范围，工作台把结构化结论关联到已校验的答案级 Citation，并允许点击返回原片。
 
-当前实现包含 M1 多轮记忆与来源隔离、M2 受限多查询检索、F1 结论证据展示，以及 R1–R5 Bounded Agentic RAG。**CODE FREEZE READY — LIVE GATE PENDING**：确定性工程验证通过，R6 真实完整端到端验收仍待完成。Reflection 与 Feedback 默认关闭，尚未证明生产准确率或成本收益。历史 v0.1.0 与当前实现分别记录；新模块、配置、测试和回滚边界见 [Bounded Agentic RAG 指南](docs/agentic-rag/README.md)。
+当前实现包含 M1 多轮记忆与来源隔离、M2 受限多查询检索、F1 结论证据展示，以及 Bounded Agentic RAG。**ENGINEERING FROZEN / QUALITY INCONCLUSIVE**：最终真实 Follow-up 评测完成 24 次请求，来源核对评分的 7 题配对有依据回答成功率均为 3/7，其余 4 题配对保留语义争议。Reflection 与 Feedback 默认关闭，未证明生产准确率或成本收益。项目转入维护与面试准备；边界与聚合结果见 [最终评测](docs/VIDEOMIND_AGENTIC_RAG_FINAL_EVALUATION.md) 和 [封板验收](docs/VIDEOMIND_FINAL_FREEZE_REPORT.md)。
 
 ![VideoMind 分析工作台：视频、时间轴、证据与 AI 回答](docs/assets/videomind-workspace.png)
 
@@ -147,9 +147,9 @@ npm run build
 
 ## 测试与验收
 
-R0–R5 工程回归覆盖 Need、三路线、来源契约、预算、Reflection、一次 Repair、手动模式、M1/M2、Guard、Jev 与任务恢复。公开测试使用合成 fixtures，不依赖私有视频或实验目录；live/opt-in 测试的跳过不能算通过。正式真实模型与基础设施验收仍 PENDING，fixture 恢复次数不代表用户问答准确率。
+工程回归覆盖 Need、三路线、来源契约、预算、Reflection、一次 Repair、手动模式、M1/M2、Guard、Jev 与任务恢复。公开测试使用合成 fixtures，不依赖私有视频或实验目录；live/opt-in 测试的跳过不能算通过。2026-10-14 最终离线验证为 **1778 passed / 38 skipped / 1 warning**；前端 **107 passed**，构建通过。真实评测复用已有媒体缓存、Chunk 与 Qdrant，未重新处理视频；fixture 恢复次数不代表用户问答准确率。
 
-F1 完整后端 **1235 passed / 36 skipped**；前端 **100 passed**，生产构建通过；另行运行真实 Redis M1 测试 **4 passed**。36 项是显式 opt-in 的基础设施测试，不能计入完整回归通过数。Python compileall、差异和用户文件完整性检查结果见 [最终报告](docs/FINAL_FREEZE_REPORT.md)。本轮没有发起真实模型调用，Agent 视频分析、M1 两轮改写及真实摘要均 NOT_RUN，未宣称完整真实端到端验收通过。
+历史 F1 完整后端 **1235 passed / 36 skipped**；前端 **100 passed**，生产构建通过；另行运行真实 Redis M1 测试 **4 passed**。该历史轮的 36 项是显式 opt-in 基础设施测试，不能计入通过数。历史 Python compileall、差异和用户文件完整性检查见 [F1 报告](docs/FINAL_FREEZE_REPORT.md)。F1 当时没有真实模型调用；本次最终评测的最新结果以 [最终评测](docs/VIDEOMIND_AGENTIC_RAG_FINAL_EVALUATION.md) 为准。
 
 项目保留可复查的 [X3 模型路由评估](docs/X3_OPENROUTER_X3_E_REPORT.md)。其完整 80/80 结果未通过预注册质量门槛，因此不以该实验宣称自适应路由优于固定策略。历史评估与当前产品能力分别呈现。
 
@@ -157,9 +157,9 @@ F1 完整后端 **1235 passed / 36 skipped**；前端 **100 passed**，生产构
 
 ## 项目状态
 
-**v0.1.0 是历史公开发布版本；当前实现包含后续 M1/M2/F1 与 R0–R5，未创建新的 Release。** 当前为 **CODE FREEZE READY — LIVE GATE PENDING**。R6 需另行授权真实 Provider 与基础设施验收，核对三路线质量、自然检索与事实恢复、完整请求成本/时延以及 Memory 恢复；M2、Reflection 和 Feedback 继续默认关闭。
+**v0.1.0 是历史公开发布版本；当前实现包含后续 M1/M2/F1 与 Bounded Agentic RAG，未创建新的 Release。** 当前为 **ENGINEERING FROZEN / QUALITY INCONCLUSIVE**。最终评测未证明 Feedback 质量收益，Holdout 未运行；完整上传链路、独立逐帧语义审核和未启用的外部集成测试不在本轮实测通过范围内。M2、Reflection 和 Feedback 继续默认关闭。
 
-暂停新增功能；真实门槛通过后仅接受明确缺陷修复、必要依赖维护和面试展示材料修改。项目适合技术审阅与作品集展示，尚未发布托管服务；引用为答案级来源绑定，不提供完全确定性的自然语言蕴含证明。
+停止 Agentic RAG 新增开发，仅接受明确缺陷修复、必要依赖维护和面试展示材料修改。项目适合技术审阅与作品集展示，尚未发布托管服务；引用为答案级来源绑定，不提供完全确定性的自然语言蕴含证明。
 
 版本概览见 [v0.1.0 发布说明](docs/RELEASE_NOTES_v0.1.0.md)。
 

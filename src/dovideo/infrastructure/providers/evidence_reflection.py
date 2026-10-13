@@ -71,9 +71,23 @@ class EvidenceReflectionModelAdapter:
 
     @staticmethod
     def messages(question, candidates, *, mixed=False):
-        payload = json.dumps({"question": question, "scope": "BOUNDED_ANSWER_INPUT",
+        # Lossless wire representation: omit repeated keys, never observations.
+        columns = ("source", "timestampMs", "endMs", "excerpt")
+        packed = []
+        for candidate in candidates:
+            row = dict(candidate)
+            if "sourceObservations" in row:
+                row["sourceObservations"] = [tuple(o[key] for key in columns) for o in row["sourceObservations"]]
+            packed.append(row)
+        legacy = json.dumps({"question": question, "scope": "BOUNDED_ANSWER_INPUT",
             "route": "VIDEO_PLUS_KNOWLEDGE" if mixed else "VIDEO_RAG",
             "retrievedSourceCandidates": candidates}, ensure_ascii=False, separators=(",", ":"))
+        compact = json.dumps({"question": question, "scope": "BOUNDED_ANSWER_INPUT",
+            "route": "VIDEO_PLUS_KNOWLEDGE" if mixed else "VIDEO_RAG",
+            "sourceObservationColumns": columns,
+            "retrievedSourceCandidates": packed}, ensure_ascii=False, separators=(",", ":"))
+        # Small inputs keep their frozen wire shape and System identity.
+        payload = compact if len(compact) < len(legacy) else legacy
         if len(question) > 500 or len(candidates) > 8 or len(payload) > 20000:
             raise ValueError("oversized reflection input")
         return ({"role": "system", "content": SYSTEM + json.dumps(assessment_output_schema())},

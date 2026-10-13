@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from dovideo.domain import VideoContext, VideoChunk, VideoEvidenceHit
 from .adaptive_retrieval import AdaptiveRetrievalService
 from .chunking import chunks_compatible
-from .evidence_projection import source_payload
+from .evidence_projection import source_payload, bounded_source_hit
 from .evidence import _source_item_text
 from .evidence_reflection import EvidenceAssessment, ReflectionMode, validate_assessment
 from .execution_budget import AgentExecutionBudget
@@ -249,7 +249,7 @@ async def repair_evidence(mode, assessment, *, question, media_id, context, chun
         except (ValueError, TypeError, AttributeError):
             state = "INVALID_SCOPE"
             return tuple(initial)
-        projection = tuple(source_payload(i, h, context.observations) for i, h in enumerate(initial))
+        projection = tuple(source_payload(i, bounded_source_hit(h, question), context.observations) for i, h in enumerate(initial))
         budget = current_retrieval_budget()
         executed = tuple(budget.queries) if budget is not None else (question,)
         state, plan, unhandled = admit_gap(assessment, question, projection, mixed=mixed, executed_queries=executed)

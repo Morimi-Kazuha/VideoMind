@@ -1,0 +1,139 @@
+{
+  "version": "v2-r3-contract-1",
+  "review_status": "REVIEWED_CONTRACT",
+  "kind": "SYNTHETIC_DETERMINISTIC_NOT_SEMANTIC_GOLD",
+  "cases": [
+    {
+      "id": "v2-reg-01",
+      "origin": "tc-04/tc-17 projection diagnosis",
+      "scenario": "clipping",
+      "test": "test_v2_projection_clipping_is_not_fact_recovery"
+    },
+    {
+      "id": "v2-reg-02",
+      "origin": "historical tc-17 reflection union mismatch",
+      "scenario": "union",
+      "test": "test_v2_invalid_reflection_union_cannot_authorize_repair"
+    },
+    {
+      "id": "v2-reg-03",
+      "origin": "R4 duplicate-only no progress",
+      "scenario": "duplicate",
+      "test": "test_v2_duplicate_repair_stops_after_one_attempt"
+    },
+    {
+      "id": "v2-reg-04",
+      "origin": "R4 request budget admission",
+      "scenario": "budget",
+      "test": "test_v2_repair_budget_denial_preserves_answer"
+    },
+    {
+      "id": "v2-reg-05",
+      "origin": "m1-03 empty rewrite response",
+      "scenario": "rewrite",
+      "test": "test_v2_empty_rewrite_cannot_become_video_evidence"
+    },
+    {
+      "id": "v2-reg-06",
+      "origin": "R4 invalid revision increment",
+      "scenario": "foreign",
+      "test": "test_v2_foreign_source_increment_rejected"
+    },
+    {
+      "id": "v2-reg-07",
+      "origin": "R5 terminal budget memory invariant",
+      "scenario": "termination",
+      "test": "test_v2_terminal_request_never_commits_success"
+    },
+    {
+      "id": "v2-r1-reg-01",
+      "origin": "tc-17 initial candidates contain formula beyond prefix",
+      "scenario": "literal_window",
+      "test": "test_r1_query_projection_keeps_retrieved_formulas_without_larger_cap"
+    },
+    {
+      "id": "v2-r1-reg-02",
+      "origin": "live OCR quotes have no visible exact frame time",
+      "scenario": "ocr_timestamp",
+      "test": "test_r1_ocr_time_mapping_survives_full_asr_observation_budget"
+    },
+    {
+      "id": "v2-r1-reg-03",
+      "origin": "three oversized Reflection inputs mislabeled budget",
+      "scenario": "input_failure_category",
+      "test": "test_r1_missing_reflection_input_is_not_a_token_budget_denial"
+    },
+    {
+      "id": "v2-r1-reg-04",
+      "origin": "shared Reflection/answer projection contract",
+      "scenario": "projection_parity",
+      "test": "test_r1_reflection_and_answer_use_same_selected_source_windows"
+    },
+    {
+      "id": "v2-r1-reg-05",
+      "origin": "five correct live Guard protections",
+      "scenario": "strict_ocr_binding",
+      "test": "test_r1_visible_ocr_time_does_not_allow_wrong_timestamp_or_foreign_quote"
+    },
+    {
+      "id": "v2-r2-reg-01",
+      "origin": "R2 tc-18 real DTO contains six citations",
+      "scenario": "six_citations_strict_rejection",
+      "test": "test_r2_six_citations_replay_is_rejected_without_silent_truncation"
+    },
+    {
+      "id": "v2-r2-reg-02",
+      "origin": "R2 v2-08 ASR quotes incorrectly marked OCR",
+      "scenario": "source_channel_strict_rejection",
+      "test": "test_r2_asr_quote_relabelled_ocr_replay_is_rejected"
+    },
+    {
+      "id": "v2-r3-reg-01",
+      "origin": "R2 reliability finalization; contract review only",
+      "scenario": "scoped_complete_cache_location",
+      "test": "test_r3_first_literal_uses_complete_cache_and_scoped_answer"
+    },
+    {
+      "id": "v2-r3-reg-02",
+      "origin": "R2 reliability finalization; contract review only",
+      "scenario": "unprovable_earliest_uncertainty",
+      "test": "test_r3_first_literal_no_exact_source_returns_uncertainty"
+    },
+    {
+      "id": "v2-r3-reg-03",
+      "origin": "R2 reliability finalization; contract review only",
+      "scenario": "duplicate_citation_rejection",
+      "test": "test_r3_duplicate_citation_is_invalid_without_deduplication"
+    },
+    {
+      "id": "v2-r3-reg-04",
+      "origin": "R2 reliability finalization; contract review only",
+      "scenario": "dto_schema_channel_generation",
+      "test": "test_r3_generation_contract_carries_dto_schema_and_channel_rule"
+    },
+    {
+      "id": "v2-r3-reg-05",
+      "origin": "R2 reliability finalization; contract review only",
+      "scenario": "lossless_reflection_table",
+      "test": "test_r3_reflection_wire_table_is_lossless_and_smaller"
+    },
+    {
+      "id": "v2-r3-reg-06",
+      "origin": "R2 reliability finalization; contract review only",
+      "scenario": "source_channel_math_operator_identity",
+      "test": "test_r3_channel_identity_remains_explicit_and_verified"
+    },
+    {
+      "id": "v2-r3-reg-07",
+      "origin": "R3 synthetic OCR operator collision; not new live inference",
+      "scenario": "ocr_operator_time_identity",
+      "test": "test_r3_ocr_frame_mapping_preserves_formula_operators"
+    },
+    {
+      "id": "v2-final-gate-reg-01",
+      "origin": "Final Development Gate synthetic literal-contract failure; not new live question",
+      "scenario": "mixed_claim_and_answer_literal_integrity",
+      "test": "test_final_gate_mixed_cannot_mutate_verified_quote"
+    }
+  ]
+}

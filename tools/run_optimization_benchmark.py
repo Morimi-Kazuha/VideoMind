@@ -1072,6 +1072,10 @@ async def run_suites(args,out,report):
 
 
 async def main_async(args):
+    if args.suite == 'followup':
+        from agentic_v2_evaluation import run
+        await run(args)
+        return
     sources = environment(args.env_file)
     sources += environment(args.qdrant_env_file,allowed_prefix='DOVIDEO_QDRANT_')
     if args.eval_provider_tag:
@@ -1119,7 +1123,19 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--suite', choices=('all','remaining','context_memory','rag','agent','context','routing','memory','evidence'), default='all')
+    parser.add_argument('--suite', choices=('all','remaining','context_memory','rag','agent','context','routing','memory','evidence','followup'), default='all')
+    parser.add_argument('--live', action='store_true')
+    parser.add_argument('--paid-authorized', action='store_true')
+    parser.add_argument('--followup-cases', default='')
+    parser.add_argument('--followup-arms', default='', help='Explicit arms, e.g. D for one request per case')
+    parser.add_argument('--max-followup-requests', type=int)
+    parser.add_argument('--prior-followup-run', type=Path)
+    parser.add_argument('--max-http-attempts', type=int, default=80)
+    parser.add_argument('--max-total-tokens', type=int, default=200000)
+    parser.add_argument('--max-reported-cost-usd', type=float, default=2.0)
+    parser.add_argument('--request-tokens', type=int, default=50000)
+    parser.add_argument('--output-tokens', type=int, default=2048)
+    parser.add_argument('--reasoning-effort', default=None)
     parser.add_argument('--media-dir', type=Path)
     parser.add_argument('--gold-dir', type=Path)
     parser.add_argument('--output', type=Path, required=True)
