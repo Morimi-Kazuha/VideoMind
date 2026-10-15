@@ -4,7 +4,7 @@
 
 ## Final Status
 
-**READY TO PUSH**。代码审计、完整回归、README与Mermaid渲染、图片原图核对及敏感信息检查完成；本节在实际推送与远端验证后更新。
+**PASS**。58个正式产品/测试/运行/文档/图片文件已提交并正常推送到GitHub main。真实远端README、Mermaid SVG和四张用户原图验证通过；114个私人/原始/未确认公开的未跟踪文件逐项保留本地，没有误当成正式源码漏推。
 
 ## Git 基线与审计范围
 
@@ -63,10 +63,10 @@ README未介绍UI来源；原有LICENSE、client/NOTICE.md与新增THIRD_PARTY_N
 | npm run build | PASS；1.49秒 |
 | Git diff --check | PASS；新文件尾随空白已清理，许可正文保持；保留既有LF/CRLF提示 |
 | Markdown/相对链接 | 指定正文排版、README全部本地链接和四图引用通过 |
-| Mermaid | 本地浏览器真实生成SVG，未仅检查代码块字符串 |
+| Mermaid | 本地浏览器及GitHub实际Mermaid iframe均生成可见SVG，未仅检查代码块字符串 |
 | 浏览器图片 | 四图全部loaded，naturalWidth/naturalHeight与原图一致 |
 | 许可证 | 项目MIT、原client NOTICE、新增UI MIT、Dela/Space OFL、Syncopate Apache完整保留 |
-| 敏感信息检查 | 提交候选文件无真实密钥/JWT/私钥命中；6处credential URL命中均人工核实为replace-me或测试合成值 |
+| 敏感信息检查 | 全部564个已跟踪文本文件无密钥/JWT/私钥模式命中；6处credential URL均人工核实为replace-me或测试合成值 |
 
 38个skipped是显式opt-in集成用例，不算本轮Live通过；21个warnings包含既有TestClient弃用与Windows子进程文本解码告警，没有隐去测试失败。本轮发布整理没有新发起付费模型分析；历史真实业务范围见PRODUCT_VERIFICATION.md，原始数据仅留本地。
 
@@ -258,5 +258,19 @@ README未介绍UI来源；原有LICENSE、client/NOTICE.md与新增THIRD_PARTY_N
 
 ## Commit、Push 与远端检查
 
-待实际提交推送后更新本节。目标确认：origin=https://github.com/Morimi-Kazuha/VideoMind.git，branch=main。
+- 目标：origin=https://github.com/Morimi-Kazuha/VideoMind.git，branch=main。
+- 产品与README提交：`e5b95d96ed5b3b82deddf2536a5bbbbe42fccdbc`。
+- Commit：[feat: finalize VideoMind product and README showcase](https://github.com/Morimi-Kazuha/VideoMind/commit/e5b95d96ed5b3b82deddf2536a5bbbbe42fccdbc)。
+- 实际Push成功，远端refs/heads/main与已核验产品HEAD逐字一致，无Force Push。
+- 本轮文件均在远端tree中：58个；正式UI、预算、URL导入、后端修复、测试和启动器均已同步。
+- README与四张图片的commit固定URL均HTTP200，字节与对应Git blob一致；图片SHA与用户原图一致。
+- 浏览器直接打开GitHub仓库HTTP200；README完整渲染，4图逐一滚动加载成功，Mermaid跨域iframe出现可见SVG。
+- [项目主页](https://github.com/Morimi-Kazuha/VideoMind)、[README](https://github.com/Morimi-Kazuha/VideoMind/blob/main/README.md)、[main提交历史](https://github.com/Morimi-Kazuha/VideoMind/commits/main/)。
+- 本报告在上述验证后以独立docs提交追加，产品文件不变；报告提交可在main历史中查询，报告自身不嵌入其自身Hash。
+- 最终检查保留的114个未跟踪路径与清单一致，没有剩余已跟踪功能修改或额外待推产品Commit。
 禁止Force Push、Reset --hard、Clean与无关Release/Tag；没有删除用户历史数据。
+
+
+## 仍存在的事项
+
+本轮同步没有新增产品阻塞。显式opt-in测试未运行、既有测试告警和历史长视频预算/外部样片失败仍作为边界保留，不作性能或全场景稳定承诺。原始失败报告和数据没有删除。私人材料留在本地属于审计决定，不等于推送失败。
