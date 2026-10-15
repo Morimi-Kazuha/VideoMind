@@ -1,0 +1,34 @@
+@font-face { font-family: 'Dela Gothic One'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/Dela-Gothic-One.woff2'); }
+@font-face { font-family: 'Space Grotesk'; font-style: normal; font-weight: 300 700; font-display: swap; src: url('/fonts/Space-Grotesk.woff2'); }
+@font-face { font-family: 'Syncopate'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/Syncopate.woff2'); }
+.cyber-app {
+  --primary: #54e5db; --primary-rgb: 84, 229, 219; --secondary: #a78bfa;
+  --background: #0b0c10; --surface: #121418; --surface-hover: #182527;
+  --border: #2a3438; --text-primary: #e0e0e0; --text-secondary: #9bafad; --text-inverse: #0b0c10;
+  --bg-deep: var(--background); --bg-card: var(--surface); --accent-purple: var(--secondary);
+  --text-main: var(--text-primary); --text-sub: var(--text-secondary); --text-muted: var(--text-secondary); --border-tech: var(--border);
+  --shadow-float: 0 10px 30px -10px rgba(0,0,0,.7); --shadow-glow-cyan: 0 0 20px rgba(var(--primary-rgb),.2);
+  --academy-blue: var(--primary); --academy-cyan: var(--primary); --academy-violet: var(--secondary); --academy-pink: var(--secondary);
+  --bg-void: var(--background); --bg-panel: var(--surface); --bg-panel-raised: var(--surface); --bg-panel-hover: var(--surface-hover);
+  --border-normal: var(--border); --border-active: var(--primary); --border-subtle: var(--border);
+  --success: #74f0b2; --warning: #ffd580; --danger: #ff7c9c;
+  --font-body: 'Space Grotesk', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-system: Consolas, 'Cascadia Code', monospace;
+  color-scheme: dark; background: var(--background); line-height: 1.55;
+}
+.cyber-app *, .cyber-app *::before, .cyber-app *::after { box-sizing: border-box; }
+.cyber-app a { color: inherit; text-decoration: none; }
+.cyber-app button { cursor: pointer; }
+.cyber-app :is(button,input,textarea,select):disabled { cursor: not-allowed; }
+.cyber-app :is(a,button,input,select,textarea,summary,[tabindex]):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.cyber-app ::selection { background: var(--primary); color: var(--text-inverse); }
+.cyber-app .academy-button { padding: 9px 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text-primary); }
+.cyber-app .academy-button:hover { border-color: var(--primary); background: var(--surface-hover); }
+.cyber-app .academy-button--primary { background: var(--primary); color: var(--text-inverse); }
+.cyber-app .academy-button--danger { color: var(--danger); }
+.cyber-app .academy-mark { width: 24px; height: 24px; }
+.cyber-app .analysis-workspace :is(h1,h2,h3,p,dl) { margin: 0; }
+body.overlay-open { overflow: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .cyber-app *, .cyber-app *::before, .cyber-app *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

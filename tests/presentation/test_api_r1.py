@@ -203,12 +203,12 @@ def test_analysis_dispatch_worker_sse_retrieval_eval_and_trace(client: TestClien
     assert after_feedback["userAcceptanceRate"] == 1.0
 
 
-def test_r1_does_not_attempt_remote_url_import(client: TestClient) -> None:
+def test_url_import_rejects_web_pages(client: TestClient) -> None:
     headers = auth_headers(client)
     response = client.post(
         "/media/upload-url",
-        params={"url": "https://example.invalid/video.mp4"},
+        params={"url": "https://example.invalid/watch"},
         headers=headers,
     )
-    assert response.status_code == 501
+    assert response.status_code == 400
     assert response.json()["data"] is None

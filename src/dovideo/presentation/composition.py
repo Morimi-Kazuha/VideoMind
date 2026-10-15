@@ -758,7 +758,11 @@ def _model_config_from_environment() -> ProviderConfig:
 
 def _agent_budget_from_environment(environ: Mapping[str, str] | None = None) -> AgentBudgetConfig:
     values = os.environ if environ is None else environ
+    token_budget = values.get("DOVIDEO_AGENT_TOKEN_BUDGET_ENABLED", "true").strip().lower()
+    if token_budget not in {"true", "false"}:
+        raise ValueError("DOVIDEO_AGENT_TOKEN_BUDGET_ENABLED must be true or false")
     return AgentBudgetConfig(
+        token_budget_enabled=token_budget == "true",
         max_rounds=_int_setting(values, ("DOVIDEO_AGENT_MAX_ROUNDS",), 2),
         max_duration_ms=_int_setting(
             values, ("DOVIDEO_AGENT_MAX_DURATION_MS",), 240_000

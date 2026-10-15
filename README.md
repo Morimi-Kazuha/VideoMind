@@ -1,123 +1,338 @@
+<div align="center">
+
 # VideoMind
 
-> 面向长视频理解与深度分析的 Video Agent 平台
+**DECODE YOUR VIDEO · 让每一帧都有答案**
 
-VideoMind 将视频语音与画面文字转换为带时间、来源身份和版本的 VideoContext，通过 Hybrid RAG 为 Planner → Executor → Critic 提供证据。应用层校验模型引用的原文、来源 ID、revision 与时间范围，工作台把结构化结论关联到已校验的答案级 Citation，并允许点击返回原片。
+面向长视频理解与深度分析的 **Video Agent 平台**
 
-当前实现包含 M1 多轮记忆与来源隔离、M2 受限多查询检索、F1 结论证据展示，以及 Bounded Agentic RAG。**ENGINEERING FROZEN / QUALITY INCONCLUSIVE**：最终真实 Follow-up 评测完成 24 次请求，来源核对评分的 7 题配对有依据回答成功率均为 3/7，其余 4 题配对保留语义争议。Reflection 与 Feedback 默认关闭，未证明生产准确率或成本收益。项目转入维护与面试准备；边界与聚合结果见 [最终评测](docs/VIDEOMIND_AGENTIC_RAG_FINAL_EVALUATION.md) 和 [封板验收](docs/VIDEOMIND_FINAL_FREEZE_REPORT.md)。
+从视频上传、多模态解析到 Agent 自主分析与证据核验，让视频内容真正变得可检索、可理解、可追溯。
 
-![VideoMind 分析工作台：视频、时间轴、证据与 AI 回答](docs/assets/videomind-workspace.png)
+<p>
+  <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FastAPI-API-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Vue-3-42B883?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue 3" />
+  <img src="https://img.shields.io/badge/Celery-RabbitMQ-37814A?style=flat-square" alt="Celery + RabbitMQ" />
+  <img src="https://img.shields.io/badge/Hybrid%20RAG-Qdrant-DC244C?style=flat-square" alt="Hybrid RAG" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-54E5DB?style=flat-square" alt="MIT License" /></a>
+</p>
 
-**视频 ↔ 时间轴 ↔ 证据 ↔ AI** · 中文工作台 · Pixel Future Academy
+</div>
 
-## 为什么是 VideoMind
+---
 
-长视频中的事实分散在语音与画面文字中。一次性把全部转录文本交给模型既昂贵，也很难把答案与原片对应。VideoMind 保存带时间的 ASR/OCR 来源记录，先检索再分析，并把经过校验的答案级引用连接到 Evidence、时间轴和播放器。
+## 🎬 项目介绍
+
+**VideoMind** 是一个面向长视频内容理解与深度分析场景构建的智能 Video Agent 平台。
+
+传统视频平台大多解决了视频的上传、存储与播放问题，但对于课程录像、技术讲解、会议记录等信息密集型长视频，用户仍然面临三个核心问题：
+
+- **内容跨度大，关键信息分散。** 重要知识点可能分布在不同时间段，也可能同时存在于语音、板书和演示画面中，依靠人工拖动进度条查找效率低下。
+- **处理链路复杂，执行耗时长。** 视频上传、音频转录、画面识别、向量索引及模型推理涉及多个耗时阶段，需要可靠的异步任务机制和故障恢复能力。
+- **AI 结论难以追溯。** 普通视频总结往往只能给出一段自然语言回答，用户难以确定结论来自视频的哪个片段，也无法方便地核对原始内容。
+
+针对这些问题，VideoMind 构建了一条完整的视频智能处理链路：
+
+**稳健上传 → 异步多模态解析 → 时序上下文构建 → Hybrid RAG → Agent 规划与执行 → 可信证据核验 → 多轮追问。**
+
+系统通过 FFmpeg、Whisper ASR 与 OCR 提取视频中的语音和画面文字，将其统一组织为携带时间戳、来源身份与版本信息的 `VideoContext`。
+
+用户提出分析目标后，系统利用 Hybrid RAG 检索相关视频证据，由 Planner 制定分析计划、Executor 执行任务、Critic 检查结果，再通过应用层 Evidence Guard 对引用来源进行确定性校验。
+
+最终，VideoMind 不仅能够生成结构化的视频分析结果，还能够将结论关联到真实的视频时间位置，帮助用户直接返回原片核查，并围绕同一视频继续追问。
+
+**VideoMind 的核心目标不是简单地“让 AI 总结视频”，而是让 AI 能够基于视频证据完成可控、可恢复、可追溯的分析任务。**
+
+---
+
+## ✨ 项目预览
+
+以下图片来自 VideoMind 的真实业务运行。
+
+### 视频上传与媒体管理
+
+<p align="center"><img src="docs/assets/videomind-live-home.png" width="1000" alt="VideoMind 真实首页" /></p>
+
+### 视频工作台
+
+<p align="center"><img src="docs/assets/videomind-live-library.png" width="1000" alt="VideoMind 真实媒体工作台" /></p>
+
+### Video Agent 智能分析
+
+<p align="center"><img src="docs/assets/videomind-live-agent.png" width="1100" alt="VideoMind 真实 Agent 分析" /></p>
+
+### 多模态证据与视频定位
+
+<p align="center"><img src="docs/assets/videomind-live-evidence.png" width="1100" alt="VideoMind 真实证据与时间轴" /></p>
+
+
+VideoMind 将视频播放器、ASR/OCR 记录、时序时间轴与 Agent 分析结果整合到统一工作区中。
+
+用户可以查看分析结论对应的语音或画面证据，并通过时间戳定位到原视频片段，完成从 **AI 回答 → 可信引用 → 原始证据 → 视频时间点** 的交互闭环。
+
+---
+
+## 🚀 核心功能
+
+### 1. 稳健上传与异步任务处理
+
+> 解决大文件传输不稳定、长任务阻塞和重复执行带来的可靠性问题。
+
+**分片上传与断点续传**
+
+视频按照固定大小分片上传，通过 Redis 维护 UploadSession 和服务端已确认的分片状态，利用 MinIO 存储视频对象。
+
+当网络中断或上传被取消时，客户端可以查询当前上传进度，跳过已经完成的分片并继续上传，避免重新传输整个视频。
+
+WEB LINK 支持无需认证的公开 HTTPS MP4 直链，保留地址安全校验、重定向、下载体积和超时边界。
+
+**上传幂等与并发控制**
+
+结合上传会话身份、媒体归属校验、Merge Lock、顺序流式合并和 Completion Receipt，处理并发合并、重复完成请求及异常恢复等问题。
+
+**RabbitMQ + Celery 异步解耦**
+
+将耗时的视频解析与 Agent 分析从 HTTP 请求主链路中剥离。
+
+API 负责请求准入和任务提交，Worker 在后台执行真正的业务流程，前端通过 SSE 获取执行状态。
+
+**租约、Checkpoint 与故障恢复**
+
+使用 Redis 任务租约协调并发执行，通过持久化 Checkpoint 记录已完成阶段。
+
+Worker 发生异常或任务中断后，可以根据已保存的执行状态恢复，减少重复计算和重复调用模型的成本。
+
+**Redis + Lua 限流**
+
+使用用户级与全局级 Token Bucket，通过 Redis Lua 脚本原子完成令牌补充、额度检查和扣减，保护高成本 AI 请求入口。
+
+---
+
+### 2. 时序多模态 VideoContext
+
+> 将语音、画面文字和时间信息融合为统一的视频证据表示。
+
+VideoMind 采用多模态解析链路：
+
+- **FFmpeg**：完成音频切分与关键帧提取。
+- **Whisper ASR**：识别视频语音并保留对应时间区间。
+- **Tesseract OCR**：识别板书、PPT 和其他画面文字。
+- **VideoContext**：将不同模态的观察结果组织为统一的时序上下文。
+
+系统以 60 秒 Segment 组织基础时序证据，并通过带重叠窗口的 Chunk 组织长上下文检索单元。
+
+每条来源记录保留必要的时间戳、来源身份与版本信息，为后续检索、模型分析及证据校验提供统一依据。
+
+区别于将完整转录文本直接输入模型，VideoMind 可以根据用户问题检索具体时间范围内的语音与画面文字，并将分析结果关联回原视频。
+
+---
+
+### 3. Hybrid RAG 混合检索
+
+> 结合语义理解和关键词匹配，提高长视频中相关证据的检索能力。
+
+VideoMind 使用 Dense 与 Sparse 双路检索：
+
+- **Dense Retrieval**：通过 BGE-M3 生成文本向量，使用 Qdrant 进行语义召回。
+- **Sparse Retrieval**：通过 BM25 进行关键词匹配，补充专业术语、具体名称和精确表述的检索能力。
+- **RRF Fusion**：融合两路候选结果，形成统一的相关证据集合。
+- **候选去重与重排序**：对候选来源进行整理，并按照现有检索策略控制输入规模；可按配置接入 Reranker。
+
+检索不仅关注文本相似度，还需要保持媒体身份、来源版本与时间范围的一致性。
+
+Agent 获得的是与用户问题相关的视频证据，而不是无边界的历史对话或其他视频内容。
+
+---
+
+### 4. Planner → Executor → Critic Agent 闭环
+
+> 让 Agent 从一次性内容生成，升级为具备任务规划、执行、检查和有限修订能力的分析流程。
+
+VideoMind 实现了自研 AgentLoop，围绕用户分析目标形成三个主要角色：
+
+**Planner — 任务规划**
+
+理解用户目标，将复杂分析请求拆解为具有明确目的的子任务，组织后续执行流程。
+
+**Executor — 任务执行**
+
+结合检索到的视频证据执行分析，并生成结构化结论、相关内容与候选引用。
+
+Executor 可以根据受控工具协议提出工具调用请求，获取进一步的视频信息。
+
+**Critic — 结果校验**
+
+检查分析结果是否覆盖用户目标、内容是否完整，以及结论与引用证据是否具有合理的语义支持。
+
+当结果存在明显问题时，Agent 可以根据反馈补充证据、修订计划或重新生成内容。
+
+**Harness — 确定性执行边界**
+
+模型负责提出行动和生成内容，但最终能否执行工具、能够访问哪些数据、是否满足调用预算以及引用是否合法，均由应用层规则控制。
+
+系统通过 ToolRegistry、ToolPolicy、结构化输出校验、执行预算、Checkpoint 和 Execution Record 对 Agent 行为进行约束与记录。
+
+这一设计将模型的不确定性与业务系统的确定性控制分离，使 Agent 执行过程更加可控、可追踪。
+
+---
+
+### 5. Evidence Guard 与可追溯视频引用
+
+> 不仅生成答案，还要让用户能够找到答案在视频中的依据。
+
+VideoMind 将模型生成的候选证据与原始 `VideoContext` 中的真实来源进行校验。
+
+验证内容包括：
+
+- 来源身份是否合法。
+- 来源版本是否一致。
+- 引用原文是否对应真实观察记录。
+- 引用时间是否对应来源记录的时间范围。
+- 最终展示的 Citation 是否具有合法来源绑定。
+
+通过校验的引用可以关联到结构化结论，并在前端展示为可交互的证据入口。
+
+用户点击对应引用，即可定位到视频中的相关时间位置，并结合语音或画面文字核对分析内容。
+
+**Critic 与 Evidence Guard 承担不同职责：**
+
+Critic 负责模型层面的语义质量判断，Evidence Guard 负责应用层的来源与引用合法性校验。
+
+来源合法不等于自然语言结论必然正确，但能够有效避免将不存在或不匹配的视频来源直接展示为可信证据。
+
+---
+
+### 6. 多轮追问与上下文管理
+
+> 在连续对话中保持用户意图，同时确保回答依然建立在当前视频证据之上。
+
+VideoMind 基于 Redis 实现面向视频分析的多轮会话机制。
+
+通过近期完整问答、滚动摘要和会话身份维护上下文，使系统能够处理：
+
+- 对前一次回答的补充提问。
+- 对某个知识点的进一步解释。
+- “它”“上一点”“刚才提到的内容”等指代问题。
+- 同一视频中的连续知识探索。
+
+对于需要上下文消解的问题，可以结合历史会话生成独立检索查询，再使用当前视频的真实证据进行回答。
+
+同时按照用户、媒体、分析目标、会话与来源版本进行隔离，避免不同用户或不同视频之间的上下文污染。
+
+历史回答用于理解当前问题，而不会自动成为新的可信视频来源。
+
+---
+
+## 🧩 系统架构
 
 ```mermaid
-flowchart LR
-    A[AI 回答] --> B[结构化 Citation]
-    B --> C[已验证 Evidence]
-    C --> D[ASR / OCR 时间轴]
-    D --> E[视频时间点]
-```
+flowchart TD
+    User[用户] --> Web[Vue 3 工作台]
+    Web --> API[FastAPI / REST / SSE]
 
-## 核心能力
+    API --> Upload[分片上传与断点续传]
+    Upload --> MinIO[(MinIO)]
+    Upload --> MySQL[(MySQL)]
 
-AI 交互入口使用 **Redis + Lua 用户级与全局级双维分布式 Token Bucket**。
-每个请求消费 1 token；Redis TIME 驱动连续补充，Lua 原子完成双桶
-refill、检查和同时扣减。分析在权限校验、完成结果复用之后、RabbitMQ
-入队之前准入；Redis 异常返回 503 并 fail-closed，额度不足返回 429 与
-Retry-After。默认用户容量 60、全局容量 600，60 秒完整补充。它控制请求
-提交速率；LLM token 预算仍由独立执行预算管理。见 [限流设计与验证](docs/AI_INTERACTION_RATE_LIMIT.md)。
+    API --> MQ[RabbitMQ]
+    MQ --> Worker[Celery Worker]
 
-| 能力             | 在工作台中的作用                                                                             |
-| ---------------- | -------------------------------------------------------------------------------------------- |
-| 长视频分析       | 60 秒上下文窗口、分块、分页时序记录和检索式上下文，让分析聚焦相关片段。                      |
-| 多模态时间轴     | 在视频播放位置附近查看 ASR、OCR 和引用标记；逐条记录保留来源时间。                           |
-| 可核查的 AI 证据 | 模型提出的引用要通过来源身份、原文和时间范围校验，才会成为可信的界面引用。当前为答案级引用。 |
-| 分层分析         | Planner 制定任务，Executor 生成分析，Critic 检查结果；应用层负责确定性约束。                 |
-| 多轮追问         | M1 保留最近六轮完整问答与滚动摘要，指代改写先进入检索，历史不能充当视频来源。                |
-| 受限复杂检索     | M2 提议 2–3 条抽取式子查询，Harness 限制执行、来源、合并与预算；默认关闭。                    |
-| 三路线追问       | Retrieval Need 保守区分 DIRECT_LLM、VIDEO_RAG 和 MIXED；通用知识与视频事实使用独立来源标签。 |
-| 有界证据反馈     | 可选 Reflection 提议缺口，应用验证后至多执行一次基础 Hybrid 补检索；默认关闭。 |
-| 预算与遥测       | 累计 token 预算在模型请求前准入，按阶段记录用量，压缩重复的 Prompt 内容。                    |
-| 中文操作界面     | 媒体库、分析工作台与 Pixel Future Academy 视觉体系。                                         |
+    Worker --> Parse[FFmpeg / Whisper / OCR]
+    Parse --> Context[VideoContext]
+    Context --> Chunk[Segment / Chunk]
 
-点击回答中的引用，可沿 **Citation → Evidence → 时间轴 → 视频** 返回原始片段。模型输出不能自行授予工具调用或证据可信性；只读工具和最终来源校验由应用代码控制。
-
-核心结论使用 `AnalysisResult.conclusions` 与已验证 Citation 的 `claim` **精确相等**关联，一条结论可有多条引用；无合法绑定时显示“暂无通过校验的可绑定证据”。不从 Markdown、关键词或相似度推断支持关系。来源校验与 Critic 的语义判断分工不同，不能将来源合法等同于结论必然正确。
-
-## 界面
-
-| 媒体库                                                       | 时序记录                                                                    |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| ![VideoMind 媒体库](docs/assets/videomind-media-library.png) | ![VideoMind ASR/OCR 时间轴记录](docs/assets/videomind-temporal-records.png) |
-
-主图与时序记录来自本地真实媒体验证；媒体库图使用内置演示数据。另见 [设计实验室截图](docs/assets/videomind-design-lab.png) 与 [Pixel Future Academy 规范](docs/design/DESIGN_SYSTEM.md)。
-
-## 架构
-
-```mermaid
-flowchart LR
-    Media[视频] --> Extract[FFmpeg / Whisper ASR / Tesseract OCR]
-    Extract --> Context[VideoContext 与时序来源]
-    Context --> Chunks[5min Chunk / 1min overlap]
-    Chunks --> Adaptive[M2 可选受限多查询 / 默认 OFF]
-    Adaptive --> Dense[BGE-M3 / Qdrant candidates]
-    Adaptive --> Sparse[进程内 BM25]
-    Dense --> Fusion[RRF]
+    Chunk --> Dense[BGE-M3 / Qdrant]
+    Chunk --> Sparse[BM25]
+    Dense --> Fusion[RRF 融合]
     Sparse --> Fusion
-    Fusion --> Retrieval[可选 Cross-Encoder / Segment 排序去重]
-    Retrieval --> Planner
-    Planner --> Executor
-    Executor --> Critic
-    Critic --> Guard[确定性 Evidence 校验]
-    Guard --> UI[结论 / Citation / 时间轴 / 视频]
-    UI --> Memory[M1 Redis 六轮 / Rolling Summary]
-    Memory --> Rewrite[Query Rewrite / 原问题保留]
-    Rewrite --> Adaptive
-    Retrieval --> FollowUp[独立 Grounded Follow-up]
-    FollowUp --> Guard
+
+    Fusion --> Agent[Planner / Executor / Critic]
+    Agent --> Guard[Evidence Guard]
+    Guard --> Result[结构化分析与可信引用]
+
+    Result --> Web
+    Web --> Player[视频时间轴与证据定位]
+
+    API --> Redis[(Redis)]
+    Worker --> Checkpoint[Checkpoint / Execution Record]
+    Checkpoint --> MySQL
+
+    Web --> FollowUp[多轮追问]
+    FollowUp --> Memory[Redis 会话上下文]
+    Memory --> Fusion
 ```
 
-Vue 3/Vite 提供界面，FastAPI 提供 REST 与 SSE。Celery/RabbitMQ 执行耗时任务；MySQL 保存持久记录，Redis 处理运行态，MinIO 保存媒体，Qdrant 建立向量索引。`VideoContext` 是时序来源的权威表示；检索与各 Agent 阶段只接收所需投影，避免重复传递完整媒体上下文。详见 [架构与权责边界](docs/ARCHITECTURE.md)、[时序读取模型](docs/VIDEOMIND_TEMPORAL_READ_MODEL.md) 和 [执行预算](docs/VIDEOMIND_R5_EXECUTION_BUDGET.md)。
+VideoMind 使用 Vue 3 与 FastAPI 构建前后端交互层，通过 RabbitMQ/Celery 处理耗时任务。
 
-长视频检索采用 5 分钟窗口、1 分钟 overlap、4 分钟 stride。Dense 与 BM25 各取最多 8 个候选，RRF 融合最多 10 个，最终选 3 个 Chunk；证据仍来自 canonical 60 秒 Segment 与 ASR/OCR source item。Qdrant 按媒体、来源 revision 和 chunking version 限定候选，正常查询不会逐个扫描非命中 Chunk 的 cosine。Reranker 默认关闭，启用配置及 base/Strict R4 降级差异见 [检索说明](docs/RETRIEVAL.md)。
+MySQL 负责持久化业务数据，Redis 管理运行态、限流、租约与对话上下文，MinIO 保存视频对象，Qdrant 提供向量检索能力。
 
-## Agent 与 Harness
+Agent 分析过程围绕统一的时序证据展开，并通过 Checkpoint、执行记录和 Evidence Guard 实现状态恢复与来源校验。
 
-Planner 产出受控计划，Executor 生成结构化结果，Critic 检查目标覆盖与语义支持；Evidence Guard 独立验证来源与时间。ToolRegistry/ToolPolicy 控制只读 Function Calling，模型建议不能修改权限、来源范围或预算。Checkpoint 与 Historical Replay 保存可审查的执行事实。
+---
 
-阶段化 Context Projection、累计 Token Budget 和 Retry/Repair accounting 约束模型调用。历史代表性长视频用量由约 64k 降至 22k–27k，属于 [R6 实测记录](docs/VIDEOMIND_R6_ASYNC_RELIABILITY_REPORT.md)，不是本轮重测或所有视频的保证。Jev 仅提供 FAST/BALANCED/DEEP lane 建议，最终配置及异常回退由策略决定；自动模型路由默认关闭。
+## 🛠️ 技术栈
 
-## M1 多轮记忆
+| 模块 | 技术选型 | 主要用途 |
+|---|---|---|
+| 前端 | Vue 3、Vite、JavaScript、CSS | 媒体工作台、分析结果、视频交互 |
+| Web API | Python、FastAPI、Pydantic | 用户鉴权、上传、REST 与 SSE |
+| 异步任务 | RabbitMQ、Celery | 任务分发、异步执行与恢复 |
+| 状态管理 | Redis、Lua | Token Bucket、任务租约与会话 |
+| 关系数据库 | MySQL、SQLAlchemy、Alembic | 业务数据、持久化与数据库迁移 |
+| 对象存储 | MinIO | 视频文件及相关对象 |
+| 多模态解析 | FFmpeg、Whisper、Tesseract | 音频、ASR、关键帧与 OCR |
+| 向量检索 | BGE-M3、Qdrant | Dense Retrieval |
+| 混合检索 | BM25、RRF | Sparse Retrieval 与结果融合 |
+| Agent | Planner、Executor、Critic、Harness | 规划、执行、校验与工具管理 |
+| 部署与开发 | Docker Compose、PowerShell | 本地服务编排与运行管理 |
 
-Redis 保存最近六轮完整问答及七天 TTL；原始待压缩问答达到十轮时，真实模型配置下由 LLM 合并最早四轮与旧摘要。需要指代消解时先生成 `standalone_query` 用于检索，回答模型仍收到原始问题。成功 Guard 后才写入记忆，并在提交前再次检查媒体权限与来源版本。用户、媒体、目标、模式、会话和 revision 隔离，Lua 租约/CAS 防止并发覆盖；页面重开可恢复近期对话。
+---
 
-历史 F1 验收记录真实 Redis 四项测试通过；当前 M1 首轮列表指代、改写、摘要、来源标签与错误历史隔离通过确定性测试。最新完整 Provider 多轮链路仍 PENDING，历史记录见 [记忆设计](docs/CONVERSATION_MEMORY.md) 与 [F1 验收](docs/FINAL_FREEZE_REPORT.md)。
+## 💻 如何本地运行
 
-## M2 自适应检索（默认关闭）
+### 环境要求
 
-`DOVIDEO_ADAPTIVE_RETRIEVAL_ENABLED=false` 保持单次 Hybrid 基线。显式启用后，潜在复杂问题可由既有模型客户端提出抽取自原问题的 2–3 条子查询；Harness 校验计划、来源版本、调用次数和预算，逐条调用同一 Hybrid，轮询合并并去重。Critic 补检索与受控 search 工具继续走一次基线路径。
+- Python 3.12+
+- Node.js 22.12+
+- Docker Desktop / Docker Compose
+- FFmpeg / ffprobe
+- Tesseract OCR
+- Whisper 运行依赖
+- 可用的聊天模型与 Embedding Provider 配置
 
-十个合成案例的离线 A/B 平均目标 Segment recall 均为 **0.944444**；Hybrid 调用由 10 次增至 19 次，未测得召回提升，部分复杂问题带来干扰候选。候选覆盖不等于答案可证性；真实 Provider M2 路径本轮 NOT_RUN，保留为默认关闭的实验能力。见 [M2 设计与负结果](docs/ADAPTIVE_RETRIEVAL.md)。
+项目完整运行依赖 MySQL、Redis、RabbitMQ、MinIO、Qdrant 和 Celery Worker。
 
-## 异步任务与恢复
+### 1. 环境配置
 
-FastAPI 准入后由 RabbitMQ/Celery 执行，MySQL 保存持久任务事实，Redis 管理租约和短期状态，MinIO 保存视频。幂等请求、业务重试、durable dead-letter handoff、checkpoint 和失败任务重放处理长任务中断；SSE 驱动前端恢复与后台完成通知。租约与回执均有期限，不承诺跨所有故障的 exactly-once。真实历史执行与浏览器结果见 [R6 报告](docs/VIDEOMIND_R6_ASYNC_RELIABILITY_REPORT.md)。
-
-## 快速开始
-
-需要 Python 3.12+、Node.js 22.12+ 与 npm。开发者可以先启动无需外部服务的本地 API 与界面。创建虚拟环境后，先在当前终端激活它：POSIX shell 用 `source .venv/bin/activate`，PowerShell 用 `.\.venv\Scripts\Activate.ps1`。
+克隆项目：
 
 ```bash
-python -m venv .venv
-python -m pip install -e ".[test]"
-python -m dovideo api
+git clone https://github.com/Morimi-Kazuha/VideoMind.git
+cd VideoMind
 ```
 
-在另一个终端运行：
+根据项目中的 `.env.example` 与完整启动文档配置数据库、对象存储、消息队列和 AI Provider。
+
+真实密钥及密码应保存在本地私有配置中，不要提交到 GitHub。
+
+### 2. 启动服务
+
+对于已完成配置的 Windows 开发环境，可以使用项目提供的 PowerShell 脚本管理本地服务：
+
+```powershell
+.\scripts\local-product.ps1 Status
+.\scripts\local-product.ps1 Start
+```
+
+启动后根据终端输出访问前端地址。
+
+新环境需要先完成依赖安装和数据库初始化或迁移，并按启动指南从 `scripts/local-product.settings.example.json` 创建本地私有 settings 文件。
+
+具体说明见：
+
+[完整启动指南](docs/QUICK_START.md)
+
+### 3. 前端开发
 
 ```bash
 cd client
@@ -125,44 +340,45 @@ npm ci
 npm run dev
 ```
 
-打开 `http://127.0.0.1:5173`，后端健康检查为 `http://127.0.0.1:8000/health`。**本地默认组合用于界面与 API 探索；完整媒体处理需启动生产组合**：Docker Compose 的 MySQL、Redis、MinIO、Qdrant、RabbitMQ，独立 Celery worker，FFmpeg/ffprobe、Tesseract、Whisper，以及结构化聊天和 BGE-M3 Embedding Provider。按 [完整启动指南](docs/QUICK_START.md) 配置被忽略的本地环境文件。外部模型调用会产生供应商费用。
+### 4. 测试
 
-## 五分钟演示路径
-
-1. 在媒体库导入一段有语音或画面文字的视频，等待上传完成。
-2. 打开分析工作台并提交问题；生产组合中的 worker 会处理媒体和分析任务。
-3. 查看 ASR/OCR 记录与多轨时间轴，搜索一个出现过的词。
-4. 在 AI 回答中打开引用，查看 Evidence，点击时间标记跳到对应视频位置。
-
-## 配置与开发
-
-安全示例见 [.env.example](.env.example)。`DOVIDEO_*` 是为兼容现有 Python 配置保留的内部变量；公共产品名称为 VideoMind。真实分析需要设置聊天与 Embedding 凭据，默认关闭的自动路由不影响基本分析。完整环境变量、服务启动顺序及系统依赖见 [启动指南](docs/QUICK_START.md)。
+后端：
 
 ```bash
 python -m pytest -q
+```
+
+前端：
+
+```bash
 cd client
 npm test
 npm run build
 ```
 
-## 测试与验收
+---
 
-工程回归覆盖 Need、三路线、来源契约、预算、Reflection、一次 Repair、手动模式、M1/M2、Guard、Jev 与任务恢复。公开测试使用合成 fixtures，不依赖私有视频或实验目录；live/opt-in 测试的跳过不能算通过。2026-10-14 最终离线验证为 **1778 passed / 38 skipped / 1 warning**；前端 **107 passed**，构建通过。真实评测复用已有媒体缓存、Chunk 与 Qdrant，未重新处理视频；fixture 恢复次数不代表用户问答准确率。
+## 📌 项目说明
 
-历史 F1 完整后端 **1235 passed / 36 skipped**；前端 **100 passed**，生产构建通过；另行运行真实 Redis M1 测试 **4 passed**。该历史轮的 36 项是显式 opt-in 基础设施测试，不能计入通过数。历史 Python compileall、差异和用户文件完整性检查见 [F1 报告](docs/FINAL_FREEZE_REPORT.md)。F1 当时没有真实模型调用；本次最终评测的最新结果以 [最终评测](docs/VIDEOMIND_AGENTIC_RAG_FINAL_EVALUATION.md) 为准。
+VideoMind 主要围绕真实视频内容展开分析。
 
-项目保留可复查的 [X3 模型路由评估](docs/X3_OPENROUTER_X3_E_REPORT.md)。其完整 80/80 结果未通过预注册质量门槛，因此不以该实验宣称自适应路由优于固定策略。历史评估与当前产品能力分别呈现。
+系统能够对视频中的语音和画面文字建立时序索引，使用 Hybrid RAG 召回证据，并由 Agent 进行结构化分析。
 
-历史 12 个 **SYNTHETIC** 检索案例使用本地 TF-IDF，Baseline / Final 的 Recall@3 为 **1.000 / 0.833**，MRR 为 **0.958 / 0.861**，保留该负结果。后续在同一合成数据集上使用真实 BGE-M3/Qdrant/可选 reranker，A/B/C 的 Recall@3 与 MRR 均为 **1.000**，36/36 执行成功、无 fallback；仍未证明 Final 优于 Baseline，也不是最新 M1/M2 或真实视频验收。见 [离线检索说明](docs/RETRIEVAL.md) 与 [历史真实 Provider 报告](docs/retrieval-quality-closure-live/REPORT.md)。
+对于需要视频依据的结论，系统通过来源校验和时间戳引用建立与原片的关联。
 
-## 项目状态
+实际分析耗时和模型资源消耗会受到视频内容密度、检索规模、模型响应以及 Agent 修订次数等因素影响。
 
-**v0.1.0 是历史公开发布版本；当前实现包含后续 M1/M2/F1 与 Bounded Agentic RAG，未创建新的 Release。** 当前为 **ENGINEERING FROZEN / QUALITY INCONCLUSIVE**。最终评测未证明 Feedback 质量收益，Holdout 未运行；完整上传链路、独立逐帧语义审核和未启用的外部集成测试不在本轮实测通过范围内。M2、Reflection 和 Feedback 继续默认关闭。
+相关设计与工程实现可以参考：
 
-停止 Agentic RAG 新增开发，仅接受明确缺陷修复、必要依赖维护和面试展示材料修改。项目适合技术审阅与作品集展示，尚未发布托管服务；引用为答案级来源绑定，不提供完全确定性的自然语言蕴含证明。
+- [系统架构](docs/ARCHITECTURE.md)
+- [RAG 检索](docs/RETRIEVAL.md)
+- [多轮上下文](docs/CONVERSATION_MEMORY.md)
+- [异步任务与可靠性](docs/VIDEOMIND_R6_ASYNC_RELIABILITY_REPORT.md)
 
-版本概览见 [v0.1.0 发布说明](docs/RELEASE_NOTES_v0.1.0.md)。
+---
 
-## 许可
+## 📄 License
 
-MIT，见 [LICENSE](LICENSE)。前端基于公开项目改编，其来源和原有版权声明见 [client/NOTICE.md](client/NOTICE.md)。
+本项目采用 [MIT License](LICENSE) 开源。
+
+第三方组件及资源的相关版权信息见仓库中的 NOTICE 和许可文件。

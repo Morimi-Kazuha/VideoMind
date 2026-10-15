@@ -1842,7 +1842,8 @@ class AgentLoopService:
 
         self._check_deadline(stage)
         usage = self._current_usage()
-        if usage.estimated_tokens > self._budget_config.max_estimated_tokens:
+        if (self._budget_config.token_budget_enabled
+            and usage.estimated_tokens > self._budget_config.max_estimated_tokens):
             self._raise_budget(
                 f"{stage} 后终止：Agent 超过最大 Token 预算 "
                 f"{self._budget_config.max_estimated_tokens}"

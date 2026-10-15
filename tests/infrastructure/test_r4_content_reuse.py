@@ -78,6 +78,52 @@ async def load(boundary, request):
 
 
 @pytest.mark.asyncio
+async def test_production_pipeline_accepts_real_short_media_observations(runtime, monkeypatch):
+    from dovideo.application import AsrBranchOutcome, OcrBranchOutcome, MediaObservationBundle, TranscriptSpan, OcrObservation
+    from dovideo.domain.provenance import stable_frame_ref
+    import dovideo.infrastructure.r4_runtime as r4
+    pipeline, checkpoint, counts = runtime
+    async def probe(self, path):
+        return SimpleNamespace(seconds=12)
+    async def collect(self, source, *, media_identity, **kwargs):
+        counts['asr_ocr'] += 1
+        return MediaObservationBundle(
+            AsrBranchOutcome((TranscriptSpan(0, 8000, 'A short real-media observation'),), attempted=1),
+            OcrBranchOutcome((OcrObservation(1000, 'Short clip', stable_frame_ref(media_identity,1000,0)),), attempted=1),
+        )
+    monkeypatch.setattr(r4.FfprobeDurationAdapter,'probe',probe)
+    monkeypatch.setattr(r4.MediaBranchOrchestrator,'collect',collect)
+    boundary = R4RequestContextCheckpoint(checkpoint,pipeline)
+    request = AnalysisRequest(MediaRef(10,'minio://media/short-video'),'short goal')
+    context = await load(boundary,request)
+    assert len(context.segments) == 1
+    assert context.source == request.media.source
+    assert context.source_revision
+    assert context.transcript_text() == 'A short real-media observation'
+    assert counts == {'download':1,'asr_ocr':1}
+
+
+@pytest.mark.asyncio
+async def test_short_worker_context_prepares_follow_up_inputs_once_without_changing_source(runtime, monkeypatch):
+    from unittest.mock import AsyncMock
+    from dovideo.application import AsrBranchOutcome, OcrBranchOutcome, MediaObservationBundle, TranscriptSpan, OcrObservation
+    from dovideo.domain.provenance import stable_frame_ref
+    import dovideo.infrastructure.r4_runtime as r4
+    pipeline,checkpoint,_=runtime
+    async def probe(self,path): return SimpleNamespace(seconds=11)
+    async def collect(self,*args,media_identity,**kwargs):
+        return MediaObservationBundle(AsrBranchOutcome((TranscriptSpan(0,8000,'short speech'),),attempted=1),OcrBranchOutcome((OcrObservation(1000,'short slide',stable_frame_ref(media_identity,1000,0)),),attempted=1))
+    monkeypatch.setattr(r4.FfprobeDurationAdapter,'probe',probe)
+    monkeypatch.setattr(r4.MediaBranchOrchestrator,'collect',collect)
+    prepare=AsyncMock()
+    boundary=R4RequestContextCheckpoint(checkpoint,pipeline,prepare_chunks=prepare)
+    request=AnalysisRequest(MediaRef(10,'minio://media/short'),'goal')
+    context=await load(boundary,request)
+    prepare.assert_awaited_once_with(10,context)
+    assert (await checkpoint.load_context(10)).source_revision==context.source_revision
+
+
+@pytest.mark.asyncio
 async def test_actual_r4_pipeline_cross_media_rebinding_and_evidence(runtime):
     pipeline, checkpoint, counts = runtime
     boundary = R4RequestContextCheckpoint(checkpoint, pipeline)

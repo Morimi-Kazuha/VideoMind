@@ -174,3 +174,34 @@ async def test_cost_only_provider_usage_keeps_cost_and_labels_token_estimate() -
     assert len(usage) == 1
     assert usage[0]["usageSource"] == "heuristic_tokens_provider_cost"
     assert usage[0]["providerReportedCost"] == 0.25
+
+
+@pytest.mark.asyncio
+async def test_disabled_tokens_keeps_history_and_cost_across_rebinds():
+    store = TraceStore(tokens=60000)
+    config = AgentBudgetConfig(tokenBudgetEnabled=False, maxEstimatedTokens=1, maxEstimatedCost=.1)
+    telemetry = R4AgentTelemetry(store, budget_config=config)
+    key = TaskKey(7, "goal", AnalysisMode.GENERAL)
+    for stage in ("PLANNER", "EXECUTOR", "CRITIC"):
+        token = telemetry.bind(key)
+        try:
+            admission = telemetry.admit_model_call(stage=stage, model="test", messages=[], attempt=1, max_output_tokens=8192)
+            assert admission["allowed"] is True
+            assert admission["remainingBefore"] is None
+            assert admission["outputReserve"] <= 8192
+            telemetry.add(estimated_tokens=100, estimated_cost=.01)
+            telemetry.finish_model_call(admission, input_tokens=80, output_tokens=20, total_tokens=100, usage_source="provider")
+        finally:
+            telemetry.reset(token)
+    assert store.tokens == 60300
+    assert store.cost == pytest.approx(.03)
+    # Simulate Worker recreation on the same durable usage ledger.
+    restored = R4AgentTelemetry(store, budget_config=config)
+    token = restored.bind(key)
+    try:
+        store.cost = .1
+        with pytest.raises(BudgetExceededError):
+            restored.admit_model_call(stage="EXECUTOR", model="test", messages=[], attempt=1, max_output_tokens=8192)
+    finally:
+        restored.reset(token)
+    assert store.tokens == 60300

@@ -437,32 +437,17 @@ def create_app(
         url: str = Query(...),
         user: dict[str, Any] = Depends(require_user),
     ) -> JSONResponse:
-        # R1 intentionally makes no remote downloader call.  Local file URLs
-        # are accepted only when they resolve beneath the current workspace.
-        from urllib.parse import unquote, urlsplit
-
-        parsed = urlsplit(url)
-        if parsed.scheme in {"http", "https"}:
-            raise R1ServiceError(
-                "R1 本地适配器不执行远程 URL 导入，请使用本地文件或分片上传",
-                status_code=501,
-            )
-        if parsed.scheme != "file":
-            raise R1ServiceError("仅支持受限的本地 file URL", status_code=400)
-        candidate = Path(unquote(parsed.path))
-        if os.name == "nt" and parsed.netloc:
-            candidate = Path(f"{parsed.netloc}:{unquote(parsed.path)}")
+        from dovideo.application.errors import UrlValidationError, UrlResolutionError, UrlDownloadFailure
         try:
-            candidate = candidate.resolve()
-            workspace = Path.cwd().resolve()
-            if not candidate.is_relative_to(workspace):
-                raise R1ServiceError("本地 URL 不在当前 workspace 内", status_code=403)
-            payload = await _read_path(candidate)
-        except FileNotFoundError as exc:
-            raise R1ServiceError("本地文件不存在", status_code=404) from exc
-        record = await selected_services.ingest(
-            int(user["id"]), candidate.name, payload, None
-        )
+            record = await selected_services.ingest_url(int(user["id"]), url)
+        except UrlValidationError as exc:
+            raise R1ServiceError(str(exc), status_code=400) from exc
+        except UrlResolutionError as exc:
+            raise R1ServiceError("链接域名无法解析", status_code=400) from exc
+        except UrlDownloadFailure as exc:
+            raise R1ServiceError(str(exc), status_code=502) from exc
+        except (MediaStorageFailure, MediaRecordFailure) as exc:
+            raise R1ServiceError("视频保存失败，请稍后重试", status_code=503) from exc
         return _ok(media_summary(record), "导入完成")
 
     @app.get("/media/list")

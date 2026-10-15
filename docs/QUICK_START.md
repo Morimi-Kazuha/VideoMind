@@ -2,6 +2,41 @@
 
 本文区分轻量界面探索与完整视频分析。命令均从仓库根目录执行，除非特别注明。系统要求：Python 3.12+、Node.js 22.12+、npm；完整分析还需要 Docker Compose、FFmpeg/ffprobe、Tesseract 和可用的 OpenAI Whisper Python 包及模型权重。外部聊天与 Embedding Provider 需由使用者自行配置并承担调用费用。
 
+## Windows 本地产品启动器
+
+先完成下文依赖、私有环境配置、Compose 和数据库迁移，再从安全模板建立本机设置：
+
+```powershell
+New-Item -ItemType Directory -Force work/product-r2 | Out-Null
+Copy-Item scripts/local-product.settings.example.json work/product-r2/settings.json
+```
+
+编辑被忽略的 `work/product-r2/settings.json`：`env_files` 指向实际私有环境文件，
+`tool_settings` 填写 FFmpeg、Tesseract、Whisper 权重路径；不使用的 `.env.r4.local` 从列表移除。
+`python_paths` 仅在复用已安装依赖时填写。配置需要显式 `DOVIDEO_PROFILE=production`。
+环境文件支持简单的 `KEY=value`、整值引号与注释，不执行 shell 表达式。
+
+```powershell
+.\scripts\local-product.ps1 Check
+.\scripts\local-product.ps1 Start
+.\scripts\local-product.ps1 Status
+.\scripts\local-product.ps1 Stop
+```
+
+脚本启动本机 API、独立 Worker 与前端，统一加载同一份配置；访问终端输出的地址。
+可用 `-SettingsFile <本地设置路径>` 选择其他配置；模板端口为 API 8000、前端 5175。
+Start 复用已有 `dovideo-r2` Compose 容器，不创建或替换数据卷；基础设施缺失时先按下文启动。
+Stop 仅停止 PID、创建时间和程序路径均匹配的自有进程，不停止 Docker 服务。
+普通启动不会执行数据库升级；日志与进程清单位于被忽略的 `work/product-r2/runtime/`。
+Provider 配置检查只确认配置齐全，不代表已发起真实模型调用。
+
+正式包先在 `client` 执行 `npm run build`，再使用 `Start -Preview`。
+开发与 Preview 使用相同的本地 API 代理；部署静态资源时需设置 API 反向代理，
+或在构建前配置 `VITE_API_BASE_URL`。正式构建不启用开发 Demo 参数。
+
+R4 将 ASR/OCR 与分析放在同一个 Worker 任务内。首次“提取文字”会提示先运行分析，
+分析后可读取真实转录。M1 Redis 历史有 TTL，不承诺永久保留。
+
 ## 1. 安装应用依赖
 
 ```bash
@@ -94,7 +129,7 @@ npm run dev
 
 ## 5. 演示与验证
 
-注册/登录测试账户，导入**有权使用**的视频，在媒体库打开分析工作台，提交问题。等待 worker 完成后检查 ASR/OCR 记录、证据检索、AI 回答与引用跳转。参考 [README 演示路径](../README.md#五分钟演示路径)。处理时长取决于媒体、机器与供应商。
+注册/登录测试账户，导入**有权使用**的视频，在媒体库打开分析工作台，提交问题。等待 worker 完成后检查 ASR/OCR 记录、证据检索、AI 回答与引用跳转。参考 [README 产品预览](../README.md)。处理时长取决于媒体、机器与供应商。
 
 ```bash
 python -m pytest -q
@@ -141,3 +176,18 @@ python tools/run_retrieval_comparison.py --output work/retrieval-comparison-new
 
 案例明确标为 SYNTHETIC，使用本地 TF-IDF，默认关闭 Reranker；它不验证
 真实 BGE-M3 或 Cross-Encoder 的效果。结果与限制见 [检索说明](RETRIEVAL.md)。
+
+
+## 本地受控验收的累计 Token 开关
+
+API 和 Worker 使用相同环境：`DOVIDEO_AGENT_TOKEN_BUDGET_ENABLED=false` 仅关闭累计
+Token 的请求前准入与请求后/阶段后上限。生产默认 `true`，仍为 50,000；`0` 不代表无限。
+历史 Redis 用量、Checkpoint 和重试累计消费不清零；禁用时 trace 的 remainingBudget 为 null。
+执行时间（默认 240,000ms）、轮次（默认 2）、Provider 超时、请求输出设置、工具与限流规则继续生效。
+本地可显式设置有限执行时长，例如 `DOVIDEO_AGENT_MAX_DURATION_MS=1200000`。
+金额限制由独立的 `DOVIDEO_AGENT_MAX_ESTIMATED_COST` 控制：`0` 关闭累计金额拦截，正数启用。
+若启用金额限制，准入比较已消费金额，无法准确报价下一请求；末次请求仍可能超过阈值。
+实际 Provider 费用与 Token 继续记录，Embedding 费用独立；这些设置不改变供应商账户余额或限额。
+
+API 与 Worker 必须加载相同配置。`runtime_overrides` 可为本地受控运行覆盖这些参数，
+私有配置与历史账本保留在忽略目录。公开验证范围见 [产品验证摘要](PRODUCT_VERIFICATION.md)。

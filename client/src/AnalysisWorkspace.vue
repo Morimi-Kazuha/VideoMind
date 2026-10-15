@@ -36,7 +36,7 @@
       class="analysis-unavailable"
       role="status"
     >
-      <AcademyMark />
+      <CyberMark />
       <h1>{{ media.status === "FAILED" ? "视频处理失败" : "分析尚未就绪" }}</h1>
       <p>
         {{
@@ -195,7 +195,7 @@
               class="analysis-viewer__placeholder"
               :role="sidebar.playbackError ? 'alert' : 'status'"
             >
-              <AcademyMark />
+              <CyberMark />
               <strong>
                 {{
                   sidebar.playbackLoading
@@ -447,6 +447,7 @@
                   <span>相关证据：</span>
                   <button v-for="citation in item.citations" :key="citation.id"
                     type="button" :aria-pressed="selectedKey === `citation:${citation.id}`"
+                    :data-citation-id="citation.id" :data-timestamp-ms="citation.timestampMs"
                     @click="selectCitation(citation)">
                     {{ citation.source }} · {{ formatMediaTime(citation.timestampMs / 1000) }}
                   </button>
@@ -636,7 +637,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { apiRequest, captureAuthSession } from "./api.js";
-import AcademyMark from "./design/AcademyMark.vue";
+import CyberMark from "./components/CyberMark.vue";
 import AnalysisTimeline from "./AnalysisTimeline.vue";
 import TemporalRecords from "./TemporalRecords.vue";
 import { useClaimEvidence } from "./claimEvidence.js";

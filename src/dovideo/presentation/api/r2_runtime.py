@@ -194,6 +194,21 @@ class ProductionR2Services:
                 pass
         self.infrastructure.close()
 
+    async def ingest_url(self, user_id: int, url: str) -> MediaRecord:
+        from dovideo.infrastructure.media.ingest import MediaIngestService
+        from dovideo.infrastructure.media.url import DirectMp4Downloader
+        service = MediaIngestService(
+            self.infrastructure.object_storage, self.media, DirectMp4Downloader(),
+            workspace_parent=self.infrastructure.settings.media_workspace,
+        )
+        from dovideo.application.errors import MediaApplicationError, MediaRecordFailure
+        try:
+            return await service.ingest_url(url, user_id)
+        except MediaApplicationError:
+            raise
+        except Exception as exc:
+            raise MediaRecordFailure("URL media persistence failed") from exc
+
     async def ingest(self, user_id: int, filename: str, payload: bytes, content_type: str | None) -> MediaRecord:
         return await self.media.ingest(user_id, filename, payload, content_type)
 

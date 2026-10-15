@@ -217,6 +217,7 @@ class OpenAICompatibleChatClient:
         *,
         request_settings: ModelRequestSettings | None = None,
         reflection_request_settings: ModelRequestSettings | None = None,
+        query_rewrite_request_settings: ModelRequestSettings | None = None,
         client: AsyncJsonPostClient | object | None = None,
         http_client: AsyncJsonPostClient | object | None = None,
         sleeper: Any | None = None,
@@ -240,6 +241,15 @@ class OpenAICompatibleChatClient:
                     or config.provider_only != ("siliconflow/fp8",)):
                 raise ValueError("Reflection override requires the validated model and pinned SiliconFlow endpoint")
         self.reflection_request_settings = reflection_request_settings
+        if query_rewrite_request_settings is not None:
+            if (not isinstance(query_rewrite_request_settings, ModelRequestSettings)
+                    or query_rewrite_request_settings.reasoning_effort != "none"
+                    or query_rewrite_request_settings.max_tokens is not None):
+                raise ValueError("Query rewrite override only supports reasoning_effort=none; output cap is unchanged")
+            if (config.transport != "openrouter" or config.model != "deepseek/deepseek-v4.1-flash"
+                    or config.provider_only != ("siliconflow/fp8",)):
+                raise ValueError("Query rewrite override requires the validated model and pinned SiliconFlow endpoint")
+        self.query_rewrite_request_settings = query_rewrite_request_settings
         self._client = client if client is not None else http_client
         if self._client is None:
             self._client = StdlibAsyncJsonPostClient()
@@ -415,6 +425,8 @@ class OpenAICompatibleChatClient:
         return headers
 
     def _request_settings_for_stage(self, stage: str) -> ModelRequestSettings:
+        if stage == "QUERY_REWRITE" and self.query_rewrite_request_settings is not None:
+            return ModelRequestSettings(reasoning_effort="none", max_tokens=self.request_settings.max_tokens)
         if stage == "EVIDENCE_REFLECTION" and self.reflection_request_settings is not None:
             # Preserve the selected profile's max_tokens and every other stage.
             return ModelRequestSettings(reasoning_effort="none", max_tokens=self.request_settings.max_tokens)

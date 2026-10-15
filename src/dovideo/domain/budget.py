@@ -41,6 +41,7 @@ class AgentBudgetConfig(DomainModel):
     implement that later loop policy.
     """
 
+    token_budget_enabled: Annotated[bool, Field(alias="tokenBudgetEnabled", strict=True)] = True
     max_rounds: Annotated[int, Field(alias="maxRounds")] = 2
     max_duration_ms: Annotated[int, Field(alias="maxDurationMs")] = 240_000
     max_estimated_tokens: Annotated[int, Field(alias="maxEstimatedTokens")] = 50_000
@@ -51,6 +52,7 @@ class AgentBudgetConfig(DomainModel):
     def _reject_alias_conflicts(cls, data: Any) -> Any:
         return reject_alias_conflicts(
             data,
+            ("token_budget_enabled", "tokenBudgetEnabled"),
             ("max_rounds", "maxRounds"),
             ("max_duration_ms", "maxDurationMs"),
             ("max_estimated_tokens", "maxEstimatedTokens"),

@@ -367,3 +367,74 @@ async def test_caller_cancellation_propagates_and_is_not_budget_termination() ->
     with pytest.raises(asyncio.CancelledError):
         await service.run(_context(), media_id=7)
     assert telemetry.counts["budgetTerminations"] == 0
+
+
+@pytest.mark.asyncio
+async def test_disabled_token_cap_reaches_all_stages_but_keeps_cost_cap():
+    usage = InMemoryAgentBudgetUsage(BudgetUsage(estimatedTokens=90000, estimatedCost=.01))
+    service, _, planner, executor, critic, _, telemetry = _build(
+        budget={"tokenBudgetEnabled": False, "maxEstimatedTokens": 1, "maxEstimatedCost": .1},
+        usage=usage, critiques=[{"passed": True}],
+    )
+    await service.run(_context(), media_id=7)
+    assert telemetry.counts["criticRounds"] == 1
+    assert telemetry.counts["budgetTerminations"] == 0
+    assert usage.current_usage().estimated_tokens == 90000
+    usage.add(0, .1)
+    with pytest.raises(BudgetExceededError, match="成本"):
+        await service.run(_context(), media_id=7)
+
+
+@pytest.mark.asyncio
+async def test_disabled_tokens_preserves_two_round_limit():
+    usage = InMemoryAgentBudgetUsage(BudgetUsage(estimatedTokens=90000))
+    service, _, _, executor, critic, _, _ = _build(
+        budget={"tokenBudgetEnabled": False, "maxEstimatedTokens": 1, "maxRounds": 2},
+        usage=usage, critiques=[{"passed": False, "feedback": ["revise"]}] * 3,
+        results=[_result()] * 3,
+    )
+    await service.run(_context(), media_id=7)
+    assert len(executor.calls) == 2
+    assert len(critic.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_disabled_tokens_preserves_deadline_and_provider_failure():
+    service, context, *_ = _build(budget={"tokenBudgetEnabled": False, "maxDurationMs": 10})
+    async def slow(value, media_id=None):
+        await asyncio.sleep(1)
+        return value
+    context.select_relevant = slow
+    with pytest.raises(BudgetExceededError):
+        await service.run(_context(), media_id=7)
+    async def failed(value, media_id=None):
+        raise ValueError("provider failed")
+    context.select_relevant = failed
+    with pytest.raises(ValueError, match="provider failed"):
+        await service.run(_context(), media_id=7)
+
+
+@pytest.mark.asyncio
+async def test_disabled_tokens_resumes_saved_draft_with_original_cumulative_usage():
+    usage = InMemoryAgentBudgetUsage()
+    service, _, _, executor, _, checkpoint, _ = _build(
+        budget={"maxEstimatedTokens": 10}, usage=usage, critiques=[{"passed": True}])
+    original = executor.execute
+    async def exhaust(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        usage.add(60000, .01)
+        return result
+    executor.execute = exhaust
+    with pytest.raises(BudgetExceededError):
+        await service.run(_context(), media_id=7)
+    checkpoint.state = checkpoint.saved_drafts[-1][1]
+    resumed, _, _, resumed_executor, critic, _, _ = _build(
+        budget={"tokenBudgetEnabled": False, "maxEstimatedTokens": 10}, usage=usage,
+        state=checkpoint.state, critiques=[{"passed": True}])
+    resumed._checkpoint = checkpoint
+    state = await resumed.run(_context(), media_id=7)
+    assert state.critique.passed
+    assert resumed_executor.calls == []
+    assert len(critic.calls) == 1
+    assert usage.current_usage().estimated_tokens == 60000
+    assert usage.current_usage().estimated_cost == .01

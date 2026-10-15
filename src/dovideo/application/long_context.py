@@ -117,6 +117,12 @@ class LongVideoContextService:
         return (isinstance(baseline, VideoEvidenceRetrievalService)
                 and type(baseline)._rank is VideoEvidenceRetrievalService._rank)
 
+    async def prepare_chunks(self, media_id: int, context: VideoContext) -> tuple[VideoChunk, ...]:
+        """Prepare durable query inputs without changing context-selection policy."""
+        if not isinstance(context, VideoContext):
+            raise TypeError("context must be a VideoContext")
+        return tuple(await self._resolve_chunks(media_id, context.segments))
+
     async def search_evidence_baseline(self, media_id, context, *, chunks):
         """One existing Hybrid search; the same Critic/X1 M2 suppression scope."""
         with baseline_retrieval():

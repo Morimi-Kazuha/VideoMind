@@ -1,0 +1,17 @@
+[
+  {
+    "font": "Dela-Gothic-One",
+    "subset": "latin",
+    "url": "https://fonts.gstatic.com/s/delagothicone/v19/hESp6XxvMDRA-2eD0lXpDa6QkBA2QkEI.woff2"
+  },
+  {
+    "font": "Space-Grotesk",
+    "subset": "latin",
+    "url": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  },
+  {
+    "font": "Syncopate",
+    "subset": "latin",
+    "url": "https://fonts.gstatic.com/s/syncopate/v24/pe0pMIuPIYBCpEV5eFdKvtKqBP5v.woff2"
+  }
+]

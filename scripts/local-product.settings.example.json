@@ -1,0 +1,12 @@
+{
+  "env_files": [".env.r2.local", ".env.r4.local"],
+  "python_paths": [],
+  "tool_settings": {
+    "DOVIDEO_FFMPEG_DIR": "tools/ffmpeg",
+    "DOVIDEO_TESSERACT_PATH": "tools/tesseract/install/tesseract.exe",
+    "DOVIDEO_WHISPER_MODEL_ROOT": "tools/asr/models"
+  },
+  "api_port": 8000,
+  "frontend_port": 5175,
+  "runtime_overrides": {}
+}

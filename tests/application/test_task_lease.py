@@ -380,7 +380,8 @@ async def test_actual_r4_composition_injects_finite_lease_and_renews_without_wor
     monkeypatch.setattr(runtime, "ExecutionRecordService", lambda *args, **kwargs: None)
     monkeypatch.setattr(runtime, "R3RedisTaskEventPublisher", lambda *args, **kwargs: None)
     monkeypatch.setattr(runtime, "CheckpointDeadLetterHandoffStore", lambda *args: Handoff())
-    monkeypatch.setattr(runtime, "create_r4_provider_stack", lambda *args, **kwargs: SimpleNamespace(agent_loop=agent))
+    from unittest.mock import AsyncMock
+    monkeypatch.setattr(runtime, "create_r4_provider_stack", lambda *args, **kwargs: SimpleNamespace(agent_loop=agent, long_context=SimpleNamespace(prepare_chunks=AsyncMock())))
     monkeypatch.setattr(runtime, "R4MediaPipeline", lambda *args: object())
     monkeypatch.setattr(runtime.AnalysisSettings, "from_environment", lambda **kwargs: object())
     composed = runtime.R4WorkerRuntime.from_environment(

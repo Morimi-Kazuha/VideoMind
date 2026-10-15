@@ -202,6 +202,18 @@ UrlDownloader = YtDlpDownloader
 def is_disallowed_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """Return true for local, private, reserved, multicast, or CGN addresses."""
 
+    if address == ipaddress.ip_address("168.63.129.16"):
+        return True  # Azure platform virtual address; never a media source.
+    if isinstance(address, ipaddress.IPv6Address):
+        if (address in ipaddress.IPv6Network("64:ff9b::/96")
+            or address in ipaddress.IPv6Network("64:ff9b:1::/48")):
+            return True  # NAT64 can translate an apparently public IPv6 to private IPv4.
+        if address.ipv4_mapped is not None:
+            return is_disallowed_address(address.ipv4_mapped)
+        if address.sixtofour is not None or address.teredo is not None:
+            return True
+    if not address.is_global:
+        return True
     if (
         address.is_loopback
         or address.is_unspecified
@@ -235,6 +247,8 @@ def _tool_name(value: str | PathLike[str]) -> str:
 
 
 __all__ = [
+    "DirectMp4Downloader",
+    "validate_direct_url",
     "PublicUrl",
     "PublicUrlValidator",
     "SystemDnsResolver",
@@ -248,3 +262,115 @@ __all__ = [
     "YtDlpUrlDownloader",
     "is_disallowed_address",
 ]
+
+
+# UI-R2 direct-file boundary. This intentionally does not use yt-dlp.
+DIRECT_MAX_BYTES = 100 * 1024 * 1024
+DIRECT_TIMEOUT_SECONDS = 45
+
+
+def validate_direct_url(value: str) -> str:
+    """Only credential-free HTTPS MP4 URLs on the standard TLS port."""
+    from urllib.parse import unquote
+    try:
+        parsed = urlsplit(value.strip())
+        if (len(value) > 4096 or any(ord(c) < 33 for c in value.strip())
+            or parsed.scheme != "https" or not parsed.hostname
+            or parsed.username is not None or parsed.password is not None
+            or parsed.port not in (None, 443) or parsed.fragment
+            or not unquote(parsed.path).lower().endswith(".mp4")
+            or "%" in parsed.hostname):
+            raise ValueError()
+    except (ValueError, AttributeError):
+        raise UrlValidationError("当前仅支持公开 MP4 视频直链（HTTPS，无需登录）") from None
+    return value.strip()
+
+
+class _PinnedResolver:
+    def __init__(self, host, addresses):
+        self.host, self.addresses = host, addresses
+
+    async def resolve(self, host, port=443, family=socket.AF_UNSPEC):
+        if host != self.host:
+            raise UrlValidationError("远程地址不匹配")
+        return [dict(hostname=host, host=address, port=port,
+                     family=socket.AF_INET6 if ":" in address else socket.AF_INET,
+                     proto=socket.IPPROTO_TCP, flags=socket.AI_NUMERICHOST)
+                for address in self.addresses]
+
+    async def close(self):
+        pass
+
+
+class DirectMp4Downloader:
+    """Bounded async download, pinned public DNS per hop, no proxy or cookies."""
+    def __init__(self, resolver=None, *, max_bytes=DIRECT_MAX_BYTES,
+                 timeout=DIRECT_TIMEOUT_SECONDS):
+        self.resolver = resolver or SystemDnsResolver()
+        self.max_bytes, self.timeout = max_bytes, timeout
+
+    async def download(self, url: str, workspace: MediaWorkspace) -> UrlDownloadResult:
+        import aiohttp
+        from urllib.parse import urljoin
+        target = (await workspace.directory("url")) / f"WEB_{uuid4().hex}.mp4"
+        completed = False
+        try:
+            async with asyncio.timeout(self.timeout):
+                current = url
+                for hop in range(4):
+                    current = validate_direct_url(current)
+                    host = urlsplit(current).hostname
+                    addresses = await self.resolver.resolve(host)
+                    if not addresses or any(is_disallowed_address(_parse_address(a)) for a in addresses):
+                        raise UrlValidationError("链接地址不可访问：禁止内网、回环或保留地址")
+                    connector = aiohttp.TCPConnector(
+                        resolver=_PinnedResolver(host, addresses), use_dns_cache=False, force_close=True)
+                    async with aiohttp.ClientSession(
+                        connector=connector, cookie_jar=aiohttp.DummyCookieJar(),
+                        trust_env=False, auto_decompress=False,
+                        timeout=aiohttp.ClientTimeout(total=None, sock_connect=8, sock_read=10),
+                    ) as session:
+                        async with session.get(current, allow_redirects=False,
+                                               headers={"Accept-Encoding": "identity"}) as response:
+                            if response.status in (301, 302, 303, 307, 308):
+                                if hop == 3 or not response.headers.get("Location"):
+                                    raise UrlDownloadFailure("重定向过多或无效")
+                                current = urljoin(current, response.headers["Location"])
+                                continue
+                            if response.status != 200:
+                                raise UrlDownloadFailure("远程服务器拒绝下载，请检查链接是否公开有效")
+                            mime = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
+                            if mime not in ("video/mp4", "application/mp4", "application/octet-stream"):
+                                raise UrlValidationError("当前仅支持公开 MP4 视频直链")
+                            if response.headers.get("Content-Encoding", "identity").lower() != "identity":
+                                raise UrlDownloadFailure("不支持压缩的远程文件")
+                            length = response.content_length
+                            if length is not None and length > self.max_bytes:
+                                raise UrlValidationError("视频超过 100 MiB 导入限制")
+                            size, header = 0, bytearray()
+                            with target.open("xb") as output:
+                                async for chunk in response.content.iter_chunked(64 * 1024):
+                                    size += len(chunk)
+                                    if size > self.max_bytes:
+                                        raise UrlValidationError("视频超过 100 MiB 导入限制")
+                                    if len(header) < 32:
+                                        header.extend(chunk[:32-len(header)])
+                                    output.write(chunk)
+                            if not size or (length is not None and size != length):
+                                raise UrlDownloadFailure("视频下载中断或文件为空")
+                            # ISO BMFF signature plus an MP4-compatible major brand.
+                            if (len(header) < 16 or header[4:8] != b"ftyp"
+                                or header[8:12] not in (b"isom", b"iso2", b"mp41", b"mp42", b"avc1", b"M4V ", b"MSNV", b"iso5", b"iso6")):
+                                raise UrlValidationError("文件内容不是受支持的 MP4 视频")
+                            completed = True
+                            return UrlDownloadResult(path=target, filename=target.name)
+        except TimeoutError as exc:
+            raise UrlDownloadFailure("下载超时（最多 45 秒），请使用本地上传") from exc
+        except (UrlValidationError, UrlResolutionError, UrlDownloadFailure):
+            raise
+        except (aiohttp.ClientError, OSError, ValueError) as exc:
+            raise UrlDownloadFailure("远程下载失败或连接中断，请检查公开 MP4 直链") from exc
+        finally:
+            # Keep only a completed file; MediaWorkspace owns success cleanup.
+            if not completed:
+                target.unlink(missing_ok=True)

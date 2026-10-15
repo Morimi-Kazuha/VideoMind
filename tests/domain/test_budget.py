@@ -54,3 +54,14 @@ def test_budget_usage_rejects_negative_and_nonfinite_values(value: object) -> No
 
     with pytest.raises(ValidationError):
         BudgetUsage(estimatedTokens=value)
+
+
+def test_explicit_token_switch_defaults_and_invalid_configuration():
+    assert _agent_budget_from_environment({}).token_budget_enabled is True
+    disabled = _agent_budget_from_environment({"DOVIDEO_AGENT_TOKEN_BUDGET_ENABLED": "false"})
+    assert disabled.token_budget_enabled is False
+    assert disabled.max_estimated_tokens == 50000
+    assert disabled.max_rounds == 2
+    assert disabled.max_duration_ms == 240000
+    with pytest.raises(ValueError):
+        _agent_budget_from_environment({"DOVIDEO_AGENT_TOKEN_BUDGET_ENABLED": "typo"})

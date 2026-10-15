@@ -908,6 +908,31 @@ class LocalR1Services:
         self.tasks: set[asyncio.Task[Any]] = set()
         self.transcription_tasks: dict[int, asyncio.Task[Any]] = {}
 
+    async def ingest_url(self, user_id: int, url: str) -> MediaRecord:
+        from dovideo.infrastructure.media.url import DirectMp4Downloader
+        from dovideo.infrastructure.media.workspace import MediaWorkspace
+        async with MediaWorkspace(parent=self.media.root) as workspace:
+            downloaded = await DirectMp4Downloader().download(url, workspace)
+            path = self.media.root / downloaded.filename
+            try:
+                downloaded.path.replace(path)
+                def content_hash():
+                    with path.open("rb") as source:
+                        return hashlib.file_digest(source, "md5").hexdigest()
+                digest = await asyncio.to_thread(content_hash)
+                async with self.media._lock:
+                    media_id = self.media._next_id
+                    self.media._next_id += 1
+                    record = MediaRecord(user_id=user_id, filename=downloaded.filename,
+                        source=str(path), content_hash=digest, media_id=media_id, content_type="video/mp4")
+                    self.media.values[media_id] = _StoredMedia(record, path)
+                self._build_observations(record)
+                self.contexts[media_id] = self._build_context(record, "")
+                return record
+            except BaseException:
+                path.unlink(missing_ok=True)
+                raise
+
     async def ingest(self, user_id: int, filename: str, payload: bytes, content_type: str | None) -> MediaRecord:
         record = await self.media.ingest(user_id, filename, payload, content_type)
         media_id = record.media_id

@@ -317,10 +317,17 @@ class ProductionR4Services(ProductionR2Services):
 
     async def start_transcription(self, media_id: int, user_id: int) -> None:
         await self.media.require_owned(media_id, user_id)
-        raise R1ServiceError("R4 canonical worker performs transcription during analysis", status_code=501)
+        raise R1ServiceError("首次提取文字请先运行视频分析；分析任务会执行真实语音识别与画面文字提取", status_code=501)
 
     async def transcription_status(self, media_id: int, user_id: int) -> TaskStatus:
         await self.media.require_owned(media_id, user_id)
+        context = await self.checkpoint.load_context(media_id)
+        if context is not None:
+            return TaskStatus(
+                state=TaskStatusState.COMPLETED,
+                result=context.transcript_text(),
+                message="已读取当前视频的真实语音转录",
+            )
         return TaskStatus(
             state=TaskStatusState.NOT_STARTED,
             result=None,

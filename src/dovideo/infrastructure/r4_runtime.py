@@ -215,7 +215,7 @@ class R4AgentTelemetry:
         usage = self.store.current_usage_for_key(key)
         remaining = config.max_estimated_tokens - usage.estimated_tokens
         allowed = (
-            input_estimate + output_reserve <= remaining
+            (not config.token_budget_enabled or input_estimate + output_reserve <= remaining)
             and (
                 config.max_estimated_cost <= 0
                 or usage.estimated_cost < config.max_estimated_cost
@@ -231,7 +231,8 @@ class R4AgentTelemetry:
             "inputEstimate": input_estimate,
             "outputReserve": output_reserve,
             "cumulativeBefore": usage.estimated_tokens,
-            "remainingBefore": max(0, remaining),
+            "remainingBefore": max(0, remaining) if config.token_budget_enabled else None,
+            "tokenBudgetEnabled": config.token_budget_enabled,
             "allowed": allowed,
         }
         self.store.record_structural_for_key(
@@ -303,11 +304,14 @@ class R4AgentTelemetry:
                 "totalTokens": total_tokens,
                 "usageSource": usage_source,
                 "cumulativeTotal": usage.estimated_tokens,
-                "remainingBudget": max(0, limit - usage.estimated_tokens),
+                "remainingBudget": (max(0, limit - usage.estimated_tokens)
+                    if self._budget_config and self._budget_config.token_budget_enabled else None),
+                "tokenBudgetEnabled": self._budget_config.token_budget_enabled if self._budget_config else True,
             },
         )
         if self._budget_config and (
-            usage.estimated_tokens > self._budget_config.max_estimated_tokens
+            (self._budget_config.token_budget_enabled
+             and usage.estimated_tokens > self._budget_config.max_estimated_tokens)
             or (
                 self._budget_config.max_estimated_cost > 0
                 and usage.estimated_cost > self._budget_config.max_estimated_cost
@@ -836,8 +840,8 @@ class _StrictRetrievalService(VideoEvidenceRetrievalService):
         await super().index(media_id, normalized)
         if self._r4_telemetry.counter_value("vectorStoreFallbacks") > before:
             raise QdrantVectorError("R4 canonical Qdrant indexing failed")
-        if media_id is None or len(normalized) < 2:
-            raise ValueError("R4 canonical retrieval requires at least two chunks")
+        if media_id is None or not normalized:
+            raise ValueError("R4 canonical retrieval requires media identity and indexed chunks")
         try:
             hits = await self._vector_index.search(
                 media_id,
@@ -849,8 +853,8 @@ class _StrictRetrievalService(VideoEvidenceRetrievalService):
             raise
         except Exception as exc:
             raise QdrantVectorError("R4 canonical Qdrant verification failed") from exc
-        if len(hits) < 2:
-            raise QdrantVectorError("R4 Qdrant returned fewer than two indexed chunks")
+        if len(hits) < min(2, len(normalized)):
+            raise QdrantVectorError("R4 Qdrant returned fewer than the required indexed chunks")
         self._r4_telemetry.increment("vectorStoreVerifications")
 
     async def retrieve(self, media_id: int | None, goal: str | None, chunks: Any):
@@ -968,6 +972,20 @@ class R4ProviderStack:
             await client.aclose()
 
 
+def _query_rewrite_request_settings_from_environment(environ=None):
+    """Optional provider compatibility setting; M1 policy and caps stay frozen."""
+    values = os.environ if environ is None else environ
+    raw = values.get("DOVIDEO_QUERY_REWRITE_REASONING_EFFORT", "")
+    if not isinstance(raw, str):
+        raise ProviderConfigurationError("Query rewrite reasoning override must be text")
+    value = raw.strip()
+    if not value:
+        return None
+    if value != "none":
+        raise ProviderConfigurationError("Query rewrite reasoning override supports only none")
+    return ModelRequestSettings(reasoning_effort="none")
+
+
 def create_r4_provider_stack(
     checkpoint: Any,
     vector_index: Any,
@@ -1041,6 +1059,7 @@ def create_r4_provider_stack(
         effective_balanced_config,
         request_settings=balanced_request_settings,
         reflection_request_settings=reflection_request_settings_from_environment(),
+        query_rewrite_request_settings=_query_rewrite_request_settings_from_environment(),
         client=_model_client_for(model_http_clients, ModelRouteLane.BALANCED),
         usage_sink=telemetry,
         response_observer=telemetry,
@@ -1295,8 +1314,6 @@ class R4MediaPipeline:
             executable=self.settings.ffprobe_executable,
         ).probe(local_path)
         self.telemetry.observe("mediaDurationSeconds", duration.seconds)
-        if duration.seconds <= 300.0:
-            raise ValueError("R4 representative media must exceed five minutes")
 
         await self._publish(
             request,
@@ -1349,8 +1366,8 @@ class R4MediaPipeline:
                 key.media_identity
             ),
         )
-        if len(context.segments) < 2:
-            raise ValueError("R4 long media did not produce multiple temporal windows")
+        if not context.segments:
+            raise ValueError("R4 media did not produce temporal observations")
         self.telemetry.observe("videoContextWindowCount", len(context.segments))
         from dovideo.application.value_objects import BranchStatus
         complete[0] = (
@@ -1434,9 +1451,12 @@ class R4RequestContextCheckpoint(ContextCheckpointPort):
         self,
         delegate: ContextCheckpointPort,
         pipeline: R4MediaPipeline,
+        *,
+        prepare_chunks: Any | None = None,
     ) -> None:
         self.delegate = delegate
         self.pipeline = pipeline
+        self.prepare_chunks = prepare_chunks
 
     async def load_context(self, media_id: int) -> VideoContext | None:
         request = _CURRENT_R4_REQUEST.get()
@@ -1455,6 +1475,12 @@ class R4RequestContextCheckpoint(ContextCheckpointPort):
             if prior is not None and prior.source_revision != context.source_revision:
                 await self.delegate.save_chunks(media_id, ())
             await self.delegate.save_context(media_id, context)
+            # Agent selection deliberately bypasses retrieval for short media.
+            # Its M1 read surface still requires durable chunks. Prepare those
+            # through the existing chunk/embed/index path under the worker lease;
+            # keep the Agent's original short-context selection unchanged.
+            if self.prepare_chunks is not None and context.segments and context.segments[-1].end_ms <= 300_000:
+                await self.prepare_chunks(media_id, context)
         else:
             context = await self.delegate.load_context(media_id)
         if context is None or request is None or request.media.media_id != media_id:
@@ -1555,7 +1581,7 @@ class R4WorkerRuntime:
             telemetry,
             events,
         )
-        context_checkpoint = R4RequestContextCheckpoint(checkpoint, pipeline)
+        context_checkpoint = R4RequestContextCheckpoint(checkpoint, pipeline, prepare_chunks=provider.long_context.prepare_chunks)
         dead_letter = RabbitMQDeadLetterPublisher(
             selected_settings,
             failed_task_store=selected_infrastructure.failed_task_store,
