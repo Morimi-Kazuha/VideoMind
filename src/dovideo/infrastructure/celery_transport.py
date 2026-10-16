@@ -353,7 +353,9 @@ def create_celery_app(settings: CeleryTransportSettings):
         task_default_exchange=settings.exchange,
         task_default_exchange_type="direct",
         task_default_routing_key=settings.routing_key,
-        task_queues=(main_queue, dead_queue),
+        # The DLQ carries failure documents, not Celery task envelopes.
+        # Topology.ensure declares it; default workers must never consume it.
+        task_queues=(main_queue,),
         task_routes={
             settings.task_name: {
                 "queue": settings.queue,

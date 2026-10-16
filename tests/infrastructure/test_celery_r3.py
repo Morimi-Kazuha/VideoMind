@@ -307,3 +307,26 @@ def test_locked_delay_environment_override():
         "DOVIDEO_CELERY_LOCKED_COUNTDOWN_SECONDS": "12",
     })
     assert settings.locked_countdown_seconds == 12
+
+
+@pytest.mark.parametrize("publication_fails", [False, True])
+def test_poison_handoff_retries_and_requeues_if_publication_fails(monkeypatch, publication_fails):
+    from celery.exceptions import Reject
+    class Runtime:
+        async def record_poison(self, payload, error):
+            raise OSError("private database details")
+    task = register_analysis_task(create_celery_app(_settings()), runtime_factory=Runtime)
+    calls = []
+    def retry(**kwargs):
+        calls.append(kwargs)
+        if publication_fails:
+            raise OSError("private broker details")
+        raise Retry()
+    monkeypatch.setattr(task, "retry", retry)
+    with pytest.raises(Reject if publication_fails else Retry) as caught:
+        task.run({"untrusted": "secret-payload"})
+    assert calls[0]["max_retries"] is None
+    assert calls[0]["countdown"] == _settings().retry_countdown_seconds
+    assert "secret" not in str(calls[0]["exc"])
+    if publication_fails:
+        assert caught.value.requeue is True

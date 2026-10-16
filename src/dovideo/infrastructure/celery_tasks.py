@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, Callable
 
 from celery import Celery
+from celery.exceptions import Reject, Retry
 from pydantic import ValidationError
 
 from dovideo.application.worker import WorkerDisposition
@@ -66,12 +68,22 @@ def register_analysis_task(
             invalid = InvalidTransportEnvelope("transport envelope validation failed")
             try:
                 asyncio.run(get_runtime().record_poison(payload, invalid))
-            except Exception as poison_error:
-                # Late ACK plus this raised exception leaves the body available
-                # for another delivery; nothing is silently acknowledged.
-                raise PoisonMessageUnresolved(
-                    "poison message could not be durably recorded and DLQed"
-                ) from poison_error
+            except Exception:
+                # An ordinary failure is rejected without requeue by Celery.
+                # Explicit retry preserves at-least-once application handoff.
+                logging.getLogger(__name__).warning("Poison handoff incomplete; retrying delivery")
+                try:
+                    raise self.retry(
+                        exc=PoisonMessageUnresolved("poison handoff requires recovery"),
+                        countdown=selected_settings.retry_countdown_seconds,
+                        max_retries=None,
+                    )
+                except Retry:
+                    raise
+                except Reject:
+                    raise Reject("poison retry publication failed", requeue=True) from None
+                except Exception:
+                    raise Reject("poison retry publication failed", requeue=True) from None
             return {"disposition": "POISON_DLQ", "businessAttempt": 0}
 
         try:
