@@ -57,5 +57,36 @@ jobs:
         run: npm ci
       - name: Tests
         run: npm test
+      - name: Mounted component tests
+        run: npm run test:components
       - name: Build
         run: npm run build
+
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -c constraints-py312.txt -e ".[test]"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: docker compose -f docker-compose.governance.yml up -d --wait
+      - name: Real storage, broker, leases, CAS and media contracts
+        env:
+          DOVIDEO_GOVERNANCE_BROKER: amqp://governance:governance-test@127.0.0.1:25672/%2F
+          DOVIDEO_GOVERNANCE_REDIS: redis://127.0.0.1:26379/0
+          DOVIDEO_ENGINEERING_LIVE: "1"
+          DOVIDEO_MEMORY_REDIS_LIVE: "1"
+          DOVIDEO_TASK_LEASE_LIVE: "1"
+          DOVIDEO_ENGINEERING_ADMIN_URL: mysql+pymysql://root:governance-test@127.0.0.1:23306/mysql
+          DOVIDEO_REDIS_URL: redis://127.0.0.1:26379/0
+        run: >-
+          python -m pytest -q tests/infrastructure/test_governance_broker_live.py
+          tests/infrastructure/test_response_files.py tests/infrastructure/test_audio_export.py
+          tests/infrastructure/test_engineering_live.py
+          tests/infrastructure/test_m1_conversation_redis_live.py
+          tests/infrastructure/test_task_lease_redis_live.py -k "not minio"
+      - name: Remove isolated test services
+        if: always()
+        run: docker compose -f docker-compose.governance.yml down -v

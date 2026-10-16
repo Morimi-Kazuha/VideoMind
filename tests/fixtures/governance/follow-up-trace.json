@@ -1,0 +1,25 @@
+{
+  "baseline": "480b4be",
+  "normalization": "Fixed request and conversation IDs; omit only wall-clock created_at.",
+  "trace": {
+    "answers_sha256": "ac1f6f7ec6218550e875f710631c381ec9f4684b3667be615f6e7b2c859b4d51",
+    "http_payloads_sha256": "d1ae8565a42f829dfff4d7fba98ae9e00b23f7aaf07b7583f1e77bda4a16ff72",
+    "retrieval_queries_sha256": "1bae5849779d7379583199baac5034efaa41a6b5cd6c1eb1849a90d7034f1f93",
+    "persisted_memory_sha256": "ceb32f85dab3b25d5ee388723250ec3aee7421a04c46a637cd61c7059a9ea7ed",
+    "model_stages": [
+      "FOLLOW_UP",
+      "QUERY_REWRITE",
+      "FOLLOW_UP",
+      "FOLLOW_UP",
+      "FOLLOW_UP",
+      "FOLLOW_UP",
+      "FOLLOW_UP",
+      "FOLLOW_UP",
+      "FOLLOW_UP",
+      "FOLLOW_UP",
+      "FOLLOW_UP",
+      "ROLLING_SUMMARY"
+    ],
+    "memory_version": 10
+  }
+}

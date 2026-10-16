@@ -8,7 +8,9 @@ checks the database revision; API and Celery workers never execute migrations.
 The compatibility `create_schema(engine)` helper now explicitly invokes Alembic
 for tests/scripts, rather than `metadata.create_all()` plus handwritten DDL.
 
-From a source checkout, install `python -m pip install -e ".[test]"`, export the
+Use Python 3.12 for deployment and primary validation (3.13 has a compatibility
+CI job). From a source checkout, install
+`python -m pip install -c constraints-py312.txt -e ".[test]"`, export the
 private infrastructure configuration, back up an existing database, stop older
 writers during schema upgrades, and run one deployment job:
 
