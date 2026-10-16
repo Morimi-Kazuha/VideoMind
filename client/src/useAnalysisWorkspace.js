@@ -1,3 +1,6 @@
+import { createWorkspacePlayback } from './workspacePlayback.js'
+import { createWorkspaceMetadata } from './workspaceMetadata.js'
+import { createWorkspaceConversation } from './workspaceConversation.js'
 import { computed, ref, onScopeDispose, getCurrentScope } from 'vue'
 import { apiRequest, captureAuthSession, onAuthSessionChange } from './api.js'
 import {
@@ -112,7 +115,6 @@ export function useAnalysisWorkspace({
   let evidenceRequestVersion = 0
   let workspaceGeneration = 0
   let metadataGeneration = 0
-  let playbackRequest = 0
   let historyGeneration = 0
   let pendingFollowUp = null
   const invalidateWorkspace = () => {
@@ -148,33 +150,8 @@ export function useAnalysisWorkspace({
     return Object.entries(durations).map(([phase, duration]) => [STAGE_LABELS[phase], formatDuration(duration)])
   })
   const renderedMarkdown = computed(() => renderMarkdown(sidebar.value.content))
-  const userId = () => {
-    try {
-      if (!captureAuthSession().token) return null
-      const id = JSON.parse(localStorage.getItem('user') || 'null')?.id
-      return Number.isSafeInteger(id) && id > 0 ? id : null
-    } catch { return null }
-  }
-  const conversationStorageKey = () => {
-    const id = userId()
-    if (!id || !sidebar.value.mediaId || sidebar.value.analysisMode === 'AUTO') return null
-    return `videomind:conversation:${id}:${sidebar.value.mediaId}:${sidebar.value.analysisMode}:${encodeURIComponent(sidebar.value.goal.trim())}`
-  }
-  const ensureConversation = (fresh = false) => {
-    const scope = conversationStorageKey()
-    if (!scope) return null
-    if (!fresh && sidebar.value.conversationScope === scope && sidebar.value.conversationId)
-      return sidebar.value.conversationId
-    let id
-    try { if (!fresh) id = localStorage.getItem(scope) } catch { /* storage is optional */ }
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || ''))
-      id = globalThis.crypto.randomUUID()
-    sidebar.value.conversationScope = scope
-    sidebar.value.conversationId = id
-    pendingFollowUp = null
-    try { localStorage.setItem(scope, id) } catch { /* in-memory session still works */ }
-    return id
-  }
+  const { userId, ensureConversation } = createWorkspaceConversation(sidebar,
+    () => { pendingFollowUp = null })
   const restoreConversation = async () => {
     const id = ensureConversation()
     if (!id || demoMode) return
@@ -245,66 +222,10 @@ export function useAnalysisWorkspace({
     sidebar.value.visible = false
   }
 
-  const loadPlayback = async (id) => {
-    // Playback belongs to the media view, so changing an analysis goal or
-    // revision does not strand its loading flag. A new playback request,
-    // media view or auth session still owns its own result and cleanup.
-    const request = ++playbackRequest
-    const session = captureAuthSession()
-    const state = sidebar.value
-    const current = () => request === playbackRequest && session.isCurrent()
-      && state === sidebar.value && state.visible && state.mediaId === id
-    sidebar.value.playbackLoading = true
-    sidebar.value.playbackError = ''
-    try {
-      const response = await apiRequest(`/media/playback?id=${id}`)
-      const url = await response.text()
-      if (!response.ok) throw new Error(url || '视频加载失败')
-      if (current()) {
-        sidebar.value.playbackUrl = url
-        sidebar.value.playbackError = ''
-      }
-    } catch (error) {
-      console.warn('Video preview unavailable', error)
-      if (current()) {
-        sidebar.value.playbackUrl = ''
-        sidebar.value.playbackError = error.message || '原视频暂时无法加载'
-      }
-    } finally {
-      if (current()) sidebar.value.playbackLoading = false
-    }
-  }
+  const { loadPlayback } = createWorkspacePlayback(sidebar)
 
-  const refreshAgentMeta = async (
-    id,
-    goal,
-    includeEvaluation,
-    analysisMode = sidebar.value.analysisMode || 'GENERAL',
-  ) => {
-    const current = captureWorkspace()
-    const request = ++metadataGeneration
-    const params = new URLSearchParams({
-      id: String(id),
-      goal,
-      mode: analysisMode,
-    })
-    const requests = [
-      apiRequest(`/analysis/agent-plan?${params}`),
-      apiRequest(`/analysis/agent-trace?${params}`),
-    ]
-    if (includeEvaluation)
-      requests.push(apiRequest(`/analysis/agent-evaluation?${params}`))
-
-    const settled = await Promise.allSettled(requests)
-    if (!current() || request !== metadataGeneration) return
-    const [plan, trace, evaluation] = await Promise.all(
-      settled.map(readSettledJson),
-    )
-    if (!current() || request !== metadataGeneration) return
-    if (plan && !sidebar.value.editingPlan) sidebar.value.plan = plan
-    if (trace) sidebar.value.trace = trace
-    if (includeEvaluation && evaluation) sidebar.value.evaluation = evaluation
-  }
+  const { refreshAgentMeta } = createWorkspaceMetadata(sidebar, captureWorkspace,
+    () => ++metadataGeneration, () => metadataGeneration)
 
   const startTaskStream = (id, type, goal = '', analysisMode = 'GENERAL') => {
     const current = captureWorkspace()
@@ -945,16 +866,6 @@ export function useAnalysisWorkspace({
     resetWorkspace,
     discardMediaWorkspace,
     formatPercent: (value) => `${Math.round((Number(value) || 0) * 100)}%`,
-  }
-}
-
-async function readSettledJson(result) {
-  if (result.status !== 'fulfilled' || !result.value.ok) return null
-  try {
-    return await result.value.json()
-  } catch (error) {
-    console.warn('Agent metadata response is invalid', error)
-    return null
   }
 }
 
