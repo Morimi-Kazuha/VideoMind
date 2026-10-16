@@ -44,7 +44,8 @@ from dovideo.infrastructure.media.response_files import ResponseFiles, RedisPlay
 class ProductionMediaStore:
     """MediaRecordPort plus the ownership operations used by the API."""
 
-    def __init__(self, infrastructure: R2Infrastructure) -> None:
+    def __init__(self, infrastructure: R2Infrastructure, *, memory=None) -> None:
+        self.memory = memory
         self.infrastructure = infrastructure
         self.repository = infrastructure.media_repository
 
@@ -113,10 +114,14 @@ class ProductionMediaStore:
         record = await self.require_owned(media_id, user_id)
         try:
             await self.infrastructure.object_storage.delete_object(record.source)
-            await self.repository.delete(media_id)
             await self.infrastructure.vector_index.delete_media(media_id)
-            self.infrastructure.checkpoint_store.delete_media(media_id)
-            self.infrastructure.checkpoint_cache.delete_media(media_id)
+            await AgentCheckpointService(self.infrastructure.checkpoint_repository).delete_media(media_id)
+            # Checkpoint invalidation is best effort for normal writes. Deletion
+            # explicitly retries unavailable cache cleanup before removing owner.
+            await asyncio.to_thread(self.infrastructure.checkpoint_cache.delete_media, media_id)
+            if self.memory is not None:
+                await self.memory.delete_media(media_id)
+            await self.repository.delete(media_id)
         except R1ServiceError:
             raise
         except Exception as exc:
@@ -180,7 +185,7 @@ class ProductionR2Services:
         from dovideo.infrastructure.conversation_memory import RedisConversationMemoryStore, memory_source_write_enabled_from_environment
         self.conversation_memory = ConversationMemoryService(RedisConversationMemoryStore(infrastructure.redis_client,
             write_sources=memory_source_write_enabled_from_environment()))
-        self.media = ProductionMediaStore(infrastructure)
+        self.media = ProductionMediaStore(infrastructure, memory=self.conversation_memory.store)
         self.trace = RedisAgentTelemetry(infrastructure.redis_client)
         self.playback_grants = RedisPlaybackGrants(infrastructure.redis_client)
         self.response_files = ResponseFiles(infrastructure.settings.media_workspace)
@@ -267,7 +272,6 @@ class ProductionR2Services:
 
     async def delete_media(self, media_id: int, user_id: int) -> None:
         await self.media.delete_owned(media_id, user_id)
-        await self.conversation_memory.store.delete_media(media_id)
 
     async def follow_up_history(self, media_id, user_id, goal, mode, conversation_id):
         from .runtime import read_follow_up_history
