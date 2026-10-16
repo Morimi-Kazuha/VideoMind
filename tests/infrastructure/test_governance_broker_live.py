@@ -14,8 +14,8 @@ from dovideo.infrastructure.celery_transport import (
 pytestmark = pytest.mark.skipif(not os.environ.get("DOVIDEO_GOVERNANCE_BROKER"), reason="isolated broker opt-in")
 
 
-@pytest.mark.parametrize("failed_stage", ["record", "publish"])
-def test_poison_retries_until_application_handoff_then_ack(failed_stage):
+@pytest.mark.parametrize("failed_stage", ["record", "publish", "retry_publish"])
+def test_poison_retries_until_application_handoff_then_ack(failed_stage, monkeypatch):
     prefix = "governance." + uuid4().hex
     settings = CeleryTransportSettings(os.environ["DOVIDEO_GOVERNANCE_BROKER"],
         queue=prefix, exchange=prefix, routing_key=prefix,
@@ -29,7 +29,7 @@ def test_poison_retries_until_application_handoff_then_ack(failed_stage):
         records = 0
         async def record_poison(self, payload, error):
             self.attempts += 1
-            if failed_stage == "record" and self.attempts == 1:
+            if failed_stage in {"record", "retry_publish"} and self.attempts == 1:
                 raise OSError("injected ledger outage")
             self.records += 1
             if failed_stage == "publish" and self.attempts == 1:
@@ -39,7 +39,13 @@ def test_poison_retries_until_application_handoff_then_ack(failed_stage):
         async def process(self, request):
             raise AssertionError("poison cannot enter business processing")
     runtime = Runtime()
-    register_analysis_task(app, runtime_factory=lambda: runtime)
+    task = register_analysis_task(app, runtime_factory=lambda: runtime)
+    if failed_stage == "retry_publish":
+        # The initial send uses app.send_task. Only the retry publication fails;
+        # the live worker must reject with requeue=True to retain the original.
+        def fail_retry(*args, **kwargs):
+            raise OSError("injected retry publication outage")
+        monkeypatch.setattr(task, "apply_async", fail_retry)
     try:
         with start_worker(app, pool="solo", perform_ping_check=False, shutdown_timeout=15):
             app.send_task(settings.task_name, args=[{"secret": "must-not-reach-dlq"}])
