@@ -52,6 +52,7 @@ from dovideo.application.temporal_read import (
     verified_answer_presentation,
 )
 
+from .file_response import media_file_response
 from .runtime import LocalR1Services, R1ServiceError, media_summary
 from .schemas import (
     AuthData,
@@ -468,7 +469,7 @@ def create_app(
         access_token: str = Query(...),
     ) -> FileResponse:
         path, content_type = await selected_services.playback_file(media_id, access_token)
-        return FileResponse(path, media_type=content_type or "video/mp4")
+        return media_file_response(selected_services, path, media_type=content_type or "video/mp4")
 
     @app.delete("/media/delete")
     async def delete_media(
@@ -753,7 +754,7 @@ def create_app(
         path, filename = await selected_services.download_path(id, int(user["id"]))
         # The R1 local adapter returns the owned local source as a bounded
         # binary download.  Audio extraction remains an infrastructure slice.
-        return FileResponse(path, media_type="audio/mpeg", filename=filename)
+        return media_file_response(selected_services, path, media_type="audio/mpeg", filename=filename)
 
     return app
 
