@@ -584,4 +584,3 @@ def _model_client_for(
     if value is None:
         value = clients.get(lane.value)
     return value
-

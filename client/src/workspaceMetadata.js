@@ -44,4 +44,3 @@ async function readSettledJson(result) {
     return null
   }
 }
-

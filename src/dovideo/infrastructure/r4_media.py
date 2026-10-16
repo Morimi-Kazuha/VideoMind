@@ -286,4 +286,3 @@ def bind_r4_request(request: AnalysisRequest):
 
 def reset_r4_request(token: Any) -> None:
     _CURRENT_R4_REQUEST.reset(token)
-
