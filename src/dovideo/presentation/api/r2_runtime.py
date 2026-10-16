@@ -239,7 +239,26 @@ class ProductionR2Services:
 
     async def download_path(self, media_id: int, user_id: int) -> tuple[Path, str]:
         record = await self.media.require_owned(media_id, user_id)
-        return await self._download_object(record), Path(record.filename).stem + ".mp3"
+        from dovideo.infrastructure.media.audio_export import export_mp3, NoAudioTrack
+        from dovideo.presentation.composition import AnalysisSettings
+        settings = AnalysisSettings.from_environment()
+        source = await self._download_object(record)
+        output = None
+        try:
+            output = self.response_files.allocate(".mp3")
+            await export_mp3(source, output, ffmpeg=settings.ffmpeg_executable,
+                             ffprobe=settings.ffprobe_executable)
+            return output, Path(record.filename).stem + ".mp3"
+        except BaseException as exc:
+            if output is not None:
+                self.response_files.release(output)
+            if isinstance(exc, asyncio.CancelledError):
+                raise
+            if isinstance(exc, NoAudioTrack):
+                raise R1ServiceError("视频没有可导出的音轨", status_code=422) from None
+            raise R1ServiceError("音频转换暂不可用", status_code=503) from exc
+        finally:
+            self.response_files.release(source)
 
     async def _download_object(self, record: MediaRecord) -> Path:
         name = record.source.split("/", 3)[-1]
