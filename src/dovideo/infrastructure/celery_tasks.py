@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any, Callable
 
-from celery import Celery
+from celery import Celery, signals
 from celery.exceptions import Reject, Retry
 from pydantic import ValidationError
 
@@ -51,6 +51,21 @@ def register_analysis_task(
 
                 runtime = R4WorkerRuntime.from_environment(settings=selected_settings)
         return runtime
+
+    def close_runtime(**_kwargs):
+        nonlocal runtime
+        owned, runtime = runtime, None
+        if owned is not None:
+            close = getattr(owned, "close", None)
+            if callable(close):
+                try:
+                    asyncio.run(close())
+                except Exception:
+                    logging.getLogger(__name__).warning("Worker resource cleanup failed")
+
+    signals.worker_process_shutdown.connect(close_runtime, weak=True)
+    signals.worker_shutdown.connect(close_runtime, weak=True)
+    app._dovideo_close_runtime = close_runtime
 
     @app.task(
         bind=True,

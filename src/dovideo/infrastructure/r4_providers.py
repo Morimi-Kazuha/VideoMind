@@ -282,13 +282,19 @@ class R4ProviderStack:
 
     async def close(self) -> None:
         closed: set[int] = set()
+        errors = []
         for client in (self.chat_client, *self.additional_chat_clients, self.reranker_adapter):
             if client is None:
                 continue
             if id(client) in closed:
                 continue
             closed.add(id(client))
-            await client.aclose()
+            try:
+                await client.aclose()
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            raise errors[0]
 
 
 def _query_rewrite_request_settings_from_environment(environ=None):
@@ -578,3 +584,4 @@ def _model_client_for(
     if value is None:
         value = clients.get(lane.value)
     return value
+

@@ -161,12 +161,17 @@ class R2Infrastructure:
             await asyncio.to_thread(ping)
 
     def close(self) -> None:
-        dispose = getattr(self.engine, "dispose", None)
-        if callable(dispose):
-            dispose()
-        close = getattr(self.redis_client, "close", None)
-        if callable(close):
-            close()
+        errors = []
+        for owner, method in ((self.engine, "dispose"), (self.redis_client, "close"),
+                              (getattr(self.minio_client, "_http", None), "clear")):
+            close = getattr(owner, method, None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as exc:
+                    errors.append(exc)
+        if errors:
+            raise errors[0]
 
 
 def create_r2_infrastructure(settings: R2Settings | None = None) -> R2Infrastructure:
@@ -182,55 +187,64 @@ def create_r2_infrastructure(settings: R2Settings | None = None) -> R2Infrastruc
         max_overflow=selected.max_overflow,
         pool_timeout=selected.pool_timeout,
     )
-    redis_client = Redis.from_url(
-        selected.redis_url,
-        decode_responses=False,
-        socket_connect_timeout=selected.pool_timeout,
-        socket_timeout=selected.pool_timeout,
-        health_check_interval=30,
-    )
-    host, secure = _minio_host(selected.minio_endpoint, selected.minio_secure)
-    minio_client = Minio(
-        host,
-        access_key=selected.minio_access_key,
-        secret_key=selected.minio_secret_key,
-        secure=secure,
-    )
-    checkpoint_store = SqlAlchemyCheckpointStore(engine)
-    checkpoint_cache = RedisCheckpointCache(redis_client)
-    from .persistence.repository import CheckpointRepository
+    redis_client = None
+    try:
+        redis_client = Redis.from_url(
+            selected.redis_url,
+            decode_responses=False,
+            socket_connect_timeout=selected.pool_timeout,
+            socket_timeout=selected.pool_timeout,
+            health_check_interval=30,
+        )
+        host, secure = _minio_host(selected.minio_endpoint, selected.minio_secure)
+        minio_client = Minio(
+            host,
+            access_key=selected.minio_access_key,
+            secret_key=selected.minio_secret_key,
+            secure=secure,
+        )
+        checkpoint_store = SqlAlchemyCheckpointStore(engine)
+        checkpoint_cache = RedisCheckpointCache(redis_client)
+        from .persistence.repository import CheckpointRepository
 
-    checkpoint_repository = CheckpointRepository(checkpoint_store, checkpoint_cache)
-    object_storage = MinioObjectStorage(
-        minio_client,
-        bucket=selected.minio_bucket,
-        workspace_parent=selected.media_workspace,
-    )
-    return R2Infrastructure(
-        settings=selected,
-        engine=engine,
-        redis_client=redis_client,
-        minio_client=minio_client,
-        checkpoint_store=checkpoint_store,
-        checkpoint_cache=checkpoint_cache,
-        checkpoint_repository=checkpoint_repository,
-        execution_record_repository=SqlAlchemyExecutionRecordRepository(engine),
-        media_repository=SqlAlchemyMediaRecordRepository(engine),
-        user_store=SqlAlchemyUserStore(engine),
-        failed_task_store=SqlAlchemyFailedTaskStore(engine),
-        upload_sessions=RedisUploadSessionStore(redis_client),
-        object_storage=object_storage,
-        chunk_store=MinioChunkObjectStore(object_storage),
-        merge_lock=RedisMergeLock(redis_client),
-        active_marker=RedisTaskActiveMarker(redis_client),
-        completion_marker=RedisTaskCompletionMarker(redis_client),
-        task_lock=RedisTaskLock(redis_client),
-        vector_index=QdrantVectorIndex(
-            base_url=selected.qdrant_url,
-            api_key=selected.qdrant_api_key,
-            collection=selected.qdrant_collection,
-        ),
-    )
+        checkpoint_repository = CheckpointRepository(checkpoint_store, checkpoint_cache)
+        object_storage = MinioObjectStorage(
+            minio_client,
+            bucket=selected.minio_bucket,
+            workspace_parent=selected.media_workspace,
+        )
+        return R2Infrastructure(
+            settings=selected,
+            engine=engine,
+            redis_client=redis_client,
+            minio_client=minio_client,
+            checkpoint_store=checkpoint_store,
+            checkpoint_cache=checkpoint_cache,
+            checkpoint_repository=checkpoint_repository,
+            execution_record_repository=SqlAlchemyExecutionRecordRepository(engine),
+            media_repository=SqlAlchemyMediaRecordRepository(engine),
+            user_store=SqlAlchemyUserStore(engine),
+            failed_task_store=SqlAlchemyFailedTaskStore(engine),
+            upload_sessions=RedisUploadSessionStore(redis_client),
+            object_storage=object_storage,
+            chunk_store=MinioChunkObjectStore(object_storage),
+            merge_lock=RedisMergeLock(redis_client),
+            active_marker=RedisTaskActiveMarker(redis_client),
+            completion_marker=RedisTaskCompletionMarker(redis_client),
+            task_lock=RedisTaskLock(redis_client),
+            vector_index=QdrantVectorIndex(
+                base_url=selected.qdrant_url,
+                api_key=selected.qdrant_api_key,
+                collection=selected.qdrant_collection,
+            ),
+        )
+    except BaseException:
+        try:
+            if redis_client is not None:
+                redis_client.close()
+        finally:
+            engine.dispose()
+        raise
 
 
 def _minio_host(endpoint: str, secure: bool) -> tuple[str, bool]:

@@ -18,6 +18,7 @@ from .r2_config import R2Infrastructure
 from .content_context import RedisContentBuildLock, pipeline_contract, sha256_file
 from .persistence.content_context import SqlAlchemyContentArtifacts
 from .r4_telemetry import R4AgentTelemetry
+from .media.response_files import joined_thread
 
 _CURRENT_R4_REQUEST: ContextVar[AnalysisRequest | None] = ContextVar(
     "dovideo_r4_current_request",
@@ -201,7 +202,7 @@ class R4MediaPipeline:
                     release()
 
         try:
-            await asyncio.to_thread(read_object)
+            await joined_thread(read_object)
             if (await asyncio.to_thread(target.stat)).st_size <= 0:
                 raise ValueError("R4 MinIO media object is empty")
             return target
@@ -285,3 +286,4 @@ def bind_r4_request(request: AnalysisRequest):
 
 def reset_r4_request(token: Any) -> None:
     _CURRENT_R4_REQUEST.reset(token)
+

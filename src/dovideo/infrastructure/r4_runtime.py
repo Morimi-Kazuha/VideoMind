@@ -155,79 +155,85 @@ class R4WorkerRuntime:
             require_production=True
         )
         selected_infrastructure = infrastructure or create_r2_infrastructure()
-        checkpoint = AgentCheckpointService(selected_infrastructure.checkpoint_repository)
-        lifecycle = CheckpointTaskLifecycleStore.from_environment(
-            selected_infrastructure.checkpoint_repository,
-            redis_client=selected_infrastructure.redis_client,
-        )
-        baseline_trace = RedisAgentTelemetry(selected_infrastructure.redis_client)
-        telemetry = R4AgentTelemetry(
-            baseline_trace, budget_config=_agent_budget_from_environment()
-        )
-        execution_records = ExecutionRecordService(
-            selected_infrastructure.execution_record_repository,
-            trace_projection=telemetry.project_execution,
-            execution_contract_version=EXECUTION_CONTRACT_VERSION_V2,
-        )
-        events = R3RedisTaskEventPublisher(
-            selected_infrastructure.redis_client,
-            lifecycle,
-            trace=telemetry,
-        )
-        provider = create_r4_provider_stack(
-            checkpoint,
-            selected_infrastructure.vector_index,
-            telemetry,
-            events,
-            tool_settings=selected_tool_settings,
-            execution_records=execution_records,
-        )
-        media_settings = AnalysisSettings.from_environment(
-            embedding_mode="remote",
-            project_root=Path(__file__).resolve().parents[3],
-        )
-        pipeline = R4MediaPipeline(
-            selected_infrastructure,
-            media_settings,
-            telemetry,
-            events,
-        )
-        context_checkpoint = R4RequestContextCheckpoint(checkpoint, pipeline, prepare_chunks=provider.long_context.prepare_chunks)
-        dead_letter = RabbitMQDeadLetterPublisher(
-            selected_settings,
-            failed_task_store=selected_infrastructure.failed_task_store,
-            redis_client=selected_infrastructure.redis_client,
-        )
-        handoff = CheckpointDeadLetterHandoffStore(
-            selected_infrastructure.checkpoint_repository
-        )
-        worker = TaskWorker(
-            selected_infrastructure.task_lock,
-            selected_infrastructure.active_marker,
-            lifecycle,
-            context_checkpoint,
-            provider.agent_loop,
-            checkpoint,
-            events=events,
-            completion=selected_infrastructure.completion_marker,
-            dead_letter=dead_letter,
-            dead_letter_handoff=handoff,
-            execution_records=execution_records,
-        )
-        return cls(
-            settings=selected_settings,
-            infrastructure=selected_infrastructure,
-            lifecycle=lifecycle,
-            checkpoint=checkpoint,
-            events=events,
-            telemetry=telemetry,
-            provider=provider,
-            dead_letter=dead_letter,
-            handoff=handoff,
-            worker=worker,
-            topology=RabbitMQTopology(selected_settings),
-            tool_settings=selected_tool_settings,
-        )
+        try:
+            checkpoint = AgentCheckpointService(selected_infrastructure.checkpoint_repository)
+            lifecycle = CheckpointTaskLifecycleStore.from_environment(
+                selected_infrastructure.checkpoint_repository,
+                redis_client=selected_infrastructure.redis_client,
+            )
+            baseline_trace = RedisAgentTelemetry(selected_infrastructure.redis_client)
+            telemetry = R4AgentTelemetry(
+                baseline_trace, budget_config=_agent_budget_from_environment()
+            )
+            execution_records = ExecutionRecordService(
+                selected_infrastructure.execution_record_repository,
+                trace_projection=telemetry.project_execution,
+                execution_contract_version=EXECUTION_CONTRACT_VERSION_V2,
+            )
+            events = R3RedisTaskEventPublisher(
+                selected_infrastructure.redis_client,
+                lifecycle,
+                trace=telemetry,
+            )
+            provider = create_r4_provider_stack(
+                checkpoint,
+                selected_infrastructure.vector_index,
+                telemetry,
+                events,
+                tool_settings=selected_tool_settings,
+                execution_records=execution_records,
+            )
+            media_settings = AnalysisSettings.from_environment(
+                embedding_mode="remote",
+                project_root=Path(__file__).resolve().parents[3],
+            )
+            pipeline = R4MediaPipeline(
+                selected_infrastructure,
+                media_settings,
+                telemetry,
+                events,
+            )
+            context_checkpoint = R4RequestContextCheckpoint(checkpoint, pipeline, prepare_chunks=provider.long_context.prepare_chunks)
+            dead_letter = RabbitMQDeadLetterPublisher(
+                selected_settings,
+                failed_task_store=selected_infrastructure.failed_task_store,
+                redis_client=selected_infrastructure.redis_client,
+            )
+            handoff = CheckpointDeadLetterHandoffStore(
+                selected_infrastructure.checkpoint_repository
+            )
+            worker = TaskWorker(
+                selected_infrastructure.task_lock,
+                selected_infrastructure.active_marker,
+                lifecycle,
+                context_checkpoint,
+                provider.agent_loop,
+                checkpoint,
+                events=events,
+                completion=selected_infrastructure.completion_marker,
+                dead_letter=dead_letter,
+                dead_letter_handoff=handoff,
+                execution_records=execution_records,
+            )
+            return cls(
+                settings=selected_settings,
+                infrastructure=selected_infrastructure,
+                lifecycle=lifecycle,
+                checkpoint=checkpoint,
+                events=events,
+                telemetry=telemetry,
+                provider=provider,
+                dead_letter=dead_letter,
+                handoff=handoff,
+                worker=worker,
+                topology=RabbitMQTopology(selected_settings),
+                tool_settings=selected_tool_settings,
+            )
+        except BaseException:
+            if infrastructure is None:
+                selected_infrastructure.close()
+            raise
+
 
     async def initialize(self) -> None:
         if self.initialized:
@@ -289,8 +295,10 @@ class R4WorkerRuntime:
         )
 
     async def close(self) -> None:
-        await self.provider.close()
-        self.infrastructure.close()
+        try:
+            await self.provider.close()
+        finally:
+            self.infrastructure.close()
 
 
 __all__ = [
