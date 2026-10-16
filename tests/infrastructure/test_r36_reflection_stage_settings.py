@@ -138,7 +138,7 @@ async def test_off_has_no_model_attempt_with_override():
 
 @pytest.mark.asyncio
 async def test_production_stack_wires_only_balanced_reflection_setting(monkeypatch):
-    import dovideo.infrastructure.r4_runtime as runtime
+    import dovideo.infrastructure.r4_providers as runtime
     from dovideo.infrastructure.model_routing import ModelRoutingProductionSettings
     from dovideo.infrastructure.x1_config import X1ToolCallingSettings
     from dovideo.application.model_routing import ModelRouteLane

@@ -121,7 +121,7 @@ async def test_base_enabled_success_disabled_failure_and_strict_failure():
 
 @pytest.mark.asyncio
 async def test_production_wiring_and_close_are_configured_without_network(monkeypatch):
-    import dovideo.infrastructure.r4_runtime as runtime
+    import dovideo.infrastructure.r4_providers as runtime
     from dovideo.infrastructure.providers.config import ProviderConfig
     from dovideo.infrastructure.model_routing import ModelRoutingProductionSettings
     from dovideo.infrastructure.x1_config import X1ToolCallingSettings

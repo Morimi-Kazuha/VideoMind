@@ -569,7 +569,7 @@ class _TraceStore:
 
 @pytest.mark.asyncio
 async def test_production_stack_wires_x1_without_network_or_provider_call(monkeypatch) -> None:
-    import dovideo.infrastructure.r4_runtime as runtime
+    import dovideo.infrastructure.r4_providers as runtime
 
     def _provider_config(cls, environ=None, *, prefix="DOVIDEO_", required=False):
         del cls, environ, prefix, required
