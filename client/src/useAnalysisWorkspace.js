@@ -190,7 +190,10 @@ export function useAnalysisWorkspace({
   }
   captureAuthSession()
   const stopAuthListener = onAuthSessionChange(() => resetWorkspace())
-  if (getCurrentScope()) onScopeDispose(stopAuthListener)
+  if (getCurrentScope()) onScopeDispose(() => {
+    stopAuthListener()
+    resetWorkspace()
+  })
   const isCurrentWorkspace = (id, type, goal = null, analysisMode = null) =>
     sidebar.value.mediaId === id &&
     sidebar.value.type === type &&

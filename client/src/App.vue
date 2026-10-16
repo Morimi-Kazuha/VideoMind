@@ -888,6 +888,7 @@ const formatTime = (timeStr) => {
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+let disposed = false
 const downloadAudio = async (item) => {
   if (DEMO_MODE) {
     showMsg(`演示模式：${item.filename} 音频已准备`)
@@ -903,7 +904,7 @@ const downloadAudio = async (item) => {
     // 这里读出来向上抛，避免把“视频不存在 / 无权访问 / 转码失败”统一显示成同一句话。
     if (!res.ok) throw new Error((await res.text()) || '请稍后重试')
     const blob = await res.blob()
-    if (!session.isCurrent()) return
+    if (!(session.isCurrent() && !disposed)) return
     const downloadUrl = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = downloadUrl
@@ -914,7 +915,7 @@ const downloadAudio = async (item) => {
     window.URL.revokeObjectURL(downloadUrl)
     showMsg('✅ 下载完成')
   } catch (e) {
-    if (!session.isCurrent()) return
+    if (!(session.isCurrent() && !disposed)) return
     showMsg('音频下载失败：' + (e?.message || '请稍后重试'), true)
   }
 }
@@ -1206,6 +1207,7 @@ onMounted(() => {
   fetchList({ notify: Boolean(currentUser.value) })
 })
 onUnmounted(() => {
+  disposed = true
   window.removeEventListener('auth-expired', handleAuthExpired)
   window.removeEventListener('storage', handleStorage)
   window.removeEventListener('keydown', handleKeydown)
