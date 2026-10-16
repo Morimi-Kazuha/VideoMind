@@ -6,12 +6,7 @@ import asyncio
 from os import PathLike
 from typing import Any
 
-from dovideo.application import (
-    AsrBranchOutcome,
-    BranchStatus,
-    MediaObservationBundle,
-    OcrBranchOutcome,
-)
+from dovideo.application.value_objects import (AsrBranchOutcome, BranchStatus, MediaObservationBundle, OcrBranchOutcome)
 from dovideo.application.ports.observability import TelemetryPort
 
 from .asr import SegmentedTranscriptionService

@@ -37,7 +37,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
-from dovideo.application import MediaRecord, MediaStatus
+from dovideo.application.media import (MediaRecord, MediaStatus)
 from dovideo.application.execution_record import (
     DurableAgentExecutionRecord,
     DurableExecutionEvent,

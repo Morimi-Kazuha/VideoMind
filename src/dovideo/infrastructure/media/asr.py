@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
 
-from dovideo.application import AsrBranchOutcome, TranscriptSpan
+from dovideo.application.value_objects import (AsrBranchOutcome, TranscriptSpan)
 from dovideo.application.ports.ai import AudioSegmentTranscriptionPort
 from dovideo.application.ports.observability import TelemetryPort
 

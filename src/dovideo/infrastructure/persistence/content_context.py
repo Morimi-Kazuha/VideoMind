@@ -8,10 +8,8 @@ from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, defer
 
-from dovideo.application import (
-    AsrBranchOutcome, OcrBranchOutcome, MediaObservationBundle,
-    TranscriptSpan, OcrObservation, VideoContextBuilder,
-)
+from dovideo.application.value_objects import (AsrBranchOutcome, OcrBranchOutcome, MediaObservationBundle, TranscriptSpan, OcrObservation)
+from dovideo.application.context import (VideoContextBuilder)
 from dovideo.domain import VideoContext
 from .sqlalchemy import ContentContextArtifactRow, _db_now
 

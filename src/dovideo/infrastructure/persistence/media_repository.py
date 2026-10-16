@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
-from dovideo.application import MediaRecord, MediaStatus
+from dovideo.application.media import (MediaRecord, MediaStatus)
 from dovideo.application.ports.media import MediaMetadataPort
 from dovideo.application.ports.ingest import MediaRecordPort
 from dovideo.application.value_objects import MediaRef

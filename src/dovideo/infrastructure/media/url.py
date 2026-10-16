@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from dovideo.application import UrlDownloadResult
+from dovideo.application.media import (UrlDownloadResult)
 from dovideo.application.errors import UrlDownloadFailure, UrlResolutionError, UrlValidationError
 from dovideo.application.ports.ingest import DnsResolverPort
 

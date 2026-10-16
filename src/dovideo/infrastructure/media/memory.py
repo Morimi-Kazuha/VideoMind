@@ -14,11 +14,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
-from dovideo.application import (
-    CompletedUploadMarker,
-    MediaRecord,
-    UploadSession,
-)
+from dovideo.application.media import (CompletedUploadMarker, MediaRecord, UploadSession)
 from dovideo.application.ports.ingest import (
     ChunkObjectPort,
     MediaRecordPort,

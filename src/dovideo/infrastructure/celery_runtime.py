@@ -9,7 +9,9 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
-from dovideo.application import AgentCheckpointService, AgentLoopService, TaskEventDeliveryService
+from dovideo.application.checkpoint_service import (AgentCheckpointService)
+from dovideo.application.agent import (AgentLoopService)
+from dovideo.application.event_delivery import (TaskEventDeliveryService)
 from dovideo.application.analysis_task_keys import goal_digest
 from dovideo.application.ports.checkpoint import ContextCheckpointPort
 from dovideo.application.ports.tasks import (

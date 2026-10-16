@@ -1,5 +1,6 @@
 """Safe semantic routing from transient AUTO intent to a concrete mode."""
 
+# Compatibility/experiment surface: production AUTO resolves to GENERAL without this classifier.
 from __future__ import annotations
 
 import json

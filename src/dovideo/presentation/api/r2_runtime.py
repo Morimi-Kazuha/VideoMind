@@ -16,18 +16,12 @@ from collections.abc import AsyncIterable, AsyncIterator
 from pathlib import Path
 from uuid import uuid4
 
-from dovideo.application import (
-    AgentCheckpointService,
-    DispatchDisposition,
-    MediaRecord,
-    TaskKey,
-    UploadStatus,
-    filename_suffix,
-    normalize_video_filename,
-)
+from dovideo.application.checkpoint_service import (AgentCheckpointService)
+from dovideo.application.value_objects import (DispatchDisposition, TaskKey)
+from dovideo.application.media import (MediaRecord, UploadStatus, filename_suffix, normalize_video_filename)
 from dovideo.application.errors import MediaUnauthorized
 from dovideo.domain import AgentPlan, AnalysisMode, TaskStatus, TaskStatusState
-from dovideo.application import AnalysisRequest
+from dovideo.application.value_objects import (AnalysisRequest)
 from dovideo.infrastructure import (
     AiInteractionLimiter,
     R2Infrastructure,
