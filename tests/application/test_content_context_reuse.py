@@ -184,12 +184,14 @@ async def test_known_contention_timeout_never_builds(artifacts):
 @pytest.mark.asyncio
 async def test_lease_loss_cancels_build_and_never_publishes(artifacts):
     lock = Lock()
-    lock.reject = True
+    # Inject loss only after preprocessing starts. Rejecting from acquisition
+    # raced the real SQL lookup and could correctly cancel before build ran.
+    lock.lease_seconds = 1
     cancelled = asyncio.Event()
     async def build():
+        lock.reject = True
         try:
-            await asyncio.sleep(1)
-            return context(key())
+            await asyncio.Event().wait()  # Only lease loss may finish this build.
         finally:
             cancelled.set()
     with pytest.raises(TaskLeaseUnavailable, match="ownership lost"):
