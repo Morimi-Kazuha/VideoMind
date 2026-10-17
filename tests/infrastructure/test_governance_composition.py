@@ -59,3 +59,20 @@ def test_worker_shutdown_closes_cached_runtime_once():
     app._dovideo_close_runtime(); app._dovideo_close_runtime()
     runtime.close.assert_awaited_once()
     app.close()
+
+
+def test_partial_infrastructure_failure_closes_minio_and_preserves_primary_error(monkeypatch, tmp_path):
+    example_environment(monkeypatch, tmp_path)
+    import dovideo.infrastructure.r2_config as config
+    engine = SimpleNamespace(dispose=Mock())
+    redis = SimpleNamespace(close=Mock(side_effect=OSError("cleanup failed")))
+    minio = SimpleNamespace(_http=SimpleNamespace(clear=Mock()))
+    monkeypatch.setattr(config, "create_sqlalchemy_engine", lambda *a, **kw: engine)
+    monkeypatch.setattr("redis.Redis.from_url", lambda *a, **kw: redis)
+    monkeypatch.setattr("minio.Minio", lambda *a, **kw: minio)
+    monkeypatch.setattr(config, "RedisCheckpointCache", Mock(side_effect=ValueError("invalid checkpoint settings")))
+    with pytest.raises(ValueError, match="invalid checkpoint settings"):
+        config.create_r2_infrastructure()
+    minio._http.clear.assert_called_once()
+    redis.close.assert_called_once()
+    engine.dispose.assert_called_once()

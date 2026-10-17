@@ -113,3 +113,33 @@ async def test_real_redis_cross_instance_grants_expire():
     finally:
         client.delete(a.key(token))
         client.close()
+
+
+def test_allocation_lock_failure_removes_unregistered_directory(monkeypatch, tmp_path):
+    files = ResponseFiles(tmp_path)
+    monkeypatch.setattr("dovideo.infrastructure.media.response_files._lock", lambda handle: False)
+    with pytest.raises(OSError, match="owner lock"):
+        files.allocate(".mp4")
+    assert not files._handles
+    assert list(files.root.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_cleanup_failure_preserves_cancellation_and_retries_at_shutdown(monkeypatch, tmp_path):
+    files = ResponseFiles(tmp_path)
+    path = files.allocate(".mp4")
+    path.write_bytes(b"video")
+    original = files._remove
+    def unavailable(directory):
+        raise PermissionError("transient filesystem failure")
+    monkeypatch.setattr(files, "_remove", unavailable)
+    async def release(path): files.release(Path(path))
+    async def send(message): raise asyncio.CancelledError()
+    with pytest.raises(asyncio.CancelledError):
+        await OwnedFileResponse(path, release=release)(
+            {"type":"http", "asgi":{"spec_version":"2.4"}, "method":"GET", "headers":[]}, None, send)
+    assert path.exists()
+    monkeypatch.setattr(files, "_remove", original)
+    files.close()
+    assert not path.parent.exists()
+    assert not files._handles

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -75,28 +76,41 @@ class ResponseFiles:
     def allocate(self, suffix):
         directory = self.root / ("response-" + secrets.token_hex(16))
         directory.mkdir()
-        handle = (directory / "owner.lock").open("w+b")
-        handle.write(b"1")
-        handle.flush()
-        if not _lock(handle):
-            handle.close()
-            raise OSError("response owner lock unavailable")
+        handle = None
+        try:
+            handle = (directory / "owner.lock").open("w+b")
+            handle.write(b"1")
+            handle.flush()
+            if not _lock(handle):
+                raise OSError("response owner lock unavailable")
+        except BaseException:
+            if handle is not None:
+                handle.close()
+            self._remove(directory)
+            raise
         path = directory / ("media" + suffix)
         self._handles[path] = handle
         return path
 
     def release(self, path):
-        handle = self._handles.pop(path, None)
+        handle = self._handles.get(path)
         if handle is not None:
             handle.close()
-            self._remove(path.parent)
+            try:
+                self._remove(path.parent)
+            except FileNotFoundError:
+                pass  # Another scavenger may have removed this inactive owner.
+            except OSError:
+                # Preserve cancellation/the response error, and retain a retry
+                # at shutdown instead of silently forgetting this directory.
+                logging.getLogger(__name__).warning("Response file cleanup deferred")
+                return
+            self._handles.pop(path, None)
 
     def close(self):
         for path in tuple(self._handles):
-            try:
-                self.release(path)
-            except OSError:
-                pass  # Scavenged after this process releases its owner lock.
+            self.release(path)
+        self._handles.clear()  # Remaining closed owners are eligible for scavenging.
 
 
 class RedisPlaybackGrants:

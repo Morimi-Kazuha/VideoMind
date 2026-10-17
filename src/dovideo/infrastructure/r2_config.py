@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
@@ -188,6 +189,7 @@ def create_r2_infrastructure(settings: R2Settings | None = None) -> R2Infrastruc
         pool_timeout=selected.pool_timeout,
     )
     redis_client = None
+    minio_client = None
     try:
         redis_client = Redis.from_url(
             selected.redis_url,
@@ -239,11 +241,14 @@ def create_r2_infrastructure(settings: R2Settings | None = None) -> R2Infrastruc
             ),
         )
     except BaseException:
-        try:
-            if redis_client is not None:
-                redis_client.close()
-        finally:
-            engine.dispose()
+        for owner, method in ((getattr(minio_client, "_http", None), "clear"),
+                              (redis_client, "close"), (engine, "dispose")):
+            close = getattr(owner, method, None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    logging.getLogger(__name__).warning("Partial infrastructure cleanup failed")
         raise
 
 
