@@ -239,12 +239,16 @@ def test_registered_task_acknowledges_terminal_worker_outcome() -> None:
     assert runtime.calls == [_request()]
 
 
-def test_registered_task_translates_worker_retry_without_own_attempt_policy() -> None:
+def test_registered_task_translates_worker_retry_without_own_attempt_policy(monkeypatch) -> None:
     runtime = _TaskRuntime("RETRY")
     app = create_celery_app(_settings())
     task = register_analysis_task(app, runtime_factory=lambda: runtime)
 
-    with pytest.raises((Retry, RuntimeError)):
+    assert task.max_retries is None
+    def retry(**kwargs):
+        raise Retry()
+    monkeypatch.setattr(task, "retry", retry)
+    with pytest.raises(Retry):
         task.run(CeleryAnalysisEnvelope.from_request(_request()).as_message())
 
 

@@ -321,7 +321,6 @@ def create_celery_app(settings: CeleryTransportSettings):
     from celery import Celery
 
     main_exchange = Exchange(settings.exchange, type="direct", durable=True)
-    dead_exchange = Exchange(settings.dead_letter_exchange, type="direct", durable=True)
     main_queue = Queue(
         settings.queue,
         exchange=main_exchange,
@@ -331,12 +330,6 @@ def create_celery_app(settings: CeleryTransportSettings):
             "x-dead-letter-exchange": settings.dead_letter_exchange,
             "x-dead-letter-routing-key": settings.dead_letter_routing_key,
         },
-    )
-    dead_queue = Queue(
-        settings.dead_letter_queue,
-        exchange=dead_exchange,
-        routing_key=settings.dead_letter_routing_key,
-        durable=True,
     )
     app = Celery("dovideo-r3", broker=settings.broker_url, backend=None)
     app.conf.update(
