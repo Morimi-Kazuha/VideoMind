@@ -441,7 +441,6 @@ class GroundedFollowUpService:
                     context_segments=len(context.segments),
                     chunk_count=0,
                 )
-            durable_chunks = tuple(chunks)
         if memory_session and source_revision(context) != memory_session[0].source_revision:
             raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
         selected_goal = (original_goal or context.user_goal or "")[:500]

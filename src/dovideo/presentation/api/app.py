@@ -740,8 +740,7 @@ def create_app(
         user: dict[str, Any] = Depends(require_user),
     ) -> FileResponse:
         path, filename = await selected_services.download_path(id, int(user["id"]))
-        # The R1 local adapter returns the owned local source as a bounded
-        # binary download.  Audio extraction remains an infrastructure slice.
+        # Production exports audio-only MP3; local demo retains its source adapter.
         return media_file_response(selected_services, path, media_type="audio/mpeg", filename=filename)
 
     return app

@@ -205,10 +205,6 @@ class SqliteMediaRecordRepository(MediaRecordPort, MediaMetadataPort):
                     cursor = self.connection.cursor()
                     columns = self._columns()
                     placeholders = ", ".join("?" for _ in columns)
-                    assignments = ", ".join(
-                        f"{column} = excluded.{column}"
-                        for column in columns
-                    )
                     if record.media_id is None:
                         cursor.execute(
                             f"INSERT INTO media_files ({', '.join(columns)}) "
