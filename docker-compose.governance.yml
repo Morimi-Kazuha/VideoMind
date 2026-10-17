@@ -1,7 +1,9 @@
 name: videomind-governance
 services:
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Public prebuilt images for this release are no longer accessible.
+    # Build the same official release commit, only for isolated test services.
+    build: ./tests/infrastructure/minio
     environment:
       MINIO_ROOT_USER: governance
       MINIO_ROOT_PASSWORD: governance-test

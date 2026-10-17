@@ -40,6 +40,8 @@ R4 迁移的 AST 对比确认：遥测 2 个定义、Provider 9 个定义、媒�
 
 离线跳过项为显式 live opt-in 或工具条件。相关真实存储路径另由专项验证，不能把跳过计为通过。warning 是锁定 Starlette 对 httpx TestClient 的弃用提示。
 
+首次远端 PR CI 的 Linux 3.12/3.13 和前端通过，基础设施作业在拉取 MinIO 时收到 Quay 401，未执行测试。官方 Docker Hub 同版本也拒绝匿名访问，发行二进制地址返回 410。因此测试 Compose 改从官方同一发行版的固定提交 `07c3a429bfed433e49018cb0f78a52145d4bedeb` 构建 MinIO；构建器使用其 [go.mod](https://github.com/minio/minio/blob/07c3a429bfed433e49018cb0f78a52145d4bedeb/go.mod) 声明的 Go 1.24.2。没有改用模拟 S3、跳过断言或改变生产 Compose。最终集成仍要求新的完整远端 CI 通过。
+
 真实专项新增：MinIO 上传后 Redis 回执失败、并发分片、合并失锁、回执丢失后的幂等重试、内容指纹跨媒体复用；两个生产服务实例共享 Redis 播放授权，经真实 HTTP Range 读取对象；下载 MP3 经 ffprobe 确认单一音轨；无音轨返回 422，响应完成后临时目录为空。环境使用专用 `videomind-governance` Compose 项目，无业务目录挂载。
 
 ## 集成判断与剩余风险
