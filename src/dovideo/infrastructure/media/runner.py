@@ -97,7 +97,7 @@ class AsyncSubprocessRunner:
         communication = asyncio.create_task(process.communicate())
         try:
             if effective_timeout is None:
-                stdout_bytes, stderr_bytes = await communication
+                stdout_bytes, stderr_bytes = await asyncio.shield(communication)
             else:
                 # Shield keeps the reader task alive while the child is being
                 # terminated, allowing us to drain both pipes deterministically.
@@ -105,8 +105,7 @@ class AsyncSubprocessRunner:
                     asyncio.shield(communication), effective_timeout
                 )
         except asyncio.TimeoutError as exc:
-            await _terminate_and_reap(process)
-            stdout_bytes, stderr_bytes = await communication
+            stdout_bytes, stderr_bytes = await _stop_and_drain(process, communication)
             stdout = _decode(stdout_bytes)
             stderr = _decode(stderr_bytes)
             raise SubprocessTimeoutError(
@@ -117,8 +116,7 @@ class AsyncSubprocessRunner:
                 stderr=stderr,
             ) from exc
         except asyncio.CancelledError:
-            await _terminate_and_reap(process)
-            await communication
+            await _stop_and_drain(process, communication)
             raise
 
         result = SubprocessResult(
@@ -140,6 +138,24 @@ class AsyncSubprocessRunner:
     # ``execute`` is a descriptive alias for adapters that avoid the generic
     # word ``run``; both names share exactly the same safety guarantees.
     execute = run
+
+
+async def _stop_and_drain(process, communication):
+    """Repeated cancellation cannot release the file before its writer exits."""
+    async def cleanup():
+        await _terminate_and_reap(process)
+        return await communication
+    task = asyncio.create_task(cleanup())
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+    result = task.result()
+    if cancelled:
+        raise asyncio.CancelledError
+    return result
 
 
 async def _terminate_and_reap(process: asyncio.subprocess.Process) -> None:

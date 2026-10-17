@@ -1,5 +1,6 @@
 """Model adapter for the transient concrete analysis-mode decision."""
 
+# Compatibility/experiment surface: production AUTO resolves to GENERAL without this classifier.
 from __future__ import annotations
 
 import json

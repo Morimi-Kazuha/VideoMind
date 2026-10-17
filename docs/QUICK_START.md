@@ -39,12 +39,14 @@ R4 将 ASR/OCR 与分析放在同一个 Worker 任务内。首次“提取文字
 
 ## 1. 安装应用依赖
 
+治理基线以 Python 3.12 验证；Python 3.13 保留独立兼容 CI。部署及主验证环境使用下列约束文件，包声明的兼容范围不变。
+
 ```bash
 python -m venv .venv
 # macOS / Linux
 source .venv/bin/activate
 # Windows PowerShell：运行 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[test]"
+python -m pip install -c constraints-py312.txt -e ".[test]"
 ```
 
 前端在 `client/` 中执行 `npm ci`。若只查看本地 API 和界面，可跳到第 4 步，保持 `DOVIDEO_PROFILE=local`，暂不启动 Compose 或 worker。本地默认组合是开发模式；它不是下述完整媒体分析组合。

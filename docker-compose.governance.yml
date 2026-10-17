@@ -1,0 +1,43 @@
+name: videomind-governance
+services:
+  minio:
+    # Public prebuilt images for this release are no longer accessible.
+    # Build the same official release commit, only for isolated test services.
+    build: ./tests/infrastructure/minio
+    environment:
+      MINIO_ROOT_USER: governance
+      MINIO_ROOT_PASSWORD: governance-test
+    command: server /data
+    ports: ["127.0.0.1:29000:9000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
+      interval: 3s
+      retries: 30
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: governance-test
+    ports: ["127.0.0.1:23306:3306"]
+    healthcheck:
+      # mysqladmin ping also succeeds on access denied; TCP avoids the
+      # temporary socket-only server used while the image initializes users.
+      test: ["CMD", "mysql", "--protocol=TCP", "-h", "127.0.0.1", "-uroot", "-pgovernance-test", "-e", "SELECT 1"]
+      interval: 3s
+      retries: 40
+  redis:
+    image: redis:7.4-alpine
+    ports: ["127.0.0.1:26379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 20
+  rabbitmq:
+    image: rabbitmq:3.13.7-management
+    environment:
+      RABBITMQ_DEFAULT_USER: governance
+      RABBITMQ_DEFAULT_PASS: governance-test
+    ports: ["127.0.0.1:25672:5672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 3s
+      retries: 30

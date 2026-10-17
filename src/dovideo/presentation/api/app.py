@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -19,26 +20,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from dovideo.application import (
-    AgentFeedback,
-    AiInteractionLimiterUnavailable,
-    DispatchDisposition,
-    FailedTaskAdminError,
-    HistoricalReplayError,
-    ReplayAccessError,
-    ReplayAccessForbiddenError,
-    ReplayAccessNotFoundError,
-    ReplayAccessUnavailableError,
-    ReplayArtifactUnavailableError,
-    ReplayIncompleteError,
-    ReplayIncompatibleVersionError,
-    ReplayIntegrityError,
-    ReplayLegacyUnavailableError,
-    ReplayNotFoundError,
-    ReplayPersistenceError,
-    TaskKey,
-    TaskLifecycleEvent,
-)
+from dovideo.application import (AgentFeedback)
+from dovideo.application.ai_interaction import (AiInteractionLimiterUnavailable)
+from dovideo.application.value_objects import (DispatchDisposition, TaskKey)
+from dovideo.application.failed_task_admin import (FailedTaskAdminError)
+from dovideo.application.historical_replay import (HistoricalReplayError, ReplayArtifactUnavailableError, ReplayIncompleteError, ReplayIncompatibleVersionError, ReplayIntegrityError, ReplayLegacyUnavailableError, ReplayNotFoundError, ReplayPersistenceError)
+from dovideo.application.replay_access import (ReplayAccessError, ReplayAccessForbiddenError, ReplayAccessNotFoundError, ReplayAccessUnavailableError)
+from dovideo.application.task_lifecycle import (TaskLifecycleEvent)
 from dovideo.domain import AnalysisMode, TaskEvent
 from dovideo.application.errors import (
     InvalidMediaInput, MediaUnauthorized, UploadNotFoundOrExpired, UploadConflict,
@@ -52,6 +40,7 @@ from dovideo.application.temporal_read import (
     verified_answer_presentation,
 )
 
+from .file_response import media_file_response
 from .runtime import LocalR1Services, R1ServiceError, media_summary
 from .schemas import (
     AuthData,
@@ -468,7 +457,7 @@ def create_app(
         access_token: str = Query(...),
     ) -> FileResponse:
         path, content_type = await selected_services.playback_file(media_id, access_token)
-        return FileResponse(path, media_type=content_type or "video/mp4")
+        return media_file_response(selected_services, path, media_type=content_type or "video/mp4")
 
     @app.delete("/media/delete")
     async def delete_media(
@@ -751,9 +740,8 @@ def create_app(
         user: dict[str, Any] = Depends(require_user),
     ) -> FileResponse:
         path, filename = await selected_services.download_path(id, int(user["id"]))
-        # The R1 local adapter returns the owned local source as a bounded
-        # binary download.  Audio extraction remains an infrastructure slice.
-        return FileResponse(path, media_type="audio/mpeg", filename=filename)
+        # Production exports audio-only MP3; local demo retains its source adapter.
+        return media_file_response(selected_services, path, media_type="audio/mpeg", filename=filename)
 
     return app
 

@@ -321,7 +321,6 @@ def create_celery_app(settings: CeleryTransportSettings):
     from celery import Celery
 
     main_exchange = Exchange(settings.exchange, type="direct", durable=True)
-    dead_exchange = Exchange(settings.dead_letter_exchange, type="direct", durable=True)
     main_queue = Queue(
         settings.queue,
         exchange=main_exchange,
@@ -331,12 +330,6 @@ def create_celery_app(settings: CeleryTransportSettings):
             "x-dead-letter-exchange": settings.dead_letter_exchange,
             "x-dead-letter-routing-key": settings.dead_letter_routing_key,
         },
-    )
-    dead_queue = Queue(
-        settings.dead_letter_queue,
-        exchange=dead_exchange,
-        routing_key=settings.dead_letter_routing_key,
-        durable=True,
     )
     app = Celery("dovideo-r3", broker=settings.broker_url, backend=None)
     app.conf.update(
@@ -353,7 +346,9 @@ def create_celery_app(settings: CeleryTransportSettings):
         task_default_exchange=settings.exchange,
         task_default_exchange_type="direct",
         task_default_routing_key=settings.routing_key,
-        task_queues=(main_queue, dead_queue),
+        # The DLQ carries failure documents, not Celery task envelopes.
+        # Topology.ensure declares it; default workers must never consume it.
+        task_queues=(main_queue,),
         task_routes={
             settings.task_name: {
                 "queue": settings.queue,

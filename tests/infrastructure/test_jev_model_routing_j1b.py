@@ -463,7 +463,7 @@ class _RoutingCheckpoint:
 
 
 def test_r4_stack_wires_three_configured_model_profiles_without_network(monkeypatch) -> None:
-    import dovideo.infrastructure.r4_runtime as runtime
+    import dovideo.infrastructure.r4_providers as runtime
 
     monkeypatch.setattr(
         runtime.ProviderConfig,

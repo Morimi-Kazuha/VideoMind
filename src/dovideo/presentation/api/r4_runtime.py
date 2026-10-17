@@ -10,22 +10,16 @@ from contextlib import nullcontext
 from typing import Any
 from uuid import uuid4
 
-from dovideo.application import (
-    AgentCheckpointService,
-    AgentEvaluationService,
-    AnalysisRequest,
-    AnalysisStatusQuery,
-    DispatchDisposition,
-    FollowUpFailure,
-    FailedTaskAdminService,
-    GroundedFollowUpService,
-    ExecutionRecordService,
-    EXECUTION_CONTRACT_VERSION_V2,
-    HistoricalAgentReplayService,
-    HistoricalReplayAccessService,
-    TaskDispatchService,
-    TaskKey,
-)
+from dovideo.application.checkpoint_service import (AgentCheckpointService)
+from dovideo.application.evaluation import (AgentEvaluationService)
+from dovideo.application.value_objects import (AnalysisRequest, DispatchDisposition, TaskKey)
+from dovideo.application.status import (AnalysisStatusQuery)
+from dovideo.application.follow_up import (FollowUpFailure, GroundedFollowUpService)
+from dovideo.application.failed_task_admin import (FailedTaskAdminService)
+from dovideo.application.execution_record import (ExecutionRecordService, EXECUTION_CONTRACT_VERSION_V2)
+from dovideo.application.historical_replay import (HistoricalAgentReplayService)
+from dovideo.application.replay_access import (HistoricalReplayAccessService)
+from dovideo.application.dispatch import (TaskDispatchService)
 from dovideo.domain import (
     AnalysisMode,
     TaskEvent,
@@ -339,10 +333,12 @@ def create_production_services() -> ProductionR4Services:
     # Validate X1 before opening any production infrastructure client.  This
     # keeps malformed rollout limits a composition/startup failure.
     tool_settings = X1ToolCallingSettings.from_environment()
-    return ProductionR4Services(
-        create_r2_infrastructure(),
-        tool_settings=tool_settings,
-    )
+    infrastructure = create_r2_infrastructure()
+    try:
+        return ProductionR4Services(infrastructure, tool_settings=tool_settings)
+    except BaseException:
+        infrastructure.close()
+        raise
 
 
 __all__ = ["ProductionR4Services", "create_production_services"]

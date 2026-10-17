@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from threading import RLock
-from typing import Any, Iterable
+from typing import Mapping, Any, Iterable
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -37,7 +37,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
-from dovideo.application import MediaRecord, MediaStatus
+from dovideo.application.media import (MediaRecord, MediaStatus)
 from dovideo.application.execution_record import (
     DurableAgentExecutionRecord,
     DurableExecutionEvent,

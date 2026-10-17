@@ -18,16 +18,8 @@ from os import PathLike
 from typing import BinaryIO
 from uuid import uuid4
 
-from dovideo.application import (
-    InvalidMediaInput,
-    MediaRecord,
-    MediaRecordFailure,
-    MediaStorageFailure,
-    MediaUnauthorized,
-    UrlDownloadFailure,
-    filename_suffix,
-    normalize_video_filename,
-)
+from dovideo.application.errors import (InvalidMediaInput, MediaRecordFailure, MediaStorageFailure, MediaUnauthorized, UrlDownloadFailure)
+from dovideo.application.media import (MediaRecord, filename_suffix, normalize_video_filename)
 from dovideo.application.ports.ingest import MediaRecordPort, UrlDownloadPort
 from dovideo.application.ports.media import ObjectStoragePort
 from dovideo.application.ports.observability import ClockPort

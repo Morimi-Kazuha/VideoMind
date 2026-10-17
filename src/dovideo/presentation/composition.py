@@ -18,19 +18,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
-from dovideo.application import (
-    AgentLoopService,
-    AsrBranchOutcome,
-    LongVideoContextService,
-    MediaObservationBundle,
-    OcrBranchOutcome,
-    TranscriptSpan,
-    VideoChunkingService,
-    VideoContextBuilder,
-    VideoEvidenceRetrievalService,
-    cosine_similarity,
-    fallback_terms,
-)
+from dovideo.application.agent import (AgentLoopService)
+from dovideo.application.value_objects import (AsrBranchOutcome, MediaObservationBundle, OcrBranchOutcome, TranscriptSpan)
+from dovideo.application.long_context import (LongVideoContextService)
+from dovideo.application.chunking import (VideoChunkingService)
+from dovideo.application.context import (VideoContextBuilder)
+from dovideo.application.retrieval import (VideoEvidenceRetrievalService, cosine_similarity, fallback_terms)
 from dovideo.application.evidence import EvidenceVerificationService
 from dovideo.domain import (
     AgentBudgetConfig,

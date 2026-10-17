@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+import logging
+from typing import Any, Callable, NoReturn
 
-from celery import Celery
+from celery import Celery, signals
+from celery.exceptions import Reject, Retry
 from pydantic import ValidationError
 
 from dovideo.application.worker import WorkerDisposition
@@ -50,12 +52,41 @@ def register_analysis_task(
                 runtime = R4WorkerRuntime.from_environment(settings=selected_settings)
         return runtime
 
+    def close_runtime(**_kwargs):
+        nonlocal runtime
+        owned, runtime = runtime, None
+        if owned is not None:
+            close = getattr(owned, "close", None)
+            if callable(close):
+                try:
+                    asyncio.run(close())
+                except Exception:
+                    logging.getLogger(__name__).warning("Worker resource cleanup failed")
+
+    signals.worker_process_shutdown.connect(close_runtime, weak=True)
+    signals.worker_shutdown.connect(close_runtime, weak=True)
+    app._dovideo_close_runtime = close_runtime
+
+    def retry_delivery(task, error, *, countdown) -> NoReturn:
+        # Retry publishes before acknowledging the original delivery. If that
+        # publication fails, retain the original instead of dead-lettering it.
+        try:
+            raise task.retry(exc=error, countdown=countdown, max_retries=None)
+        except Retry:
+            raise
+        except Exception:
+            logging.getLogger(__name__).warning("Recovery retry publication failed; requeueing delivery")
+            raise Reject("recovery retry publication failed", requeue=True) from None
+
     @app.task(
         bind=True,
         name=selected_settings.task_name,
         acks_late=True,
         reject_on_worker_lost=True,
         ignore_result=True,
+        # retry(max_retries=None) alone means "use the task default" (3).
+        # TaskWorker, not Celery delivery retries, owns business attempt limits.
+        max_retries=None,
     )
     def deliver(self: Any, payload: Any) -> dict[str, Any]:
         try:
@@ -66,34 +97,32 @@ def register_analysis_task(
             invalid = InvalidTransportEnvelope("transport envelope validation failed")
             try:
                 asyncio.run(get_runtime().record_poison(payload, invalid))
-            except Exception as poison_error:
-                # Late ACK plus this raised exception leaves the body available
-                # for another delivery; nothing is silently acknowledged.
-                raise PoisonMessageUnresolved(
-                    "poison message could not be durably recorded and DLQed"
-                ) from poison_error
+            except Exception:
+                # An ordinary failure is rejected without requeue by Celery.
+                # Explicit retry preserves at-least-once application handoff.
+                logging.getLogger(__name__).warning("Poison handoff incomplete; retrying delivery")
+                retry_delivery(self, PoisonMessageUnresolved("poison handoff requires recovery"),
+                               countdown=selected_settings.retry_countdown_seconds)
             return {"disposition": "POISON_DLQ", "businessAttempt": 0}
 
         try:
             outcome = asyncio.run(get_runtime().process(envelope.to_request()))
-        except Exception as exc:
+        except Exception:
             # This is a transport/recovery redelivery only.  TaskWorker's
             # persisted lifecycle remains the sole business-attempt counter.
-            raise self.retry(
-                exc=TransportRecoveryError("worker delivery recovery required"),
+            retry_delivery(
+                self, TransportRecoveryError("worker delivery recovery required"),
                 countdown=selected_settings.retry_countdown_seconds,
-                max_retries=None,
-            ) from exc
+            )
 
         if outcome.disposition in {WorkerDisposition.RETRY, WorkerDisposition.LOCKED}:
-            raise self.retry(
-                exc=RuntimeError("TaskWorker requested another delivery"),
+            retry_delivery(
+                self, RuntimeError("TaskWorker requested another delivery"),
                 countdown=(
                     selected_settings.locked_countdown_seconds
                     if outcome.disposition is WorkerDisposition.LOCKED
                     else selected_settings.retry_countdown_seconds
                 ),
-                max_retries=None,
             )
         return {
             "disposition": outcome.disposition.value,

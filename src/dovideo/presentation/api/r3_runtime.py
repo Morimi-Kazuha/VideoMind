@@ -8,14 +8,10 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
-from dovideo.application import (
-    AgentCheckpointService,
-    AnalysisRequest,
-    AnalysisStatusQuery,
-    DispatchDisposition,
-    TaskDispatchService,
-    TaskKey,
-)
+from dovideo.application.checkpoint_service import (AgentCheckpointService)
+from dovideo.application.value_objects import (AnalysisRequest, DispatchDisposition, TaskKey)
+from dovideo.application.status import (AnalysisStatusQuery)
+from dovideo.application.dispatch import (TaskDispatchService)
 from dovideo.application.ports.tasks import AgentLoopEntryPort
 from dovideo.application.worker import TaskWorker
 from dovideo.domain import AgentState, AnalysisMode, VideoContext

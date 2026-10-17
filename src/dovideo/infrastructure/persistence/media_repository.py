@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
-from dovideo.application import MediaRecord, MediaStatus
+from dovideo.application.media import (MediaRecord, MediaStatus)
 from dovideo.application.ports.media import MediaMetadataPort
 from dovideo.application.ports.ingest import MediaRecordPort
 from dovideo.application.value_objects import MediaRef
@@ -205,10 +205,6 @@ class SqliteMediaRecordRepository(MediaRecordPort, MediaMetadataPort):
                     cursor = self.connection.cursor()
                     columns = self._columns()
                     placeholders = ", ".join("?" for _ in columns)
-                    assignments = ", ".join(
-                        f"{column} = excluded.{column}"
-                        for column in columns
-                    )
                     if record.media_id is None:
                         cursor.execute(
                             f"INSERT INTO media_files ({', '.join(columns)}) "

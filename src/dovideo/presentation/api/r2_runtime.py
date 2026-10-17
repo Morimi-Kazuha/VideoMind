@@ -10,24 +10,16 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import mimetypes
-import secrets
-import time
 from collections.abc import AsyncIterable, AsyncIterator
 from pathlib import Path
 from uuid import uuid4
 
-from dovideo.application import (
-    AgentCheckpointService,
-    DispatchDisposition,
-    MediaRecord,
-    TaskKey,
-    UploadStatus,
-    filename_suffix,
-    normalize_video_filename,
-)
+from dovideo.application.checkpoint_service import (AgentCheckpointService)
+from dovideo.application.value_objects import (DispatchDisposition, TaskKey)
+from dovideo.application.media import (MediaRecord, UploadStatus, filename_suffix, normalize_video_filename)
 from dovideo.application.errors import MediaUnauthorized
 from dovideo.domain import AgentPlan, AnalysisMode, TaskStatus, TaskStatusState
-from dovideo.application import AnalysisRequest
+from dovideo.application.value_objects import (AnalysisRequest)
 from dovideo.infrastructure import (
     AiInteractionLimiter,
     R2Infrastructure,
@@ -38,12 +30,14 @@ from dovideo.infrastructure import (
 from dovideo.infrastructure.media.uploads import ChunkUploadService
 
 from .runtime import R1ServiceError
+from dovideo.infrastructure.media.response_files import ResponseFiles, RedisPlaybackGrants, joined_thread
 
 
 class ProductionMediaStore:
     """MediaRecordPort plus the ownership operations used by the API."""
 
-    def __init__(self, infrastructure: R2Infrastructure) -> None:
+    def __init__(self, infrastructure: R2Infrastructure, *, memory=None) -> None:
+        self.memory = memory
         self.infrastructure = infrastructure
         self.repository = infrastructure.media_repository
 
@@ -112,10 +106,14 @@ class ProductionMediaStore:
         record = await self.require_owned(media_id, user_id)
         try:
             await self.infrastructure.object_storage.delete_object(record.source)
-            await self.repository.delete(media_id)
             await self.infrastructure.vector_index.delete_media(media_id)
-            self.infrastructure.checkpoint_store.delete_media(media_id)
-            self.infrastructure.checkpoint_cache.delete_media(media_id)
+            await AgentCheckpointService(self.infrastructure.checkpoint_repository).delete_media(media_id)
+            # Checkpoint invalidation is best effort for normal writes. Deletion
+            # explicitly retries unavailable cache cleanup before removing owner.
+            await asyncio.to_thread(self.infrastructure.checkpoint_cache.delete_media, media_id)
+            if self.memory is not None:
+                await self.memory.delete_media(media_id)
+            await self.repository.delete(media_id)
         except R1ServiceError:
             raise
         except Exception as exc:
@@ -173,26 +171,26 @@ class ProductionR2Services:
             infrastructure.redis_client,
             settings=infrastructure.settings.ai_interaction_rate_limit,
         )
-        self.media = ProductionMediaStore(infrastructure)
         self.uploads = ProductionUploadFacade(infrastructure)
         self.checkpoint = AgentCheckpointService(infrastructure.checkpoint_repository)
         from dovideo.application.conversation_memory import ConversationMemoryService
         from dovideo.infrastructure.conversation_memory import RedisConversationMemoryStore, memory_source_write_enabled_from_environment
         self.conversation_memory = ConversationMemoryService(RedisConversationMemoryStore(infrastructure.redis_client,
             write_sources=memory_source_write_enabled_from_environment()))
+        self.media = ProductionMediaStore(infrastructure, memory=self.conversation_memory.store)
         self.trace = RedisAgentTelemetry(infrastructure.redis_client)
-        self.playback_grants: dict[str, tuple[int, int, float]] = {}
+        self.playback_grants = RedisPlaybackGrants(infrastructure.redis_client)
+        self.response_files = ResponseFiles(infrastructure.settings.media_workspace)
 
     async def startup(self) -> None:
         await self.infrastructure.initialize()
 
     async def shutdown(self) -> None:
-        for path, (_media_id, _user_id, _expires) in tuple(self._playback_files.items()):
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        self.response_files.close()
         self.infrastructure.close()
+
+    async def release_response_file(self, path):
+        await joined_thread(lambda: self.response_files.release(Path(path)))
 
     async def ingest_url(self, user_id: int, url: str) -> MediaRecord:
         from dovideo.infrastructure.media.ingest import MediaIngestService
@@ -214,28 +212,49 @@ class ProductionR2Services:
 
     async def playback_url(self, media_id: int, user_id: int) -> str:
         await self.media.require_owned(media_id, user_id)
-        token = secrets.token_urlsafe(24)
-        self.playback_grants[token] = (media_id, user_id, time.monotonic() + 15 * 60)
+        try:
+            token = await self.playback_grants.issue(media_id, user_id)
+        except Exception as exc:
+            raise R1ServiceError("播放授权暂不可用", status_code=503) from exc
         return f"/media/playback-file/{media_id}?access_token={token}"
 
     async def playback_file(self, media_id: int, token: str) -> tuple[Path, str | None]:
-        grant = self.playback_grants.get(token)
-        if grant is None or grant[0] != media_id or grant[2] <= time.monotonic():
-            self.playback_grants.pop(token, None)
+        try:
+            user_id = await self.playback_grants.owner(media_id, token)
+        except Exception as exc:
+            raise R1ServiceError("播放授权暂不可用", status_code=503) from exc
+        if user_id is None:
             raise R1ServiceError("播放地址已失效", status_code=401)
-        record = await self.media.require_owned(media_id, grant[1])
+        record = await self.media.require_owned(media_id, user_id)
         path = await self._download_object(record)
         return path, record.content_type
 
     async def download_path(self, media_id: int, user_id: int) -> tuple[Path, str]:
         record = await self.media.require_owned(media_id, user_id)
-        return await self._download_object(record), Path(record.filename).stem + ".mp3"
+        from dovideo.infrastructure.media.audio_export import export_mp3, NoAudioTrack
+        from dovideo.presentation.composition import AnalysisSettings
+        settings = AnalysisSettings.from_environment()
+        source = await self._download_object(record)
+        output = None
+        try:
+            output = self.response_files.allocate(".mp3")
+            await export_mp3(source, output, ffmpeg=settings.ffmpeg_executable,
+                             ffprobe=settings.ffprobe_executable)
+            return output, Path(record.filename).stem + ".mp3"
+        except BaseException as exc:
+            if output is not None:
+                self.response_files.release(output)
+            if isinstance(exc, asyncio.CancelledError):
+                raise
+            if isinstance(exc, NoAudioTrack):
+                raise R1ServiceError("视频没有可导出的音轨", status_code=422) from None
+            raise R1ServiceError("音频转换暂不可用", status_code=503) from exc
+        finally:
+            self.response_files.release(source)
 
     async def _download_object(self, record: MediaRecord) -> Path:
         name = record.source.split("/", 3)[-1]
-        target_dir = self.infrastructure.settings.media_workspace
-        target_dir.mkdir(parents=True, exist_ok=True)
-        target = target_dir / f"playback-{record.media_id}-{secrets.token_hex(8)}{filename_suffix(record.filename)}"
+        target = self.response_files.allocate(filename_suffix(record.filename))
 
         def download() -> None:
             response = self.infrastructure.minio_client.get_object(
@@ -254,23 +273,16 @@ class ProductionR2Services:
                 response.release_conn()
 
         try:
-            await asyncio.to_thread(download)
-        except Exception as exc:
+            await joined_thread(download)
+        except BaseException as exc:
+            self.response_files.release(target)
+            if isinstance(exc, asyncio.CancelledError):
+                raise
             raise R1ServiceError("视频对象不可读", status_code=503) from exc
-        self._playback_files[target] = (record.media_id or 0, record.user_id, time.monotonic() + 15 * 60)
         return target
-
-    @property
-    def _playback_files(self) -> dict[Path, tuple[int, int, float]]:
-        values = getattr(self, "__playback_files", None)
-        if values is None:
-            values = {}
-            setattr(self, "__playback_files", values)
-        return values
 
     async def delete_media(self, media_id: int, user_id: int) -> None:
         await self.media.delete_owned(media_id, user_id)
-        await self.conversation_memory.store.delete_media(media_id)
 
     async def follow_up_history(self, media_id, user_id, goal, mode, conversation_id):
         from .runtime import read_follow_up_history

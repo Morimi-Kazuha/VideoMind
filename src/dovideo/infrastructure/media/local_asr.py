@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from dovideo.application import ReadableSource, TranscriptSpan
+from dovideo.application.value_objects import (ReadableSource, TranscriptSpan)
 
 from .errors import AsrResponseError
 

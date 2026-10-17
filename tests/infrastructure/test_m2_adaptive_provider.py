@@ -53,7 +53,7 @@ def test_configuration_off_by_default_and_invalid_environment_fails_closed():
 @pytest.mark.parametrize("adaptive", [False, True])
 @pytest.mark.parametrize("tools", [False, True])
 async def test_production_composes_shared_service_without_enabling_tools(monkeypatch, adaptive, tools):
-    import dovideo.infrastructure.r4_runtime as runtime
+    import dovideo.infrastructure.r4_providers as runtime
     from dovideo.application.adaptive_retrieval import AdaptiveRetrievalService
     from dovideo.infrastructure.providers.config import ProviderConfig
     from dovideo.infrastructure.model_routing import ModelRoutingProductionSettings

@@ -631,7 +631,7 @@ async def test_v2_route_after_plan_and_multiple_route_events_fail_closed() -> No
 
 
 def test_r4_disabled_composition_wires_route_history_without_network(monkeypatch) -> None:
-    import dovideo.infrastructure.r4_runtime as runtime
+    import dovideo.infrastructure.r4_providers as runtime
 
     monkeypatch.setattr(
         runtime.ProviderConfig,

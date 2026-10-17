@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from os import PathLike
 from pathlib import Path
 
-from dovideo.application import OcrBranchOutcome, OcrObservation
+from dovideo.application.value_objects import (OcrBranchOutcome, OcrObservation)
 from dovideo.application.ports.ai import FrameOcrPort
 from dovideo.application.ports.media import EvidenceFramePort, ImageHashPort
 from dovideo.application.ports.observability import TelemetryPort

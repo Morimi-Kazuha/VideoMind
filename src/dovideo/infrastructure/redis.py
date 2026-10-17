@@ -14,15 +14,8 @@ from datetime import datetime, timezone
 from typing import Any
 from redis.exceptions import RedisError
 
-from dovideo.application import (
-    CompletedUploadMarker,
-    MEDIA_SESSION_TTL,
-    MediaStorageFailure,
-    UploadConflict,
-    UploadNotFoundOrExpired,
-    UploadSession,
-    UploadSessionState,
-)
+from dovideo.application.media import (CompletedUploadMarker, MEDIA_SESSION_TTL, UploadSession, UploadSessionState)
+from dovideo.application.errors import (MediaStorageFailure, UploadConflict, UploadNotFoundOrExpired)
 from dovideo.application.analysis_task_keys import goal_digest
 from dovideo.application.ports.ingest import MergeLockLease
 from dovideo.application.ports.tasks import TaskActiveMarkerPort, TaskCompletionPort, TaskLockPort

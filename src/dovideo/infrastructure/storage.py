@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from dovideo.application import MAX_CHUNK_BYTES
+from dovideo.application.media import (MAX_CHUNK_BYTES)
 from dovideo.application.ports.ingest import ChunkObjectPort
 from dovideo.application.ports.media import ObjectStoragePort
 

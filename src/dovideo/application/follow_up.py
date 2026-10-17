@@ -313,70 +313,8 @@ class GroundedFollowUpService:
         started = time.perf_counter()
         self._record("follow_up_requested", media_id=media_id, mode=mode)
 
-        try:
-            context = await self._checkpoint.load_context(media_id)
-            chunks = (await self._checkpoint.load_chunks(media_id)
-                      if self._retrieval_need_settings.mode != RetrievalNeedMode.ENABLED else None)
-        except (BudgetExceededError, TimeoutError):
-            raise
-        except Exception:
-            self._record(
-                "context_recovery_failed",
-                media_id=media_id,
-                mode=mode,
-                category="checkpoint_error",
-            )
-            raise self._failure(
-                media_id,
-                mode,
-                "checkpoint_failure",
-                "视频分析上下文暂不可用，请稍后重试",
-                started,
-            ) from None
-
-        if not isinstance(context, VideoContext) or not context.segments:
-            self._record(
-                "context_recovery_failed",
-                media_id=media_id,
-                mode=mode,
-                category="context_not_ready",
-            )
-            raise self._failure(
-                media_id,
-                mode,
-                "context_not_ready",
-                "视频分析证据尚未准备完成",
-                started,
-                context_segments=0,
-            )
-        if self._retrieval_need_settings.mode != RetrievalNeedMode.ENABLED:
-            if not chunks:
-                self._record(
-                    "context_recovery_failed",
-                    media_id=media_id,
-                    mode=mode,
-                    category="chunks_not_ready",
-                )
-                raise self._failure(
-                    media_id,
-                    mode,
-                    "context_not_ready",
-                    "视频分析证据尚未准备完成",
-                    started,
-                    context_segments=len(context.segments),
-                    chunk_count=0,
-                )
-            durable_chunks = tuple(chunks)
-        if memory_session and source_revision(context) != memory_session[0].source_revision:
-            raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
-        selected_goal = (original_goal or context.user_goal or "")[:500]
-        self._record(
-            "context_recovery_succeeded",
-            media_id=media_id,
-            mode=mode,
-            context_segments=len(context.segments),
-            chunk_count=len(chunks or ()),
-        )
+        context, chunks, selected_goal = await self._load_answer_context(
+            media_id, mode, original_goal, memory_session, started)
 
         rewrite_required = needs_rewrite(question)
         prior_analysis = await self._load_bounded_prior_analysis(
@@ -442,6 +380,83 @@ class GroundedFollowUpService:
         if literal_locations is not None and not mixed:
             return await self._answer_literal_locations(media_id, question, mode, context,
                 memory_session, literal_locations)
+        candidates, asr_count, ocr_count = await self._prepare_answer_evidence(
+            media_id, mode, context, chunks, standalone_query, mixed, memory_session, started)
+        return await self._generate_verified_answer(
+            media_id, question, mode, context, candidates, selected_goal, prior_analysis,
+            mixed, conversation_context, memory_session, started, asr_count, ocr_count)
+
+    async def _load_answer_context(self, media_id, mode, original_goal, memory_session, started):
+        """Recover authoritative context before any rewrite or retrieval."""
+        try:
+            context = await self._checkpoint.load_context(media_id)
+            chunks = (await self._checkpoint.load_chunks(media_id)
+                      if self._retrieval_need_settings.mode != RetrievalNeedMode.ENABLED else None)
+        except (BudgetExceededError, TimeoutError):
+            raise
+        except Exception:
+            self._record(
+                "context_recovery_failed",
+                media_id=media_id,
+                mode=mode,
+                category="checkpoint_error",
+            )
+            raise self._failure(
+                media_id,
+                mode,
+                "checkpoint_failure",
+                "视频分析上下文暂不可用，请稍后重试",
+                started,
+            ) from None
+
+        if not isinstance(context, VideoContext) or not context.segments:
+            self._record(
+                "context_recovery_failed",
+                media_id=media_id,
+                mode=mode,
+                category="context_not_ready",
+            )
+            raise self._failure(
+                media_id,
+                mode,
+                "context_not_ready",
+                "视频分析证据尚未准备完成",
+                started,
+                context_segments=0,
+            )
+        if self._retrieval_need_settings.mode != RetrievalNeedMode.ENABLED:
+            if not chunks:
+                self._record(
+                    "context_recovery_failed",
+                    media_id=media_id,
+                    mode=mode,
+                    category="chunks_not_ready",
+                )
+                raise self._failure(
+                    media_id,
+                    mode,
+                    "context_not_ready",
+                    "视频分析证据尚未准备完成",
+                    started,
+                    context_segments=len(context.segments),
+                    chunk_count=0,
+                )
+        if memory_session and source_revision(context) != memory_session[0].source_revision:
+            raise FollowUpFailure("conversation_conflict", "视频来源版本已变化，请重新提问")
+        selected_goal = (original_goal or context.user_goal or "")[:500]
+        self._record(
+            "context_recovery_succeeded",
+            media_id=media_id,
+            mode=mode,
+            context_segments=len(context.segments),
+            chunk_count=len(chunks or ()),
+        )
+
+        return context, chunks, selected_goal
+
+    async def _prepare_answer_evidence(self, media_id, mode, context, chunks,
+                                       standalone_query, mixed, memory_session, started):
+        """Keep baseline, reflection and bounded repair in their original order."""
         if self._retrieval_need_settings.mode == RetrievalNeedMode.ENABLED:
             try:
                 chunks = await self._checkpoint.load_chunks(media_id)
@@ -542,6 +557,12 @@ class GroundedFollowUpService:
                 ocr_candidates=0,
             )
 
+        return candidates, asr_count, ocr_count
+
+    async def _generate_verified_answer(self, media_id, question, mode, context, candidates,
+                                        selected_goal, prior_analysis, mixed, conversation_context,
+                                        memory_session, started, asr_count, ocr_count):
+        """Only verified outcomes reach rendering and the existing memory commit."""
         profile = mode_profile_for(mode)
         provider_started = time.perf_counter()
         self._record("provider_call_attempted", media_id=media_id, mode=mode)
