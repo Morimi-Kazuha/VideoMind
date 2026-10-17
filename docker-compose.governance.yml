@@ -19,7 +19,9 @@ services:
       MYSQL_ROOT_PASSWORD: governance-test
     ports: ["127.0.0.1:23306:3306"]
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pgovernance-test"]
+      # mysqladmin ping also succeeds on access denied; TCP avoids the
+      # temporary socket-only server used while the image initializes users.
+      test: ["CMD", "mysql", "--protocol=TCP", "-h", "127.0.0.1", "-uroot", "-pgovernance-test", "-e", "SELECT 1"]
       interval: 3s
       retries: 40
   redis:
