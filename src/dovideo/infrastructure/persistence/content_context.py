@@ -15,6 +15,9 @@ from .sqlalchemy import ContentContextArtifactRow, _db_now
 
 logger = logging.getLogger(__name__)
 
+# Keep the existing NOT NULL column without DDL. This is not a cache identity.
+_PIPELINE_COMPAT_VALUE = "fixed-md5-preprocessing"
+
 
 def validate_artifact(key, context):
     if context.source != key.artifact_source or context.user_goal:
@@ -80,7 +83,7 @@ class SqlAlchemyContentArtifacts:
             if row is None:
                 return None, None
             try:
-                if row.fingerprint != key.fingerprint or row.pipeline_contract != key.pipeline_contract:
+                if row.fingerprint != key.fingerprint or row.pipeline_contract != _PIPELINE_COMPAT_VALUE:
                     raise ValueError("Artifact key mismatch")
                 cached_valid = isinstance(cached, str) and hashlib.sha256(cached.encode("utf-8")).hexdigest() == row.payload_digest
                 payload = cached if cached_valid else row.payload
@@ -112,7 +115,7 @@ class SqlAlchemyContentArtifacts:
             with Session(self.engine) as session, session.begin():
                 session.add(ContentContextArtifactRow(
                     cache_key=key.digest, fingerprint=key.fingerprint,
-                    pipeline_contract=key.pipeline_contract, payload=payload,
+                    pipeline_contract=_PIPELINE_COMPAT_VALUE, payload=payload,
                     payload_digest=digest, created_at=_db_now(),
                 ))
         except IntegrityError:

@@ -34,7 +34,6 @@ def test_missing_production_configuration_fails_closed(name):
     ("DOVIDEO_REDIS_URL", "http://host/0"),
     ("DOVIDEO_BROKER_URL", "amqp://host/"),
     ("DOVIDEO_QDRANT_URL", "ftp://host"),
-    ("DOVIDEO_CONTEXT_PIPELINE_VERSION", " "),
 ])
 def test_invalid_production_shapes_rejected(name, value):
     values = validation.read_env(ROOT / ".env.example")

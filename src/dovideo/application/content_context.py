@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable, Protocol
 
 from dovideo.domain import VideoContext
-from dovideo.domain.provenance import sha256_canonical
 from .task_lease import TaskLeaseUnavailable, check_task_lease
 
 logger = logging.getLogger(__name__)
@@ -19,21 +18,19 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class ContentContextKey:
     fingerprint: str
-    pipeline_contract: str
 
     def __post_init__(self):
-        if not re.fullmatch(r"[0-9a-f]{64}", self.fingerprint):
-            raise ValueError("Content fingerprint must be SHA-256")
-        if not self.pipeline_contract or len(self.pipeline_contract) > 1024:
-            raise ValueError("Preprocessing contract is required and bounded")
+        if not isinstance(self.fingerprint, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", self.fingerprint):
+            raise ValueError("Content fingerprint must be MD5 (32 hexadecimal characters)")
+        object.__setattr__(self, "fingerprint", self.fingerprint.lower())
 
     @property
     def digest(self):
-        return sha256_canonical({"sha256": self.fingerprint, "pipeline": self.pipeline_contract})
+        return f"md5:{self.fingerprint}"
 
     @property
     def media_identity(self):
-        return f"sha256:{self.fingerprint}:pipeline:{self.digest}"
+        return self.digest
 
     @property
     def artifact_source(self):

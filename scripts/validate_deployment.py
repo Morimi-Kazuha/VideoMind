@@ -64,7 +64,6 @@ def validate_settings(values):
     from dovideo.infrastructure.providers import ProviderConfig
     from dovideo.infrastructure.model_routing import ModelRoutingProductionSettings
     from dovideo.infrastructure.x1_config import X1ToolCallingSettings
-    from dovideo.infrastructure.content_context import pipeline_contract
     from dovideo.presentation.composition import AnalysisSettings, embedding_provider_config_from_environment
 
     settings = R2Settings.from_environment(values)
@@ -90,7 +89,7 @@ def validate_settings(values):
         raise ValueError("R4 embedding contract requires BAAI/bge-m3")
     X1ToolCallingSettings.from_environment(values)
     ModelRoutingProductionSettings.from_environment(values)
-    pipeline_contract(AnalysisSettings.from_environment(environ=values, embedding_mode="remote"), values)
+    AnalysisSettings.from_environment(environ=values, embedding_mode="remote")
 
 
 async def production_smoke(values):

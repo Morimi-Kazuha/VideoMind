@@ -827,7 +827,9 @@ def _media_value(row: MediaRow) -> MediaRecord:
         user_id=int(row.user_id),
         filename=str(row.filename),
         source=str(row.file_path),
-        content_hash=row.content_hash,
+        # Historical blank fingerprints are missing metadata, not malformed
+        # media records. R4 will calculate MD5 from the authorized object.
+        content_hash=(row.content_hash or "").strip() or None,
         media_id=int(row.id),
         status=MediaStatus(str(row.status).upper()),
         uploaded_at=_utc(row.upload_time),

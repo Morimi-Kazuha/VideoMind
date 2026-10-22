@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import json
-from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete
@@ -13,13 +12,13 @@ from dovideo.application import (
 from dovideo.application.content_context import ContentContextKey, ContentContextPreparation
 from dovideo.application.task_lease import TaskLeaseUnavailable
 from dovideo.domain.provenance import stable_frame_ref
-from dovideo.infrastructure.content_context import RedisContentBuildLock, pipeline_contract
+from dovideo.infrastructure.content_context import RedisContentBuildLock
 from dovideo.infrastructure.persistence.content_context import SqlAlchemyContentArtifacts
 from dovideo.infrastructure.persistence.sqlalchemy import ContentContextArtifactRow, create_sqlalchemy_engine, create_schema
 
 
-def key(version="v1"):
-    return ContentContextKey(hashlib.sha256(b"same video bytes").hexdigest(), version)
+def key():
+    return ContentContextKey(hashlib.md5(b"same video bytes").hexdigest())
 
 
 def context(identity):
@@ -136,17 +135,27 @@ async def test_stale_hint_missing_artifact_rebuilds(artifacts):
 
 
 @pytest.mark.asyncio
-async def test_pipeline_version_invalidation(artifacts):
+async def test_legacy_sha256_artifact_is_not_a_md5_hit(artifacts):
+    from datetime import datetime
+    legacy = hashlib.sha256(b"same video bytes").hexdigest()
+    with Session(artifacts.engine) as session, session.begin():
+        session.add(ContentContextArtifactRow(cache_key=legacy, fingerprint=legacy,
+            pipeline_contract="old-contract", payload="legacy payload",
+            payload_digest=hashlib.sha256(b"legacy payload").hexdigest(), created_at=datetime.now()))
+    assert await artifacts.load(key()) is None
+    await ContentContextPreparation(artifacts, Lock()).prepare(key(), "target", "goal", lambda: asyncio.sleep(0, result=context(key())))
+    assert await artifacts.load(key()) == context(key())
+    with Session(artifacts.engine) as session:
+        assert session.get(ContentContextArtifactRow, legacy).payload == "legacy payload"
+
+
+@pytest.mark.asyncio
+async def test_different_content_invalidates_artifact_and_provenance(artifacts):
     await artifacts.publish(key(), context(key()))
-    changed = key("v2")
+    changed = ContentContextKey(hashlib.md5(b"different video bytes").hexdigest())
     assert await artifacts.load(changed) is None
     b = await ContentContextPreparation(artifacts, Lock()).prepare(changed, "target", "goal", lambda: asyncio.sleep(0, result=context(changed)))
     assert b.source_revision != context(key()).source_revision
-    settings = SimpleNamespace(whisper_model="tiny.en", whisper_language="en", whisper_device="cpu")
-    assert pipeline_contract(settings, {}) != pipeline_contract(settings, {"DOVIDEO_CONTEXT_PIPELINE_VERSION": "v2"})
-    old = pipeline_contract(settings, {})
-    settings.whisper_language = "zh"
-    assert pipeline_contract(settings, {}) != old
 
 
 @pytest.mark.asyncio
@@ -235,7 +244,13 @@ async def test_partial_preprocessing_kept_private(artifacts):
     assert await artifacts.load(key()) is None
 
 
-def test_key_requires_sha256_and_content_lock_namespace():
-    with pytest.raises(ValueError, match="SHA-256"):
-        ContentContextKey("a" * 32, "v1")
+@pytest.mark.parametrize("invalid", [None, "", "media-10", "a" * 64, "g" * 32, "a" * 32 + "\n"])
+def test_key_requires_standard_md5(invalid):
+    with pytest.raises(ValueError, match="MD5"):
+        ContentContextKey(invalid)
+
+
+def test_key_normalizes_md5_and_keeps_content_lock_namespace():
+    assert ContentContextKey("A" * 32) == ContentContextKey("a" * 32)
+    assert ContentContextKey("A" * 32).digest == "md5:" + "a" * 32
     assert RedisContentBuildLock(None).redis_key(key()).startswith("lock:content-context:")

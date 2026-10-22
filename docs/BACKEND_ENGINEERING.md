@@ -51,21 +51,24 @@ the R2/R4 production bootstrap.
 
 ## Content identities and production call chain
 
-Uploads keep their existing MD5 compatibility checks and `media.content_hash`
-metadata. Neither that metadata nor an untrusted transport hash authorizes a
-reuse hit. R4 downloads the current target MinIO object and streams SHA-256 over
-its bytes. This deliberately retains a download/hash cost on every preparation;
-ASR/OCR and FFmpeg preprocessing are skipped on a validated hit. It requires no
-upload protocol changes or bulk fingerprint backfill.
+Uploads incrementally compute full-file MD5 and persist `MediaRecord.content_hash`.
+Owner checks still authorize submission and reads. R4 re-reads the durable media
+record by ID, requires its source to match the accepted request, and ignores the
+transport hash and filename. `ContentContextKey` normalizes exactly 32 hexadecimal
+characters to lower case; `md5:<hash>` identifies the artifact and content lock.
+A validated hit skips MinIO download, file hashing and all ASR/OCR preprocessing.
+A miss downloads under the existing content lease, computing MD5 in the same
+stream and checking it against the persisted value before preprocessing/publication.
+Historical missing/invalid hashes require a download to calculate MD5 before lookup;
+they use the same cache and are not automatically backfilled into media records.
 
-`ContentContextKey` combines the SHA-256 fingerprint and pipeline contract. The
-contract includes `DOVIDEO_CONTEXT_PIPELINE_VERSION`, Whisper model/device/
-language, extraction/normalization/provenance contracts, audio segment size,
-keyframe selection defaults, OCR deduplication threshold and context window
-policy. Bump `DOVIDEO_CONTEXT_PIPELINE_VERSION` when tool binaries, model weights,
-Tesseract environment/language data or any preprocessing semantics change.
-Filesystem paths and secrets are excluded. SHA-256 of the structured key gives
-the artifact identity and the separate content-lock namespace.
+The preprocessing configuration is fixed for this deployment. There is no dynamic
+PipelineContract or `DOVIDEO_CONTEXT_PIPELINE_VERSION` cache identity. When changing
+preprocessing semantics, stop/drain workers, clear shared content artifacts and
+Redis hints, then rebuild affected media contexts/chunks and explicitly re-analyze
+tasks as needed. Preserve historical execution records; do not rewrite their evidence.
+MD5 is a reuse heuristic, not an authorization credential or collision-resistant
+security hash. Evidence Guard cannot prove that different files never collide in MD5.
 
 ```text
 Celery registered task
@@ -73,13 +76,14 @@ Celery registered task
   -> TaskWorker.handle (existing renewable Analysis TaskLease)
   -> R4RequestContextCheckpoint.load_context
   -> R4MediaPipeline.build_context
-  -> target MinIO download -> streaming SHA-256 -> versioned ContentContextKey
+  -> durable media lookup + source check -> MD5 ContentContextKey
   -> ContentContextPreparation
      -> confirmed artifact lookup
      -> RedisContentBuildLock acquire -> double-check -> build once
+     -> MinIO download + streaming MD5 verification (miss only)
      -> R4MediaPipeline._build_local
         -> ffprobe -> MediaBranchOrchestrator (FFmpeg / Whisper / Tesseract)
-        -> VideoContextBuilder using content+pipeline identity
+        -> VideoContextBuilder using MD5 content identity
      -> durable content artifact publication
      -> bind target source and request goal
   -> save target media context checkpoint (invalidate old-revision chunks)
@@ -95,7 +99,12 @@ routing, uploads and TaskLease are unchanged.
 ## Persistence, authorization and provenance
 
 `content_context_artifacts` stores immutable content-derived VideoContext JSON,
-fingerprint, pipeline contract, payload digest and creation time. It has no
+MD5 fingerprint, payload digest and creation time. The old NOT NULL pipeline
+column stores only `fixed-md5-preprocessing` for schema compatibility; it does
+not participate in dynamic identity. No DDL or bulk cache migration is needed.
+Old SHA256 cache keys cannot match the new `md5:` namespace. Old Redis hints
+expire; durable rows remain inert until explicitly cleared. SHA256 remains in
+payload/provenance digests. The table has no
 media/user/task foreign key. Its source is a content URI and its goal is empty;
 it contains no owner media ID, object URL, path, execution record or private frame
 location. Only stable `frame_<sha256>` references are accepted. The adapter
@@ -116,16 +125,22 @@ is persisted under that target media ID. Existing API `require_owned` gates
 media submission and read surfaces; cache objects are not publicly addressable.
 Cross-user reuse therefore shares derived source observations while preserving
 the target presentation/authorization boundary. Source revision is calculated
-from content+pipeline identity and observations. Segment IDs, source item IDs,
+from MD5 content identity and observations. Segment IDs, source item IDs,
 content digests and stable frame identities remain unchanged by rebinding.
 Citations validate against the target context; playback APIs and frontend jumps
 continue using the target media. Historical replay uses each task's independent
 execution record and existing owner checks.
 
-An old media context cannot bypass pipeline invalidation: a bound worker request
-prepares against current target bytes and current contract. If source revision
+An old media context cannot bypass MD5 artifact validation: a bound worker request
+prepares against the current durable media identity. If source revision
 changes, the old per-media chunks are cleared before context save. Chunk
 summaries/embeddings are never shared across media in this change.
+Existing vector lookups also filter by source revision and chunk identity.
+Completed task results remain historical task results. An unfinished execution
+whose recorded SourceRevision differs is rejected by the existing immutable
+Execution Record header guard; it is never silently resumed with new evidence.
+Drain workers before switching identities and explicitly resolve such historical
+incomplete executions before rollout. This change does not migrate their history.
 
 ## Coordination and failure policy
 

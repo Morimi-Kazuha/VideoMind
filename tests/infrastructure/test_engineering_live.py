@@ -88,7 +88,7 @@ def live_redis():
 @pytest.mark.asyncio
 async def test_live_mysql_redis_content_concurrency_lifetime_and_stale_hint(live_database, live_redis):
     upgrade_schema(live_database)
-    key = ContentContextKey(hashlib.sha256(uuid4().bytes).hexdigest(), "live-r4-contract-v1")
+    key = ContentContextKey(hashlib.md5(uuid4().bytes).hexdigest())
     store = SqlAlchemyContentArtifacts(live_database, live_redis)
     lock = RedisContentBuildLock(live_redis, ttl_ms=300)
     service = ContentContextPreparation(store, lock, poll_seconds=.01)
@@ -118,7 +118,7 @@ async def test_live_mysql_redis_content_concurrency_lifetime_and_stale_hint(live
 
 @pytest.mark.asyncio
 async def test_live_content_old_token_cannot_release_new_lease(live_redis):
-    key = ContentContextKey(hashlib.sha256(uuid4().bytes).hexdigest(), "lease-live-v1")
+    key = ContentContextKey(hashlib.md5(uuid4().bytes).hexdigest())
     lock = RedisContentBuildLock(live_redis, ttl_ms=150)
     try:
         a = await lock.acquire(key)
@@ -134,12 +134,13 @@ async def test_live_content_old_token_cannot_release_new_lease(live_redis):
 
 
 @pytest.mark.asyncio
-async def test_live_minio_r4_byte_fingerprint_and_content_reuse(live_database, live_redis, tmp_path):
+async def test_live_minio_r4_md5_reuse_skips_second_download(live_database, live_redis, tmp_path):
     from minio import Minio
     from types import SimpleNamespace
     from dovideo.application import AnalysisRequest, MediaRef
     from dovideo.infrastructure.r2_config import R2Settings, _minio_host
     from dovideo.infrastructure.r4_runtime import R4MediaPipeline
+    from dovideo.infrastructure.persistence.sqlalchemy import SqlAlchemyMediaRecordRepository
     from dovideo.presentation.composition import AnalysisSettings
 
     upgrade_schema(live_database)
@@ -150,6 +151,7 @@ async def test_live_minio_r4_byte_fingerprint_and_content_reuse(live_database, l
     objects = (prefix + "/user-A.mp4", prefix + "/user-B.mp4")
     data = b"generated identical video fixture bytes"
     infra = SimpleNamespace(engine=live_database, redis_client=live_redis, minio_client=client,
+                            media_repository=SqlAlchemyMediaRecordRepository(live_database),
                             settings=SimpleNamespace(media_workspace=tmp_path, minio_bucket=settings.minio_bucket))
     telemetry = SimpleNamespace(observe=lambda *args: None)
     pipeline = R4MediaPipeline(infra, AnalysisSettings(), telemetry, None)
@@ -159,17 +161,23 @@ async def test_live_minio_r4_byte_fingerprint_and_content_reuse(live_database, l
         nonlocal calls
         calls += 1
         assert path.read_bytes() == data
-        assert key.fingerprint == hashlib.sha256(data).hexdigest()
+        assert key.fingerprint == hashlib.md5(data).hexdigest()
         identities.append(key)
         complete[0] = True
         bundle = MediaObservationBundle(AsrBranchOutcome((TranscriptSpan(0, 5000, "Opening"),), attempted=1), OcrBranchOutcome())
         return VideoContextBuilder().build(key.artifact_source, "", bundle, media_content_identity=key.media_identity)
-    pipeline._build_local = build  # No paid ASR/LLM calls: verify real download/hash/persistence/lock.
+    pipeline._build_local = build  # No paid ASR/LLM calls: verify real download/MD5/persistence/lock.
     try:
         for object_name in objects:
             client.put_object(settings.minio_bucket, object_name, io.BytesIO(data), len(data))
+        for media_id, object_name in zip((10, 57), objects):
+            with Session(live_database) as session, session.begin():
+                session.add(MediaRow(id=media_id, user_id=media_id, status="COMPLETED",
+                    filename="video.mp4", file_path=f"minio://{settings.minio_bucket}/{object_name}",
+                    content_hash=hashlib.md5(data).hexdigest()))
         a = await pipeline.build_context(AnalysisRequest(MediaRef(10, f"minio://{settings.minio_bucket}/{objects[0]}"), "A"))
         client.remove_object(settings.minio_bucket, objects[0])  # Source object's lifetime is independent.
+        client.remove_object(settings.minio_bucket, objects[1])  # A hit must succeed without opening MinIO.
         b = await pipeline.build_context(AnalysisRequest(MediaRef(57, f"minio://{settings.minio_bucket}/{objects[1]}"), "B"))
         assert calls == 1 and a.source_revision == b.source_revision
         assert objects[0] not in b.model_dump_json()
