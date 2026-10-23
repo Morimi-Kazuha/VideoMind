@@ -904,7 +904,7 @@ class LocalR1Services:
                 downloaded.path.replace(path)
                 def content_hash():
                     with path.open("rb") as source:
-                        return hashlib.file_digest(source, "md5").hexdigest()
+                        return hashlib.file_digest(source, "sha256").hexdigest()
                 digest = await asyncio.to_thread(content_hash)
                 async with self.media._lock:
                     media_id = self.media._next_id

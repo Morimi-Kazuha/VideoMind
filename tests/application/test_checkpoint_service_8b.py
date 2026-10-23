@@ -81,6 +81,11 @@ def test_java_key_helpers_match_golden_values() -> None:
     assert goal_digest("a goal", AnalysisMode.LEARNING) == expected_learning
     assert normalize_content_hash(9, "ABCDEF0123456789ABCDEF0123456789") == "abcdef0123456789abcdef0123456789"
     assert normalize_content_hash(9, "not-md5") == "media-9"
+    # This Java-compatible task namespace retains legacy MD5 identifiers;
+    # SHA-256 media fingerprints must not merge independent analysis tasks.
+    video_sha256 = hashlib.sha256(b"same video bytes").hexdigest()
+    assert normalize_content_hash(9, video_sha256) == "media-9"
+    assert normalize_content_hash(10, video_sha256) == "media-10"
     assert AnalysisTaskKeys.goalDigest("a goal", AnalysisMode.REVIEW) == goal_digest("a goal", AnalysisMode.REVIEW)
     assert AnalysisTaskKeys.active("media-9", "digest") == "analysis:active:media-9:digest"
     assert AnalysisTaskKeys.lock("media-9", "digest") == "lock:analysis:media-9:digest"

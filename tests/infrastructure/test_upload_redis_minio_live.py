@@ -155,7 +155,7 @@ async def test_live_receipt_failure_and_restart_recovers_committed_mysql_row(liv
         patch.setattr(second.chunk_store, "read_chunk", no_second_merge)
         recovered = await service(second).complete(session.upload_id, owner)
     assert recovered.media_id == first_id
-    assert recovered.content_hash == hashlib.md5(b"firstsecond").hexdigest()
+    assert recovered.content_hash == hashlib.sha256(b"firstsecond").hexdigest()
     assert len(await second.media_repository.list_owned(owner)) == 1
     assert (await upload.status(session.upload_id, owner)).completed_media_id == first_id
     assert not first.redis_client.exists(first.upload_sessions._parts_key(session.upload_id))
@@ -328,7 +328,7 @@ async def test_live_real_five_mib_chunks_concurrent_confirmation_and_ordered_has
     await service().upload_chunk(session.upload_id, 3, 4, payloads[3], owner)
     assert (await service(second).status(session.upload_id, owner)).uploaded_chunks == (0, 1, 2, 3)
     result = await service(second).complete(session.upload_id, owner)
-    digest = hashlib.md5()
+    digest = hashlib.sha256()
     for payload in payloads:
         digest.update(payload)
     assert result.content_hash == digest.hexdigest()

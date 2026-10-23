@@ -52,9 +52,12 @@ sessions never count unconfirmed MinIO objects as progress.
 Completion validates ownership before acquiring the nonblocking per-upload
 `lock:upload-merge:{uuid}` redis-py Lock, then rechecks the completion receipt
 under that lock and verifies the exact index set `0..totalChunks-1`. Independent
-uploads can merge concurrently. Ordered local workspace merge computes MD5
+uploads can merge concurrently. Ordered local workspace merge computes SHA-256
 incrementally while bytes flow; this is a content fingerprint, not an upload ID
-or pre-upload deduplication key.
+or pre-upload deduplication key. Its 64-character hex digest is persisted in
+`media_files.content_hash`. Direct uploads and URL imports also store SHA-256
+over the real video bytes. Video preprocessing reuse uses SHA-256 + Pipeline
+Contract; analysis idempotency remains scoped by its separate TaskKey.
 
 The Redis lock has a 30-minute finite lease; the merge scope has a 20-minute
 deadline. The owning token is renewed through the library's `reacquire()` at

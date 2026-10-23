@@ -71,7 +71,7 @@ def test_java_filename_normalization_and_object_key_safety() -> None:
 
 
 @pytest.mark.asyncio
-async def test_direct_ingest_streams_md5_and_normalized_suffix() -> None:
+async def test_direct_ingest_streams_sha256_and_normalized_suffix() -> None:
     payload = b"0123456789" * 20
     stream = BoundedStream(payload, r"C:\unsafe\take.MOV")
     objects = InMemoryObjectStorage()
@@ -84,7 +84,7 @@ async def test_direct_ingest_streams_md5_and_normalized_suffix() -> None:
     ).ingest_file(stream, 7)
 
     assert result.filename == "take.MOV"
-    assert result.content_hash == hashlib.md5(payload).hexdigest()
+    assert result.content_hash == hashlib.sha256(payload).hexdigest()
     assert result.status.value == "COMPLETED"
     assert result.content_type == "video/quicktime"
     assert len(objects.objects) == 1
@@ -155,7 +155,7 @@ async def test_url_ingest_owns_and_cleans_download_workspace(tmp_path: Path) -> 
     ).ingest_url("https://example.test/video", 2)
 
     assert result.filename == "remote.m4v"
-    assert result.content_hash == hashlib.md5(b"url-content").hexdigest()
+    assert result.content_hash == hashlib.sha256(b"url-content").hexdigest()
     assert downloader.calls == ["https://example.test/video"]
     assert list(tmp_path.iterdir()) == []
 

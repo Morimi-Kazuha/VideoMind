@@ -23,11 +23,17 @@ does not claim a maximum-size 2 GiB throughput or Redis failover soak test.
 ## 3. Current-source audit
 
 Already implemented: UUID UploadSession, 24-hour expiry, deterministic temporary
-part keys, ownership, bounded chunk limits, ordered local merge, incremental MD5,
+part keys, ownership, bounded chunk limits, ordered local merge, incremental SHA-256,
 completion receipts, best-effort cleanup and actual Redis/MinIO/SQL production
 wiring. Browser already used 5 MiB chunks, concurrency 3, 410-chunk maximum,
 four transient-only attempts with exponential jitter, user-scoped credentials,
 server status, cancellation and lost-completion-response recovery.
+
+Hash algorithm note (2026-10-23): ordered merge now streams SHA-256 into
+`media_files.content_hash`; the original 2026-10-06 implementation used MD5.
+Historical 32-character records remain readable and are not converted. Worker
+reuse still downloads and hashes real bytes, using SHA-256 + Pipeline Contract;
+TaskKey independently coordinates analysis. Existing valid artifacts remain valid.
 
 The [CURRENT / TARGET / GAP / ACTION matrix](UPLOAD_FINALIZATION_AUDIT.md)
 was written before implementation. Ports remain useful for adapter isolation
@@ -160,7 +166,7 @@ blob is unchanged; no dataset/test-expectation change is in the commit.
 
 ## 10. Non-goals preserved
 
-No Redisson/Java dependency, pre-upload MD5, hash-based upload ID, instant
+No Redisson/Java dependency, pre-upload hashing, hash-based upload ID, instant
 upload, cross-user deduplication, server-side compose, dynamic chunks, SQL
 per-chunk dual writes, watchdog, custom transaction framework or unrelated
 architecture rewrite. Existing frontend policy and application Ports are kept.

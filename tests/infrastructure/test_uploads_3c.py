@@ -61,12 +61,35 @@ async def test_r6_lost_complete_response_status_retry_and_late_chunk(tmp_path: P
     assert first_id is not None
     recovered = await service.complete(upload_id, 11)
     assert recovered.media_id == first_id
+    assert recovered.content_hash == hashlib.sha256(b'video').hexdigest()
     assert len(records.records) == 1
     with pytest.raises(UploadConflict):
         await service.upload_chunk(upload_id, 0, 1, b'late', 11)
     with pytest.raises(MediaUnauthorized):
         await service.complete(upload_id, 12)
     assert (await service.status(upload_id, 11)).completed_media_id == first_id
+    assert not chunks.objects
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("parts", [(b"single\x00video\xff",), tuple(bytes([i]) * 7 for i in range(12))])
+async def test_content_hash_matches_complete_stored_bytes_and_worker_sha256(tmp_path, parts):
+    from dovideo.infrastructure.content_context import sha256_file
+
+    service, _, chunks, objects, records, _, _ = make_service(tmp_path)
+    upload_id = await service.initialize("fingerprint.mp4", len(parts), 11)
+    for index in reversed(range(len(parts))):
+        await service.upload_chunk(upload_id, index, len(parts), parts[index], 11)
+    result = await service.complete(upload_id, 11)
+    stored = next(iter(objects.objects.values()))
+    assert stored == b"".join(parts)
+    assert result.content_hash == hashlib.sha256(stored).hexdigest()
+    downloaded = tmp_path / "worker.mp4"
+    downloaded.write_bytes(stored)
+    assert result.content_hash == sha256_file(downloaded)
+    assert (await records.get(result.media_id)).content_hash == result.content_hash
+    assert await service.complete(upload_id, 11) == result
+    assert records.save_calls == 1 and len(objects.put_calls) == 1
     assert not chunks.objects
 
 
@@ -124,7 +147,7 @@ async def test_complete_requires_exact_indexes_and_merges_in_numeric_order(tmp_p
     await service.upload_chunk(session.upload_id, 1, 3, b"second", 3)
     result = await service.complete(session.upload_id, 3)
     payload = b"firstsecondthird"
-    assert result.content_hash == hashlib.md5(payload).hexdigest()
+    assert result.content_hash == hashlib.sha256(payload).hexdigest()
     assert result.media_id == 1
     assert next(iter(objects.objects.values())) == payload
     assert chunks.objects == {}
@@ -176,6 +199,7 @@ async def test_complete_marker_failure_recovers_durable_result_without_remerge(t
     restarted = ChunkUploadService(chunks, objects, records, sessions, InMemoryMergeLock(), clock=service._clock)
     recovered = await restarted.complete(session.upload_id, 2)
     assert recovered.media_id == first_id
+    assert recovered.content_hash == hashlib.sha256(b"payload").hexdigest()
     assert records.save_calls == 1
     assert len(objects.put_calls) == 1
 

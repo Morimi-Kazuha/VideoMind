@@ -86,7 +86,7 @@ from .runner import (
 from .workspace import MediaWorkspace, ScopedArtifact
 from .telemetry import InMemoryTelemetry, NullTelemetry
 from .ingest import (
-    MD5_READ_BYTES,
+    HASH_READ_BYTES,
     MEDIA_OBJECT_PREFIX,
     STREAM_CHUNK_BYTES,
     MediaIngestService,
@@ -187,7 +187,7 @@ __all__ = [
     "MemoryUploadStore",
     "MutableClock",
     "SystemClock",
-    "MD5_READ_BYTES",
+    "HASH_READ_BYTES",
     "MEDIA_OBJECT_PREFIX",
     "OCR_LANGUAGE",
     "OCR_TIMEOUT_SECONDS",

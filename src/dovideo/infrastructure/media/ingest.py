@@ -1,7 +1,7 @@
 """Direct-file and URL media ingestion for Phase 3C.
 
 The service streams caller-owned input through an object-storage port, computes
-the Java-compatible MD5 content identifier in the same pass, and writes the
+the SHA-256 video content fingerprint in the same pass, and writes the
 media record only after the object upload succeeds.
 """
 
@@ -28,7 +28,7 @@ from .memory import SystemClock
 from .workspace import MediaWorkspace
 
 STREAM_CHUNK_BYTES = 64 * 1024
-MD5_READ_BYTES = 8 * 1024
+HASH_READ_BYTES = 8 * 1024
 MEDIA_OBJECT_PREFIX = "media/"
 
 
@@ -113,18 +113,14 @@ class MediaIngestService:
 
     ingest = ingest_file
 
-    async def calculate_md5(self, source: BinaryIO | PathLike[str]) -> str:
-        """Calculate Java-compatible MD5 in bounded 8 KiB reads.
-
-        MD5 is retained solely as a content-compatibility identifier; it is
-        not a security hash and must not be used for authenticity decisions.
-        """
+    async def calculate_sha256(self, source: BinaryIO | PathLike[str]) -> str:
+        """Calculate the video content fingerprint in bounded 8 KiB reads."""
 
         stream, should_close = _open_input(source)
-        digest = hashlib.md5()
+        digest = hashlib.sha256()
         try:
             while True:
-                chunk = await asyncio.to_thread(stream.read, MD5_READ_BYTES)
+                chunk = await asyncio.to_thread(stream.read, HASH_READ_BYTES)
                 if not chunk:
                     break
                 if not isinstance(chunk, (bytes, bytearray, memoryview)):
@@ -144,7 +140,7 @@ class MediaIngestService:
         content_type: str | None,
     ) -> MediaRecord:
         normalized = normalize_video_filename(filename)
-        digest = hashlib.md5()
+        digest = hashlib.sha256()
         first = await _read_bytes(stream, self._stream_chunk_bytes)
         if not first:
             raise InvalidMediaInput("uploaded media cannot be empty")
@@ -250,7 +246,7 @@ def _require_user(user_id: int) -> None:
 
 
 __all__ = [
-    "MD5_READ_BYTES",
+    "HASH_READ_BYTES",
     "MEDIA_OBJECT_PREFIX",
     "MediaIngestService",
     "STREAM_CHUNK_BYTES",

@@ -87,7 +87,7 @@ class ProductionMediaStore:
                 user_id=user_id,
                 filename=normalized,
                 source=object_source,
-                content_hash=hashlib.md5(payload).hexdigest(),
+                content_hash=hashlib.sha256(payload).hexdigest(),
                 content_type=content_type,
             )
             try:

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from dovideo.application import MediaRecord, MediaStatus
+from dovideo.application.content_context import ContentContextKey
 from dovideo.infrastructure.media import InMemoryObjectStorage, MediaIngestService
 from dovideo.infrastructure.persistence import (
     CheckpointRepository,
@@ -354,6 +357,39 @@ async def test_mysql_media_mapping_roundtrip_and_rollback() -> None:
     assert database.connections[-1].rollbacks == 1
     await repository.delete(saved.media_id)
     assert await repository.get(saved.media_id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("adapter", ["sqlite", "mysql"])
+async def test_media_repository_preserves_legacy_md5_and_sha256(adapter: str) -> None:
+    payload = b"same video uploaded before and after SHA-256 adoption"
+    # Historical MD5 values remain readable, but cannot identify SHA-256 artifacts.
+    legacy_md5 = hashlib.md5(payload, usedforsecurity=False).hexdigest()
+    content_sha256 = hashlib.sha256(payload).hexdigest()
+    repository = (
+        SqliteMediaRecordRepository()
+        if adapter == "sqlite"
+        else MySqlMediaRecordRepository(_FakeDb().connect)
+    )
+    try:
+        for digest in (legacy_md5, content_sha256):
+            record = replace(_record(source=f"memory://{digest}"), content_hash=digest)
+            saved = await repository.save(record)
+            loaded = await repository.get(saved.media_id)
+            assert loaded is not None
+            assert loaded.content_hash == digest
+            assert (await repository.get_by_source(saved.source)).content_hash == digest
+            assert (await repository.get_media(saved.media_id)).content_hash == digest
+            if digest == legacy_md5:
+                assert len(loaded.content_hash) == 32
+                with pytest.raises(ValueError, match="must be SHA-256"):
+                    ContentContextKey(loaded.content_hash, "pipeline-v1")
+            else:
+                assert len(loaded.content_hash) == 64
+                assert ContentContextKey(loaded.content_hash, "pipeline-v1").fingerprint == content_sha256
+    finally:
+        if isinstance(repository, SqliteMediaRecordRepository):
+            repository.close()
 
 
 @pytest.mark.asyncio

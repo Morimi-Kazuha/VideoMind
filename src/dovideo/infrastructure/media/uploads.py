@@ -331,7 +331,7 @@ class ChunkUploadService:
         merged_path: Path,
         lease: MergeLockLease,
     ) -> tuple[MediaRecord, int]:
-        digest = hashlib.md5()
+        digest = hashlib.sha256()
         with merged_path.open("wb") as output:
             for index in range(session.total_chunks):
                 await self._refresh_lease(lease)

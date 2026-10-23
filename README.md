@@ -90,6 +90,10 @@ WEB LINK 支持无需认证的公开 HTTPS MP4 直链，保留地址安全校验
 
 结合上传会话身份、媒体归属校验、Merge Lock、顺序流式合并和 Completion Receipt，处理并发合并、重复完成请求及异常恢复等问题。
 
+上传合并过程中流式计算 SHA-256，作为视频文件的内容指纹；视频预处理缓存使用 SHA-256 + Pipeline Contract 确定复用身份。分析任务则使用独立的 TaskKey 做幂等协调。直接上传和 URL 导入同样持久化真实视频字节的 SHA-256。
+
+当前没有上传前计算哈希的秒传功能。Worker 仍先下载视频并计算 SHA-256，验证来源与版本后复用 VideoContext；这不代表全局复用所有 Chunk、Embedding 或 Agent 最终结果。历史 MD5 记录保持可读，不能当作 SHA-256 使用；需要新指纹时根据真实视频字节重算，已有有效内容缓存无需重建。
+
 **RabbitMQ + Celery 异步解耦**
 
 将耗时的视频解析与 Agent 分析从 HTTP 请求主链路中剥离。

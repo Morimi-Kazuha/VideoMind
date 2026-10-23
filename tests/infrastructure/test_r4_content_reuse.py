@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from types import SimpleNamespace
 
 import pytest
@@ -127,8 +128,11 @@ async def test_short_worker_context_prepares_follow_up_inputs_once_without_chang
 async def test_actual_r4_pipeline_cross_media_rebinding_and_evidence(runtime):
     pipeline, checkpoint, counts = runtime
     boundary = R4RequestContextCheckpoint(checkpoint, pipeline)
-    a = AnalysisRequest(MediaRef(10, "minio://media/user-A/video", content_hash="a" * 32), "same goal")
-    b = AnalysisRequest(MediaRef(57, "minio://media/user-B/video", content_hash="different-md5"), "same goal")
+    video_bytes = b"identical target media bytes"
+    legacy_md5 = hashlib.md5(video_bytes).hexdigest()
+    sha256 = hashlib.sha256(video_bytes).hexdigest()
+    a = AnalysisRequest(MediaRef(10, "minio://media/user-A/video", content_hash=legacy_md5), "same goal")
+    b = AnalysisRequest(MediaRef(57, "minio://media/user-B/video", content_hash=sha256), "same goal")
     first = await load(boundary, a)
     second = await load(boundary, b)
     revised = await load(boundary, AnalysisRequest(a.media, "other goal"))
@@ -147,6 +151,37 @@ async def test_actual_r4_pipeline_cross_media_rebinding_and_evidence(runtime):
     assert not EvidenceVerificationService().supported(second, evidence.model_copy(update={"source_revision": "f" * 64}))
     assert (await checkpoint.load_context(57)).source == b.media.source
     assert not list(pipeline.infrastructure.settings.media_workspace.glob("download-*.mp4"))
+
+
+@pytest.mark.asyncio
+async def test_actual_r4_different_bytes_never_reuse_matching_stored_hash(runtime):
+    pipeline, checkpoint, counts = runtime
+    boundary = R4RequestContextCheckpoint(checkpoint, pipeline)
+    stored_hash = hashlib.sha256(b"identical target media bytes").hexdigest()
+    first_request = AnalysisRequest(
+        MediaRef(10, "minio://media/user-A/video", content_hash=stored_hash), "goal"
+    )
+    first = await load(boundary, first_request)
+
+    async def different_download(request):
+        counts["download"] += 1
+        path = pipeline.infrastructure.settings.media_workspace / "different-video.mp4"
+        path.write_bytes(b"different target media bytes")
+        return path
+
+    pipeline._download = different_download
+    second_request = AnalysisRequest(
+        MediaRef(57, "minio://media/user-B/video", content_hash=stored_hash), "goal"
+    )
+    second = await load(boundary, second_request)
+
+    assert counts == {"download": 2, "asr_ocr": 2}
+    assert first.source_revision != second.source_revision
+    assert first.segments != second.segments
+    assert second.source == second_request.media.source
+    assert (await checkpoint.load_context(10)).source_revision == first.source_revision
+    assert (await checkpoint.load_context(57)).source_revision == second.source_revision
+    assert not list(pipeline.infrastructure.settings.media_workspace.glob("*.mp4"))
 
 
 @pytest.mark.asyncio

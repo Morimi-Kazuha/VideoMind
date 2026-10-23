@@ -51,12 +51,26 @@ the R2/R4 production bootstrap.
 
 ## Content identities and production call chain
 
-Uploads keep their existing MD5 compatibility checks and `media.content_hash`
-metadata. Neither that metadata nor an untrusted transport hash authorizes a
+Uploads stream SHA-256 during ordered chunk merge and persist the full hex
+digest in `media_files.content_hash`; direct-file and URL ingestion use the same
+algorithm. The existing nullable `VARCHAR(64)` stores both new 64-character
+SHA-256 and historical 32-character MD5 values without a schema migration.
+Repositories preserve historical records on read. A legacy MD5 is never treated
+as SHA-256, padded or converted: any recomputation requires real video bytes.
+There is no bulk rewrite, media deletion or forced rebuild of valid artifacts.
+Legacy task/failed-replay normalization retains its MD5-or-media-ID policy;
+TaskKey, uploadId, requestId and Checkpoint responsibilities are unchanged.
+
+Neither stored metadata nor an untrusted transport hash authorizes a
 reuse hit. R4 downloads the current target MinIO object and streams SHA-256 over
 its bytes. This deliberately retains a download/hash cost on every preparation;
 ASR/OCR and FFmpeg preprocessing are skipped on a validated hit. It requires no
 upload protocol changes or bulk fingerprint backfill.
+
+上传合并过程中流式计算 SHA-256，作为视频文件的内容指纹；视频预处理缓存使用 SHA-256 + Pipeline Contract 确定复用身份。分析任务则使用独立的 TaskKey 做幂等协调。
+There is no pre-upload hashing or instant-upload feature. Content reuse covers
+VideoContext preprocessing, not global reuse of every Chunk, Embedding or Agent
+final result. SourceRevision and provenance validation remain mandatory.
 
 `ContentContextKey` combines the SHA-256 fingerprint and pipeline contract. The
 contract includes `DOVIDEO_CONTEXT_PIPELINE_VERSION`, Whisper model/device/
