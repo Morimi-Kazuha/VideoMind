@@ -75,6 +75,14 @@ class ContentContextPreparation:
             logger.warning("Content artifact lookup unavailable; using a cache miss")
             return None
 
+    async def lookup(self, key: ContentContextKey, source: str, goal: str) -> VideoContext | None:
+        """Read a validated artifact after the caller establishes media identity."""
+        check_task_lease()
+        context = await self._lookup(key)
+        if context is None:
+            return None
+        return context.model_copy(update={"source": source, "user_goal": goal})
+
     async def prepare(self, key: ContentContextKey, source: str, goal: str,
                       build: Callable[[], Awaitable[VideoContext]],
                       *, cacheable: Callable[[], bool] = lambda: True) -> VideoContext:

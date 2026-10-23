@@ -84,6 +84,9 @@ class MediaRow(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Established only after hashing a pinned, immutable object version. Old
+    # records remain unbound and follow the download-and-verify path.
+    content_identity: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
@@ -827,7 +830,9 @@ def _media_value(row: MediaRow) -> MediaRecord:
         user_id=int(row.user_id),
         filename=str(row.filename),
         source=str(row.file_path),
-        content_hash=row.content_hash,
+        # Empty historical database values carry no trusted fingerprint. Keep
+        # the row unchanged while allowing the normal download-and-hash path.
+        content_hash=row.content_hash if row.content_hash and row.content_hash.strip() else None,
         media_id=int(row.id),
         status=MediaStatus(str(row.status).upper()),
         uploaded_at=_utc(row.upload_time),

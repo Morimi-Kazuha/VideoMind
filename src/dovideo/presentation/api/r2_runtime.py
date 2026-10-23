@@ -323,7 +323,10 @@ class ProductionR2Services:
         record = await self.media.require_owned(feedback.media_id, user_id)
         goal = feedback.corrected_goal or feedback.goal
         plan = AgentPlan(understoodGoal=goal, tasks=feedback.corrected_tasks) if feedback.corrected_tasks else None
-        request = AnalysisRequest(record.to_ref(), goal, feedback.mode, request_id=f"revision:{uuid4().hex}")
+        request = AnalysisRequest(
+            record.to_ref(), goal, feedback.mode,
+            request_id=f"revision:{uuid4().hex}", user_id=user_id,
+        )
         return await self.dispatcher.dispatch(request, revision_plan=plan, revision_checkpoint=self.checkpoint)
 
     def feedback_for(self, media_id: int) -> tuple[object, ...]:

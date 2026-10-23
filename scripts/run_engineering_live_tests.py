@@ -42,6 +42,7 @@ def main():
     from uuid import uuid4
     from dovideo.infrastructure.persistence.migrations import upgrade_schema
     targets = [str(ROOT / "tests/infrastructure/test_engineering_live.py"),
+               str(ROOT / "tests/infrastructure/test_pre_download_context_live.py"),
                str(ROOT / "tests/infrastructure/test_task_lease_redis_live.py")]
     database = None
     admin = create_sqlalchemy_engine(admin_url.render_as_string(hide_password=False))

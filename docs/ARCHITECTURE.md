@@ -59,6 +59,15 @@ or pre-upload deduplication key. Its 64-character hex digest is persisted in
 over the real video bytes. Video preprocessing reuse uses SHA-256 + Pipeline
 Contract; analysis idempotency remains scoped by its separate TaskKey.
 
+Analysis admission passes the authenticated owner through the trusted internal
+queue. R4 reloads the owned media row; only a real-byte-verified SHA-256/object
+version binding can authorize lookup before download. A matching current MinIO
+version and validated durable artifact allow zero video GET/ASR/OCR calls.
+Each original object needs its own initial pinned-version download and SHA-256
+verification. Missing proof, legacy hashes or unversioned objects keep the cold
+path. A changed/deleted version or digest mismatch cannot silently reuse old
+evidence. See [binding and deployment requirements](BACKEND_ENGINEERING.md).
+
 The Redis lock has a 30-minute finite lease; the merge scope has a 20-minute
 deadline. The owning token is renewed through the library's `reacquire()` at
 chunk and persistence boundaries. Redis calls run outside the event loop;

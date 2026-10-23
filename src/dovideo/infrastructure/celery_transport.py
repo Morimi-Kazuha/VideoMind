@@ -65,6 +65,7 @@ class CeleryAnalysisEnvelope(BaseModel):
     status: str | None = Field(default=None, max_length=64)
     request_id: str | None = Field(default=None, alias="requestId", max_length=128)
     action: str = Field(default="START_ANALYSIS", max_length=32)
+    user_id: int | None = Field(default=None, alias="userId", strict=True, gt=0)
 
     @field_validator("media_id")
     @classmethod
@@ -110,6 +111,7 @@ class CeleryAnalysisEnvelope(BaseModel):
             status=request.media.status,
             requestId=request.request_id,
             action=action,
+            userId=request.user_id,
         )
 
     def to_request(self) -> AnalysisRequest:
@@ -128,6 +130,7 @@ class CeleryAnalysisEnvelope(BaseModel):
             goal=self.goal,
             mode=self.mode,
             request_id=self.request_id,
+            user_id=self.user_id,
         )
 
     def as_message(self, *, max_bytes: int = DEFAULT_MAX_ENVELOPE_BYTES) -> dict[str, Any]:

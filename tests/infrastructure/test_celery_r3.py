@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 from celery.exceptions import Retry
 
@@ -185,6 +189,94 @@ def test_envelope_is_bounded_json_and_celery_disallows_pickle() -> None:
     assert app.conf.task_acks_on_failure_or_timeout is False
     assert app.conf.task_reject_on_worker_lost is True
     assert app.conf.worker_prefetch_multiplier == 1
+
+
+def test_authenticated_principal_survives_celery_roundtrip_without_changing_task_key() -> None:
+    request = replace(_request(), user_id=73)
+
+    message = CeleryAnalysisEnvelope.from_request(request).as_message()
+    restored = CeleryAnalysisEnvelope.model_validate(message).to_request()
+
+    assert message["userId"] == 73
+    assert restored == request
+    assert restored.task_key == _request().task_key
+    assert restored.request_id == _request().request_id
+
+
+def test_legacy_celery_message_without_principal_remains_readable() -> None:
+    message = CeleryAnalysisEnvelope.from_request(_request()).as_message()
+    message.pop("userId")
+
+    restored = CeleryAnalysisEnvelope.model_validate(message).to_request()
+
+    assert restored == _request()
+    assert restored.user_id is None
+
+
+@pytest.mark.parametrize("principal", [True, False, "73", 73.0, 0, -1, [], {}])
+def test_analysis_request_rejects_invalid_principal(principal) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        replace(_request(), user_id=principal)
+
+
+@pytest.mark.parametrize("principal", [True, False, "73", 73.0, 0, -1, [], {}])
+def test_celery_envelope_rejects_invalid_principal_without_coercion(principal) -> None:
+    message = CeleryAnalysisEnvelope.from_request(_request()).as_message()
+
+    with pytest.raises(ValueError):
+        CeleryAnalysisEnvelope.model_validate({**message, "userId": principal})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", [3, 4])
+async def test_production_submission_transports_only_owned_media_and_authenticated_principal(version) -> None:
+    from dovideo.presentation.api.r3_runtime import ProductionR3Services
+    from dovideo.presentation.api.r4_runtime import ProductionR4Services
+
+    service_type = ProductionR3Services if version == 3 else ProductionR4Services
+    services = service_type.__new__(service_type)
+    trusted_media = MediaRef(9, "minio://private/owner-73.mp4", content_hash="a" * 64)
+    services.media = SimpleNamespace(require_owned=AsyncMock(
+        return_value=SimpleNamespace(to_ref=lambda: trusted_media),
+    ))
+    services.checkpoint = SimpleNamespace(load_result=AsyncMock(return_value=None))
+    services.dispatcher = SimpleNamespace(dispatch=AsyncMock(return_value=DispatchDisposition.ACCEPTED))
+    services.trace = SimpleNamespace(start=Mock())
+
+    assert await services.submit_analysis(9, 73, "current goal", AnalysisMode.GENERAL) is DispatchDisposition.ACCEPTED
+
+    services.media.require_owned.assert_awaited_once_with(9, 73)
+    request = services.dispatcher.dispatch.await_args.args[0]
+    assert request.user_id == 73
+    assert request.media == trusted_media
+
+    services.media.require_owned.side_effect = PermissionError("not owned")
+    services.dispatcher.dispatch.reset_mock()
+    with pytest.raises(PermissionError):
+        await services.submit_analysis(9, 74, "current goal", AnalysisMode.GENERAL)
+    services.dispatcher.dispatch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_production_revision_preserves_authenticated_principal_after_ownership_check() -> None:
+    from dovideo.presentation.api.r2_runtime import ProductionR2Services
+
+    services = ProductionR2Services.__new__(ProductionR2Services)
+    services.media = SimpleNamespace(require_owned=AsyncMock(return_value=SimpleNamespace(to_ref=lambda: _request().media)))
+    services.dispatcher = SimpleNamespace(dispatch=AsyncMock(return_value=DispatchDisposition.ACCEPTED))
+    services.checkpoint = object()
+    feedback = SimpleNamespace(
+        media_id=9, goal="previous goal", corrected_goal="current goal",
+        mode=AnalysisMode.GENERAL, corrected_tasks=(),
+    )
+
+    assert await services.revise_analysis(feedback, 73) is DispatchDisposition.ACCEPTED
+
+    services.media.require_owned.assert_awaited_once_with(9, 73)
+    request = services.dispatcher.dispatch.await_args.args[0]
+    assert request.user_id == 73
+    assert request.goal == "current goal"
+    assert request.request_id.startswith("revision:")
 
 
 @pytest.mark.asyncio

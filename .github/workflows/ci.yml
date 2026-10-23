@@ -100,6 +100,7 @@ jobs:
           python -m pytest -q tests/infrastructure/test_governance_broker_live.py
           tests/infrastructure/test_response_files.py tests/infrastructure/test_audio_export.py
           tests/infrastructure/test_engineering_live.py
+          tests/infrastructure/test_pre_download_context_live.py
           tests/infrastructure/test_m1_conversation_redis_live.py
           tests/infrastructure/test_task_lease_redis_live.py
           tests/infrastructure/test_upload_redis_minio_live.py

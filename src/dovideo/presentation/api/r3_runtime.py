@@ -131,7 +131,9 @@ class ProductionR3Services(ProductionR2Services):
         mode: AnalysisMode,
     ) -> DispatchDisposition:
         record = await self.media.require_owned(media_id, user_id)
-        request = AnalysisRequest(record.to_ref(), goal, mode, request_id=uuid4().hex)
+        request = AnalysisRequest(
+            record.to_ref(), goal, mode, request_id=uuid4().hex, user_id=user_id,
+        )
         if await self.checkpoint.load_result(request.task_key) is not None:
             return DispatchDisposition.DUPLICATE
         disposition = await self.dispatcher.dispatch(request)

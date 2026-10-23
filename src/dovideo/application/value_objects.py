@@ -80,6 +80,7 @@ class AnalysisRequest:
     goal: str
     mode: AnalysisMode = AnalysisMode.GENERAL
     request_id: str | None = None
+    user_id: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.media, MediaRef):
@@ -92,6 +93,11 @@ class AnalysisRequest:
             not isinstance(self.request_id, str) or not self.request_id.strip()
         ):
             raise ValueError("request_id must be nonblank when provided")
+        if self.user_id is not None:
+            if isinstance(self.user_id, bool) or not isinstance(self.user_id, int):
+                raise TypeError("user_id must be an integer or None")
+            if self.user_id <= 0:
+                raise ValueError("user_id must be positive when provided")
 
     @property
     def task_key(self) -> TaskKey:

@@ -32,7 +32,10 @@ server status, cancellation and lost-completion-response recovery.
 Hash algorithm note (2026-10-23): ordered merge now streams SHA-256 into
 `media_files.content_hash`; the original 2026-10-06 implementation used MD5.
 Historical 32-character records remain readable and are not converted. Worker
-reuse still downloads and hashes real bytes, using SHA-256 + Pipeline Contract;
+reuse uses SHA-256 + Pipeline Contract. Download-before-reuse was the behavior
+at that gate; the later version-bound fast path is documented in
+[backend engineering](BACKEND_ENGINEERING.md). It skips repeat downloads only
+after per-object byte verification and current identity/ownership checks;
 TaskKey independently coordinates analysis. Existing valid artifacts remain valid.
 
 The [CURRENT / TARGET / GAP / ACTION matrix](UPLOAD_FINALIZATION_AUDIT.md)

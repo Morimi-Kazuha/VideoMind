@@ -38,7 +38,9 @@ of inventing execution/provenance history. Unknown historical database variants
 need an explicit reviewed migration; this is not an arbitrary schema repair tool.
 The second revision widens MySQL checkpoint TEXT/MEDIUMTEXT to LONGTEXT. SQLite
 uses TEXT and batch column/constraint changes for ephemeral tests. The third
-revision creates the independent content artifact table. Baseline adoption and
+revision creates the independent content artifact table. The fourth adds a
+nullable `media_files.content_identity` proof; no historical binding is invented.
+Baseline adoption and
 LONGTEXT widening refuse potentially destructive downgrades.
 
 Production metadata consists of `users`, `media_files`, `agent_checkpoints`,
@@ -61,13 +63,44 @@ There is no bulk rewrite, media deletion or forced rebuild of valid artifacts.
 Legacy task/failed-replay normalization retains its MD5-or-media-ID policy;
 TaskKey, uploadId, requestId and Checkpoint responsibilities are unchanged.
 
-Neither stored metadata nor an untrusted transport hash authorizes a
-reuse hit. R4 downloads the current target MinIO object and streams SHA-256 over
-its bytes. This deliberately retains a download/hash cost on every preparation;
-ASR/OCR and FFmpeg preprocessing are skipped on a validated hit. It requires no
-upload protocol changes or bulk fingerprint backfill.
+Neither an untrusted transport hash nor a digest alone authorizes a reuse hit.
+Authenticated API admission checks media ownership and places the authenticated
+`userId` on the internal JSON message. R4 reloads the MySQL media record, checks
+that owner against the principal, and uses the record's source and digest instead
+of message metadata. The broker remains a trusted internal service, not a public
+request endpoint. Messages from older producers without `userId` retain the cold
+path and cannot establish a fast-path binding; TaskKey and redelivery stay intact.
 
-上传合并过程中流式计算 SHA-256，作为视频文件的内容指纹；视频预处理缓存使用 SHA-256 + Pipeline Contract 确定复用身份。分析任务则使用独立的 TaskKey 做幂等协调。
+`content_identity` stores a schema-versioned source + SHA-256 + MinIO version ID
+binding. It is written conditionally only after downloading that exact pinned
+non-null version and hashing the real bytes against the trusted SHA-256. On later
+requests a current-object HEAD must match the binding before artifact lookup;
+after lookup the record, ownership and current version are checked again.
+Version IDs prove which immutable byte version was verified; ETags are not used
+as SHA-256. Replacement/deletion cannot silently authorize an old artifact.
+SHA-256 mismatch fails before preprocessing or publication. Missing/corrupt
+bindings, missing artifacts, legacy/invalid hashes and unversioned objects use
+download + verification + the existing content build lock. Lookup outages are
+misses; Redis hints still cannot authorize a hit without the durable artifact.
+
+Each separately uploaded original object needs its own initial verified binding,
+even if another user's same-byte artifact exists. That first download may reuse
+ASR/OCR; later valid hits for the bound object use zero `get_object` calls and
+zero ASR/OCR calls in context preparation. Content locks retain their existing
+scope and lease/wait policy; concurrent misses may download separately but only
+one valid preprocessing build is published. No new lock or cache table exists.
+
+Deploy with `alembic upgrade head` before restarting API/workers.
+Upgrade workers before API producers: old workers' strict message parsers do not
+understand `userId`; new workers can consume old messages through the cold path.
+For fast reuse, operators must enable MinIO bucket versioning and retain readable versions;
+the application does not silently enable versioning or change lifecycle/physical
+deletion policy. Null versions (including older objects in a newly versioned
+bucket) safely keep downloading. Versioned storage retention and deletion need
+an operator policy; this feature does not migrate or deduplicate raw objects.
+
+视频上传时计算并保存 SHA-256 内容指纹。分析阶段，在验证媒体身份和权限后，通过 SHA-256 + Pipeline Contract 查找已保存的 VideoContext。符合快速复用条件时，可跳过重复视频下载和 ASR/OCR；未命中或无法安全验证时，回到下载、核验和构建流程。
+分析任务仍使用独立的 TaskKey 做幂等协调。
 There is no pre-upload hashing or instant-upload feature. Content reuse covers
 VideoContext preprocessing, not global reuse of every Chunk, Embedding or Agent
 final result. SourceRevision and provenance validation remain mandatory.
@@ -87,7 +120,12 @@ Celery registered task
   -> TaskWorker.handle (existing renewable Analysis TaskLease)
   -> R4RequestContextCheckpoint.load_context
   -> R4MediaPipeline.build_context
-  -> target MinIO download -> streaming SHA-256 -> versioned ContentContextKey
+  -> reload owned MySQL media -> inspect current MinIO version
+     -> matching verified binding -> validated ContentContextKey artifact hit
+        -> recheck owner/version -> rebind source/goal (no video download)
+     -> otherwise target MinIO download (pin version when available)
+        -> streaming SHA-256 -> verify expected digest -> bind verified version
+        -> versioned ContentContextKey
   -> ContentContextPreparation
      -> confirmed artifact lookup
      -> RedisContentBuildLock acquire -> double-check -> build once
